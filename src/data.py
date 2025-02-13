@@ -4,14 +4,8 @@ from typing import Tuple
 import jax
 import jax.numpy as jnp
 import jax.random as jr
-from jaxtyping import Array, Float, Int, PRNGKeyArray
 
-N = Float[Array, "N"]
-ND = Float[Array, "N features"]
-N1 = Float[Array, "N 1"]
-Q = Float[Array, "Q"]
-Q1 = Float[Array, "Q 1"]
-Q2 = Float[Array, "Q 2"]
+from type import Q1, Q2, N
 
 
 def bt_likelihood(return_i: float, return_j: float, beta: float = 1.0) -> float:
@@ -23,20 +17,20 @@ def bt_likelihood(return_i: float, return_j: float, beta: float = 1.0) -> float:
     return exp_j / (exp_i + exp_j)
 
 
-def random_query_iterator(key: PRNGKeyArray, n: int, num_queries: int):
+def random_query_iterator(key, n: int, n_queries: int):
     """
     Note this does not return ti=tj, and migth return duplicates
     """
-    for _ in range(num_queries):
+    for _ in range(n_queries):
         ti = jr.randint(key=key, shape=(), minval=0, maxval=n - 1)
         tj = jr.randint(key=key, shape=(), minval=ti + 1, maxval=n)
         yield ti, tj
 
 
-def create_pref_data_np(
-    key: PRNGKeyArray,
+def create_pref_data(
+    key,
     ranked_returns: N,
-    num_queries: int = -1,
+    n_queries: int = -1,
     use_delta: bool = False,
     delta_rank: int = 1,
     delta_reward: float = 0,
@@ -60,16 +54,15 @@ def create_pref_data_np(
     """
     queries = []
     labels = []
-    num_demos = len(ranked_returns)
+    n_demos = len(ranked_returns)
 
     if not isinstance(ranked_returns, jnp.ndarray):
         ranked_returns = jnp.asarray(ranked_returns)
 
     num_mislabels = 0
-    reward_diffs = []
-    num_queries = num_queries if num_queries != -1 else math.comb(num_demos, 2)
+    n_queries = n_queries if n_queries != -1 else math.comb(n_demos, 2)
 
-    for ti, tj in random_query_iterator(key, num_demos, num_queries):
+    for ti, tj in random_query_iterator(key, n_demos, n_queries):
         if use_delta:
             # skip if tj is not better than ti by delta_rank or delta_reward
             if delta_rank > 1:
@@ -103,21 +96,3 @@ def create_pref_data_np(
     labels_Q1 = jnp.expand_dims(jnp.array(labels), 1).astype(jnp.int32)
 
     return queries_Q2, labels_Q1, num_mislabels
-
-
-if __name__ == "__main__":
-    key = jr.key(0)
-    N = 200  # check RLHF
-    D = 1000
-    demos = jr.normal(key, (N, D))
-    true_reward = jr.normal(key, (D,))
-
-    returns = demos @ true_reward
-    returns = jnp.sort(returns)
-
-    key, subkey = jr.split(key)
-    queries_Q2, labels_Q1, num_mislabels = create_pref_data_np(
-        subkey,
-        returns,
-        num_queries=200,
-    )
