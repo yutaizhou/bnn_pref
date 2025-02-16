@@ -28,7 +28,7 @@ class BimodalGaussian:
         return samples_ND
 
     @staticmethod
-    def logpdf(loc1, loc2, logvar, weight=0.5, x=None):
+    def logpdf(x, loc1, loc2, logvar, weight=0.5):
         var = jnp.exp(logvar)
         std = jnp.sqrt(var)
         mode1 = jsp.stats.norm.logpdf(x, loc=loc1, scale=std) + jnp.log(weight)
@@ -37,7 +37,7 @@ class BimodalGaussian:
 
     @staticmethod
     def potential(params, data):
-        return BimodalGaussian.logpdf(**params, x=data).sum()
+        return BimodalGaussian.logpdf(data, **params).sum()
 
 
 if __name__ == "__main__":
@@ -89,10 +89,10 @@ if __name__ == "__main__":
     x = jnp.linspace(-10, 10, 500)
     true_pdf = jnp.exp(
         dist.logpdf(
+            x=x,
             loc1=data_kwargs["loc1"],
             loc2=data_kwargs["loc2"],
             logvar=jnp.log(data_kwargs["var"]),
-            x=x,
         )
     )
     plot_samples(
