@@ -1,6 +1,4 @@
-import stat
 from functools import partial
-from typing import Callable, Tuple
 
 import arviz as az
 import jax
@@ -9,7 +7,6 @@ import jax.random as jr
 import jax.scipy as jsp
 import matplotlib.pyplot as plt
 
-# from bnn_pref.gaussian import BimodalGaussian
 from bnn_pref.alg.mcmc import build_hmc, build_mh, plot_samples, run_mcmc
 
 
@@ -19,11 +16,11 @@ class BimodalGaussian:
         key1, key2, key3 = jr.split(key, 3)
 
         # Sample from uniform to decide which mode to sample from
-        mode_selector = jr.uniform(key1, n_samples) < weight
+        mode_selector = jr.uniform(key1, (n_samples, 1)) < weight
 
         # Sample from both modes
-        samples1 = loc1 + jr.normal(key2, n_samples) * jnp.sqrt(var)
-        samples2 = loc2 + jr.normal(key3, n_samples) * jnp.sqrt(var)
+        samples1 = loc1 + jr.normal(key2, (n_samples, 1)) * jnp.sqrt(var)
+        samples2 = loc2 + jr.normal(key3, (n_samples, 1)) * jnp.sqrt(var)
 
         # Select samples based on the mode selector
         samples_ND = jnp.where(mode_selector, samples1, samples2)
@@ -31,11 +28,11 @@ class BimodalGaussian:
         return samples_ND
 
     @staticmethod
-    def logpdf(loc1, loc2, logvar, x=None):
+    def logpdf(loc1, loc2, logvar, weight=0.5, x=None):
         var = jnp.exp(logvar)
         std = jnp.sqrt(var)
-        mode1 = jsp.stats.norm.logpdf(x, loc=loc1, scale=std)
-        mode2 = jsp.stats.norm.logpdf(x, loc=loc2, scale=std)
+        mode1 = jsp.stats.norm.logpdf(x, loc=loc1, scale=std) + jnp.log(weight)
+        mode2 = jsp.stats.norm.logpdf(x, loc=loc2, scale=std) + jnp.log(1 - weight)
         return jnp.logaddexp(mode1, mode2)
 
     @staticmethod
@@ -56,10 +53,11 @@ if __name__ == "__main__":
     key, data_key = jr.split(key)
     data = dist.sample(data_key, **data_kwargs)
 
-    fig, ax = plt.subplots(3, 1)
-    ax[0].hist(data, bins=50, density=True, alpha=0.7, label="Data", range=(-10, 10))
+    fig, ax = plt.subplots(2, 1)
+    plot_samples(ax[0], data, label="Data", range=(-10, 10))
 
-    init_samples = {"loc1": 0, "loc2": 0, "logvar": 1.0}
+    # init_samples = {"loc1": 0, "loc2": 0, "logvar": 1.0}
+    init_samples = {"loc1": 4, "loc2": -4, "logvar": 1.0}
 
     step_size = 0.1
     sigma = jnp.ones(len(init_samples)) * step_size
@@ -67,8 +65,8 @@ if __name__ == "__main__":
 
     sampler_kwargs = {
         "init_samples": init_samples,
-        "n_samples": 21000,
-        "burn_in": 1000,
+        "n_samples": 50000,
+        "burn_in": 10000,
         "thinning": 2,
     }
 
@@ -85,7 +83,7 @@ if __name__ == "__main__":
         loc1=samples["loc1"],
         loc2=samples["loc2"],
         var=jnp.exp(samples["logvar"]),
-    )
+    ).squeeze(axis=1)
     print(learned_samples.shape)
 
     x = jnp.linspace(-10, 10, 500)
@@ -97,7 +95,16 @@ if __name__ == "__main__":
             x=x,
         )
     )
-    plot_samples(ax[1], learned_samples, x=x, true_pdf=true_pdf)
+    plot_samples(
+        ax[1],
+        learned_samples,
+        label="Posterior Samples",
+        range=(-10, 10),
+        x=x,
+        true_pdf=true_pdf,
+    )
     # plot_samples(ax[1], learned_samples)
 
+    fig.legend()
+    plt.tight_layout()
     plt.show()

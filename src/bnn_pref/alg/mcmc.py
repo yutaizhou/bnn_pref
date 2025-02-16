@@ -53,13 +53,14 @@ def build_hmc(
     return hmc
 
 
-def plot_samples(ax, samples, x=None, true_pdf=None):
+def plot_samples(ax, samples, label, range, x=None, true_pdf=None):
     ax.hist(
         samples[:, 0],
         bins=50,
         density=True,
         alpha=0.7,
-        label="Samples (1st dimension)",
+        label=label,
+        range=range,
     )
 
     if x is not None and true_pdf is not None:
