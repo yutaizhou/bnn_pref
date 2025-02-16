@@ -5,7 +5,7 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 
-from bnn_pref.type import Q1, Q2, N
+from bnn_pref.utils.type import Q1, Q2, N
 
 
 def bt_likelihood(return_i: float, return_j: float, beta: float = 1.0) -> float:

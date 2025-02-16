@@ -1,84 +1,69 @@
+import stat
 from functools import partial
 from typing import Callable, Tuple
 
+import arviz as az
 import jax
 import jax.numpy as jnp
 import jax.random as jr
 import jax.scipy as jsp
+import matplotlib.pyplot as plt
 
-from bnn_pref.mcmc import build_hmc, build_mh, plot_samples, run_mcmc
-
-
-def sample_bimodal_gaussian(key, n_samples, loc1, var1, loc2, var2, weight, dim=2):
-    key1, key2, key3 = jr.split(key, 3)
-
-    # Sample from uniform to decide which mode to sample from
-    mode_selector = jr.uniform(key1, (n_samples,)) < weight
-
-    # Sample from both modes
-    samples1 = loc1 + jr.normal(key2, (n_samples, dim)) * jnp.sqrt(var1)
-    samples2 = loc2 + jr.normal(key3, (n_samples, dim)) * jnp.sqrt(var2)
-
-    # Select samples based on the mode selector
-    samples = jnp.where(mode_selector[:, None], samples1, samples2)
-
-    return samples
+# from bnn_pref.gaussian import BimodalGaussian
+from bnn_pref.alg.mcmc import build_hmc, build_mh, plot_samples, run_mcmc
 
 
-def generate_learned_samples(key, loc1, loc2, logvar, dim=5):
-    weight = 0.5
-    num_samples = 1
-    var = jnp.exp(logvar)
-    key1, key2, key3 = jr.split(key, 3)
+class BimodalGaussian:
+    @staticmethod
+    def sample(key, n_samples, loc1, loc2, var, weight=0.5):
+        key1, key2, key3 = jr.split(key, 3)
 
-    # Sample from uniform to decide which mode to sample from
-    mode_selector = jr.uniform(key1, (num_samples,)) < weight
+        # Sample from uniform to decide which mode to sample from
+        mode_selector = jr.uniform(key1, n_samples) < weight
 
-    # Sample from both modes
-    samples1 = loc1 + jr.normal(key2, (num_samples, dim)) * jnp.sqrt(var)
-    samples2 = loc2 + jr.normal(key3, (num_samples, dim)) * jnp.sqrt(var)
+        # Sample from both modes
+        samples1 = loc1 + jr.normal(key2, n_samples) * jnp.sqrt(var)
+        samples2 = loc2 + jr.normal(key3, n_samples) * jnp.sqrt(var)
 
-    # Select samples based on the mode selector
-    samples = jnp.where(mode_selector[:, None], samples1, samples2)
+        # Select samples based on the mode selector
+        samples_ND = jnp.where(mode_selector, samples1, samples2)
 
-    return samples
+        return samples_ND
 
+    @staticmethod
+    def logpdf(loc1, loc2, logvar, x=None):
+        var = jnp.exp(logvar)
+        std = jnp.sqrt(var)
+        mode1 = jsp.stats.norm.logpdf(x, loc=loc1, scale=std)
+        mode2 = jsp.stats.norm.logpdf(x, loc=loc2, scale=std)
+        return jnp.logaddexp(mode1, mode2)
 
-def bimodal_gaussian_logpdf(loc1, loc2, logvar, dim=5, x=None):
-    var = jnp.exp(logvar)
-    mode1 = jsp.stats.multivariate_normal.logpdf(x, mean=loc1, cov=var)
-    mode2 = jsp.stats.multivariate_normal.logpdf(x, mean=loc2, cov=var)
-    return jnp.logaddexp(mode1, mode2).sum()
-
-
-def logpdf(params, data):
-    return bimodal_gaussian_logpdf(x=data, **params)
+    @staticmethod
+    def potential(params, data):
+        return BimodalGaussian.logpdf(**params, x=data).sum()
 
 
 if __name__ == "__main__":
     key = jr.key(0)
+    dist = BimodalGaussian()
 
-    dim = 1
     data_kwargs = {
         "n_samples": 1000,
-        "loc1": 2,
-        "var1": 2,
-        "loc2": -2,
-        "var2": 2,
-        "weight": 0.5,
-        "dim": dim,
+        "loc1": 5,
+        "loc2": -5,
+        "var": 1,
     }
-    key, key_data = jr.split(key)
-    data = sample_bimodal_gaussian(key_data, **data_kwargs)
-    logpdf = partial(logpdf, data=data)
+    key, data_key = jr.split(key)
+    data = dist.sample(data_key, **data_kwargs)
 
-    init_samples = {"loc1": 0.0, "loc2": 0.0, "logvar": 1.0}
+    fig, ax = plt.subplots(3, 1)
+    ax[0].hist(data, bins=50, density=True, alpha=0.7, label="Data", range=(-10, 10))
 
-    # mh_kwargs = {"sigma": {}}
-    # sigma = {"loc1": 0.0, "loc2": 0.0, "logvar": 1.0}
+    init_samples = {"loc1": 0, "loc2": 0, "logvar": 1.0}
+
     step_size = 0.1
     sigma = jnp.ones(len(init_samples)) * step_size
-    alg = build_mh(logpdf, sigma)
+    alg = build_mh(partial(dist.potential, data=data), sigma)
 
     sampler_kwargs = {
         "init_samples": init_samples,
@@ -87,28 +72,32 @@ if __name__ == "__main__":
         "thinning": 2,
     }
 
-    key, key_mcmc = jr.split(key)
+    key, mcmc_key = jr.split(key)
     samples = run_mcmc(
-        key=key_mcmc,
+        key=mcmc_key,
         alg=alg,
         **sampler_kwargs,
     )
 
-    learned_samples = jax.vmap(generate_learned_samples)(
-        jr.split(key, len(samples["loc1"])),
-        samples["loc1"],
-        samples["loc2"],
-        samples["logvar"],
-    ).squeeze()
+    key, *samples_key = jr.split(key, 1 + len(samples["loc1"]))
+    learned_samples = jax.vmap(partial(dist.sample, n_samples=1))(
+        key=jnp.asarray(samples_key),
+        loc1=samples["loc1"],
+        loc2=samples["loc2"],
+        var=jnp.exp(samples["logvar"]),
+    )
+    print(learned_samples.shape)
 
-    # print(samples.shape)
-    # likelihoods = jnp.exp(jax.vmap(logpdf)(samples))
-    # print(likelihoods.mean())
+    x = jnp.linspace(-10, 10, 500)
+    true_pdf = jnp.exp(
+        dist.logpdf(
+            loc1=data_kwargs["loc1"],
+            loc2=data_kwargs["loc2"],
+            logvar=jnp.log(data_kwargs["var"]),
+            x=x,
+        )
+    )
+    plot_samples(ax[1], learned_samples, x=x, true_pdf=true_pdf)
+    # plot_samples(ax[1], learned_samples)
 
-    # plt.hist(likelihoods, bins=50, density=True)
-    # plt.title("Distribution of Log-Likelihood Values")
-    # plt.xlabel("Log-Likelihood")
-    # plt.ylabel("Density")
-    # plt.show()
-
-    plot_samples(learned_samples)
+    plt.show()

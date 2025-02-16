@@ -5,8 +5,8 @@ import jax.numpy as jnp
 import jax.random as jr
 import jax.scipy as jsp
 
+from bnn_pref.alg.mcmc import build_hmc, build_mh, plot_samples, run_mcmc
 from bnn_pref.data import create_pref_data
-from bnn_pref.mcmc import build_hmc, build_mh, plot_samples, run_mcmc
 
 
 def logpdf(x: Tuple[float, float], beta: float = 1.0) -> float:

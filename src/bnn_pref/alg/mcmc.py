@@ -53,20 +53,17 @@ def build_hmc(
     return hmc
 
 
-def plot_samples(samples):
-    plt.figure(figsize=(12, 6))
-    plt.hist(
-        samples[:, 0], bins=50, density=True, alpha=0.7, label="Samples (1st dimension)"
+def plot_samples(ax, samples, x=None, true_pdf=None):
+    ax.hist(
+        samples[:, 0],
+        bins=50,
+        density=True,
+        alpha=0.7,
+        label="Samples (1st dimension)",
     )
-    x = jnp.linspace(-6, 6, 500)
-    pdf = jnp.exp(
-        jnp.logaddexp(
-            jsp.stats.norm.logpdf(x, loc=-2, scale=1),
-            jsp.stats.norm.logpdf(x, loc=2, scale=1),
-        )
-    )
-    plt.plot(x, pdf, label="True Distribution (1st dimension)", color="red")
-    plt.show()
+
+    if x is not None and true_pdf is not None:
+        ax.plot(x, true_pdf, label="True Distribution (1st dimension)", color="red")
 
 
 def plot_trace(samples):
@@ -79,4 +76,3 @@ def plot_trace(samples):
         plt.ylabel("Value")
 
     plt.tight_layout()
-    plt.show()
