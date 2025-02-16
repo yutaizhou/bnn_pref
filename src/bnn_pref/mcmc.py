@@ -14,12 +14,12 @@ def inference_loop(key, kernel, initial_state, num_samples):
         state, _ = kernel(key, state)
         return state, state
 
-    keys = jax.random.split(key, num_samples)
+    keys = jr.split(key, num_samples)
     _, states = jax.lax.scan(f=one_step, init=initial_state, xs=keys)
     return states
 
 
-def run_sampler(
+def run_mcmc(
     key,
     alg,
     init_samples,

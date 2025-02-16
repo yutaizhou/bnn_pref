@@ -6,7 +6,7 @@ import jax.random as jr
 import jax.scipy as jsp
 
 from bnn_pref.data import create_pref_data
-from bnn_pref.mcmc import build_hmc, build_mh, plot_samples, run_sampler
+from bnn_pref.mcmc import build_hmc, build_mh, plot_samples, run_mcmc
 
 
 def logpdf(x: Tuple[float, float], beta: float = 1.0) -> float:
@@ -43,7 +43,7 @@ if __name__ == "__main__":
         "burn_in": 1000,
         "thinning": 2,
     }
-    samples = run_sampler(
+    samples = run_mcmc(
         key=key,
         alg=alg,
         **sampler_kwargs,

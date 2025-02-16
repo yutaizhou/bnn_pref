@@ -7,7 +7,7 @@ import jax.scipy.stats as stats
 import matplotlib.pyplot as plt
 import numpy as np
 
-rng_key = jax.random.key(int(date.today().strftime("%Y%m%d")))
+rng_key = jr.key(int(date.today().strftime("%Y%m%d")))
 loc, scale = 10, 20
 observed = np.random.normal(loc, scale, size=1_000)
 
@@ -39,13 +39,13 @@ def inference_loop(rng_key, kernel, initial_state, num_samples):
         state, _ = kernel(rng_key, state)
         return state, state
 
-    keys = jax.random.split(rng_key, num_samples)
+    keys = jr.split(rng_key, num_samples)
     _, states = jax.lax.scan(one_step, initial_state, keys)
 
     return states
 
 
-rng_key, sample_key = jax.random.split(rng_key)
+rng_key, sample_key = jr.split(rng_key)
 states = inference_loop(sample_key, hmc.step, initial_state, 10_000)
 
 mcmc_samples = states.position

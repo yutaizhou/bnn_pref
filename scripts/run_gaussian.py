@@ -1,3 +1,4 @@
+from functools import partial
 from typing import Callable, Tuple
 
 import jax
@@ -5,19 +6,37 @@ import jax.numpy as jnp
 import jax.random as jr
 import jax.scipy as jsp
 
-from bnn_pref.data import create_pref_data
-from bnn_pref.mcmc import build_hmc, build_mh, plot_samples, run_sampler
+from bnn_pref.mcmc import build_hmc, build_mh, plot_samples, run_mcmc
 
 
-def sample_bimodal_gaussian(key, num_samples, loc1, var1, loc2, var2, weight, dim=2):
-    key1, key2, key3 = jax.random.split(key, 3)
+def sample_bimodal_gaussian(key, n_samples, loc1, var1, loc2, var2, weight, dim=2):
+    key1, key2, key3 = jr.split(key, 3)
 
     # Sample from uniform to decide which mode to sample from
-    mode_selector = jax.random.uniform(key1, (num_samples,)) < weight
+    mode_selector = jr.uniform(key1, (n_samples,)) < weight
 
     # Sample from both modes
-    samples1 = loc1 + jr.normal(key2, (num_samples, dim)) * jnp.sqrt(var1)
-    samples2 = loc2 + jr.normal(key3, (num_samples, dim)) * jnp.sqrt(var2)
+    samples1 = loc1 + jr.normal(key2, (n_samples, dim)) * jnp.sqrt(var1)
+    samples2 = loc2 + jr.normal(key3, (n_samples, dim)) * jnp.sqrt(var2)
+
+    # Select samples based on the mode selector
+    samples = jnp.where(mode_selector[:, None], samples1, samples2)
+
+    return samples
+
+
+def generate_learned_samples(key, loc1, loc2, logvar, dim=5):
+    weight = 0.5
+    num_samples = 1
+    var = jnp.exp(logvar)
+    key1, key2, key3 = jr.split(key, 3)
+
+    # Sample from uniform to decide which mode to sample from
+    mode_selector = jr.uniform(key1, (num_samples,)) < weight
+
+    # Sample from both modes
+    samples1 = loc1 + jr.normal(key2, (num_samples, dim)) * jnp.sqrt(var)
+    samples2 = loc2 + jr.normal(key3, (num_samples, dim)) * jnp.sqrt(var)
 
     # Select samples based on the mode selector
     samples = jnp.where(mode_selector[:, None], samples1, samples2)
@@ -32,12 +51,16 @@ def bimodal_gaussian_logpdf(loc1, loc2, logvar, dim=5, x=None):
     return jnp.logaddexp(mode1, mode2).sum()
 
 
+def logpdf(params, data):
+    return bimodal_gaussian_logpdf(x=data, **params)
+
+
 if __name__ == "__main__":
     key = jr.key(0)
 
-    dim = 5
+    dim = 1
     data_kwargs = {
-        "num_samples": 1000,
+        "n_samples": 1000,
         "loc1": 2,
         "var1": 2,
         "loc2": -2,
@@ -45,10 +68,9 @@ if __name__ == "__main__":
         "weight": 0.5,
         "dim": dim,
     }
-    data = sample_bimodal_gaussian(key, **data_kwargs)
-
-    def logpdf(params, x=data):
-        return bimodal_gaussian_logpdf(x=x, **params)
+    key, key_data = jr.split(key)
+    data = sample_bimodal_gaussian(key_data, **data_kwargs)
+    logpdf = partial(logpdf, data=data)
 
     init_samples = {"loc1": 0.0, "loc2": 0.0, "logvar": 1.0}
 
@@ -64,29 +86,13 @@ if __name__ == "__main__":
         "burn_in": 1000,
         "thinning": 2,
     }
-    samples = run_sampler(
-        key=key,
+
+    key, key_mcmc = jr.split(key)
+    samples = run_mcmc(
+        key=key_mcmc,
         alg=alg,
         **sampler_kwargs,
     )
-
-    def generate_learned_samples(key, loc1, loc2, logvar, dim=5):
-        weight = 0.5
-        num_samples = 1
-        var = jnp.exp(logvar)
-        key1, key2, key3 = jax.random.split(key, 3)
-
-        # Sample from uniform to decide which mode to sample from
-        mode_selector = jax.random.uniform(key1, (num_samples,)) < weight
-
-        # Sample from both modes
-        samples1 = loc1 + jr.normal(key2, (num_samples, dim)) * jnp.sqrt(var)
-        samples2 = loc2 + jr.normal(key3, (num_samples, dim)) * jnp.sqrt(var)
-
-        # Select samples based on the mode selector
-        samples = jnp.where(mode_selector[:, None], samples1, samples2)
-
-        return samples
 
     learned_samples = jax.vmap(generate_learned_samples)(
         jr.split(key, len(samples["loc1"])),
