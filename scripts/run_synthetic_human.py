@@ -75,38 +75,43 @@ def generate_pref_data(
 
 if __name__ == "__main__":
     # check RLHF paper
-    data_kwargs = {
-        "n_demos": 200,
-        "n_feats": 5,
-        "n_queries": 1000,
+    kwargs = {
+        "data": {
+            "n_demos": 200,
+            "n_feats": 5,
+            "n_queries": 1000,
+        },
+        "mcmc": {
+            "n_samples": 21000,
+            "burn_in": 5000,
+            "thinning": 2,
+        },
     }
+    data_kwargs = kwargs["data"]
+    mcmc_kwargs = kwargs["mcmc"]
 
+    # * generate true weights + preference data
     key = jr.key(0)
     key, key1, key2 = jr.split(key, 3)
     true_reward_D = get_gaussian_vector(key1, data_kwargs["n_feats"], normalize=True)
     features_Q2D, response_Q1 = generate_pref_data(key2, true_reward_D, **data_kwargs)
-
-    dist = BradleyTerry()
     data = QueryWithResponse(features_Q2D, response_Q1)
-    # logpdf = dist.logpdf(features_Q2D, response_Q1, weights=true_reward_D)
 
-    key, subkey = jr.split(key)
-    init_samples = get_gaussian_vector(subkey, len(true_reward_D), normalize=True)
+    # * build + run sampler
+    dist = BradleyTerry()
+    key, *subkeys = jr.split(key, 3)
+    init_sample = get_gaussian_vector(subkeys[0], len(true_reward_D), normalize=True)
     # init_samples = jnp.zeros_like(true_reward_D)
     sigma = 0.05
     alg = build_mh(partial(dist.potential, data=data), sigma)
 
-    mcmc_kwargs = {
-        "n_samples": 21000,
-        "burn_in": 5000,
-        "thinning": 2,
-    }
-    key, subkey = jr.split(key)
-    samples_SD = run_mcmc(key=subkey, alg=alg, init_samples=init_samples, **mcmc_kwargs)
+    samples_SD = run_mcmc(subkeys[1], alg=alg, init_sample=init_sample, **mcmc_kwargs)
     samples_SD /= jnp.linalg.norm(samples_SD, axis=1, keepdims=True)
 
+    # * posterior check
     mean_weight_D = samples_SD.mean(axis=0)
     pred_response_Q1 = (features_Q2D @ mean_weight_D).argmax(axis=1, keepdims=True)
     acc = jnp.mean(pred_response_Q1 == response_Q1)
     print(f"Accuracy: {acc:.2%}")
     print(f"Weight L2: {jnp.linalg.norm(true_reward_D - mean_weight_D):.2f}")
+    # logpdf = dist.logpdf(features_Q2D, response_Q1, weights=true_reward_D)

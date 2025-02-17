@@ -22,12 +22,12 @@ def inference_loop(key, kernel, initial_state, num_samples):
 def run_mcmc(
     key,
     alg,
-    init_samples,
+    init_sample,
     n_samples: int,
     burn_in: int = 0,
     thinning: int = 1,
 ):
-    state = alg.init(init_samples)
+    state = alg.init(init_sample)
     kernel = alg.step
     states = inference_loop(key, kernel, state, n_samples)
     samples = states.position
