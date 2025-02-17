@@ -12,9 +12,9 @@ def bt_likelihood(return_i: float, return_j: float, beta: float = 1.0) -> float:
     """
     computes likelihood of preference tj > ti, given their rewards
     """
-    exp_i = jnp.exp(return_i * beta)
-    exp_j = jnp.exp(return_j * beta)
-    return exp_j / (exp_i + exp_j)
+    a = jnp.exp(return_i * beta)
+    b = jnp.exp(return_j * beta)
+    return b / (a + b)
 
 
 def random_query_iterator(key, n: int, n_queries: int):

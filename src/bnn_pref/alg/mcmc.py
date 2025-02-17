@@ -8,10 +8,14 @@ import jax.scipy as jsp
 import matplotlib.pyplot as plt
 
 
-def inference_loop(key, kernel, initial_state, num_samples):
+def inference_loop(key, kernel, initial_state, num_samples, normalize=False):
     @jax.jit
     def one_step(state, key):
         state, _ = kernel(key, state)
+
+        if normalize:
+            w_normalized = state.position / jnp.linalg.norm(state.position)
+            state = state._replace(position=w_normalized)
         return state, state
 
     keys = jr.split(key, num_samples)
@@ -26,10 +30,11 @@ def run_mcmc(
     n_samples: int,
     burn_in: int = 0,
     thinning: int = 1,
+    normalize: bool = False,
 ):
     state = alg.init(init_sample)
     kernel = alg.step
-    states = inference_loop(key, kernel, state, n_samples)
+    states = inference_loop(key, kernel, state, n_samples, normalize)
     samples = states.position
     samples = jax.tree_map(lambda x: x[burn_in::thinning], samples)
     return samples

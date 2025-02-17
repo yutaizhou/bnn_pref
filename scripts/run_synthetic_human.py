@@ -3,13 +3,22 @@ from functools import partial
 
 import jax
 import jax.numpy as jnp
+import jax.numpy.linalg as jnpl
 import jax.random as jr
 import jax.scipy as jsp
 import numpy as np
 
 from bnn_pref.alg.mcmc import build_hmc, build_mh, plot_samples, run_mcmc
 from bnn_pref.data import create_pref_data
-from bnn_pref.utils.type import Q1, Q2, Q2D, D, Q
+from bnn_pref.utils.type import Q1, Q2, Q2D, SD, D, Q
+
+
+def alignment_metric(true_D: D, est_SD: SD):
+    """
+    assumes unit L2 norm!
+    """
+    m = (est_SD @ true_D) / (jnpl.norm(est_SD, axis=1) * jnpl.norm(true_D, axis=0))
+    return jnp.mean(m)
 
 
 def get_gaussian_vector(key, dim: int, normalize: bool = True) -> D:
@@ -39,12 +48,13 @@ class BradleyTerry:
 
     @staticmethod
     def potential(params: D, data: QueryWithResponse):
-        ll = BradleyTerry.logpdf(
+        ll_Q = BradleyTerry.logpdf(
             features_Q2D=data.queries,
             response_Q1=data.responses,
             weights_D=params,
         )
-        joint_ll = ll.sum()
+        # prior = # just uniform log 1
+        joint_ll = ll_Q.sum()
         return joint_ll
 
 
@@ -65,8 +75,10 @@ def generate_pref_data(
 
     queries_idx_Q2, response_Q1, num_mislabels = create_pref_data(
         key2,
-        returns_N,
-        n_queries,
+        ranked_returns=returns_N,
+        n_queries=n_queries,
+        noisy_prefs=False,
+        bt_beta=1.0,
     )
     features_Q2D = demos_ND[queries_idx_Q2]
 
@@ -78,40 +90,44 @@ if __name__ == "__main__":
     kwargs = {
         "data": {
             "n_demos": 200,
-            "n_feats": 5,
+            "n_feats": 2,
             "n_queries": 1000,
         },
         "mcmc": {
             "n_samples": 21000,
             "burn_in": 5000,
             "thinning": 2,
+            "normalize": True,
         },
     }
-    data_kwargs = kwargs["data"]
-    mcmc_kwargs = kwargs["mcmc"]
+    data_kw = kwargs["data"]
+    mcmc_kw = kwargs["mcmc"]
 
     # * generate true weights + preference data
     key = jr.key(0)
     key, key1, key2 = jr.split(key, 3)
-    true_reward_D = get_gaussian_vector(key1, data_kwargs["n_feats"], normalize=True)
-    features_Q2D, response_Q1 = generate_pref_data(key2, true_reward_D, **data_kwargs)
+    true_reward_D = get_gaussian_vector(key1, data_kw["n_feats"], normalize=True)
+    features_Q2D, response_Q1 = generate_pref_data(key2, true_reward_D, **data_kw)
     data = QueryWithResponse(features_Q2D, response_Q1)
 
     # * build + run sampler
     dist = BradleyTerry()
     key, *subkeys = jr.split(key, 3)
     init_sample = get_gaussian_vector(subkeys[0], len(true_reward_D), normalize=True)
-    # init_samples = jnp.zeros_like(true_reward_D)
+    # init_sample = jnp.zeros_like(true_reward_D)
     sigma = 0.05
     alg = build_mh(partial(dist.potential, data=data), sigma)
 
-    samples_SD = run_mcmc(subkeys[1], alg=alg, init_sample=init_sample, **mcmc_kwargs)
+    samples_SD = run_mcmc(subkeys[1], alg=alg, init_sample=init_sample, **mcmc_kw)
     samples_SD /= jnp.linalg.norm(samples_SD, axis=1, keepdims=True)
 
     # * posterior check
     mean_weight_D = samples_SD.mean(axis=0)
     pred_response_Q1 = (features_Q2D @ mean_weight_D).argmax(axis=1, keepdims=True)
     acc = jnp.mean(pred_response_Q1 == response_Q1)
+
+    print(f"N={data_kw['n_demos']}, Q={data_kw['n_queries']}, D={data_kw['n_feats']}")
     print(f"Accuracy: {acc:.2%}")
     print(f"Weight L2: {jnp.linalg.norm(true_reward_D - mean_weight_D):.2f}")
+    print(f"Cosine Sim: {alignment_metric(true_reward_D, samples_SD):.2f}")
     # logpdf = dist.logpdf(features_Q2D, response_Q1, weights=true_reward_D)
