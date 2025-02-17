@@ -1,0 +1,34 @@
+defaults:
+  - override hydra_logging: colorlog
+  - override job_logging: colorlog
+  # - override launcher: slurm # null (serial by default), local, slurm
+  # - override sweeper: ax
+
+run:
+  dir: ${paths.results_dir}/${now:%Y%m%d_%H%M%S}
+
+# hydra:runtime.choices cannot be used in sweep.dir
+sweep: 
+  dir: ${paths.sweep_dir}/${hydra.job.name}${debug_str}/${env.name}/${now:%Y%m%d_%H%M%S}
+  # subdir: ${data.name}_${pl.name}_${rl.name}
+  subdir: ${hydra.job.override_dirname}
+
+job:
+  config:
+    override_dirname:
+      kv_sep: "="
+      item_sep: ", "
+      exclude_keys: # pl & data already in get_wandb_name
+        - pl
+        - data
+        - env
+        - wandb.group
+        - wandb.job_type
+        - debug # debug_str is already in the dir name, dont' use for subdir
+        - run
+
+job_logging:
+  handlers:
+    file:
+      # colorlog path fix from https://github.com/facebookresearch/hydra/pull/2242
+      filename: ${paths.output_dir}/${hydra.job.name}.log

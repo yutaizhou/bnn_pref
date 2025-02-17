@@ -1,6 +1,8 @@
+import logging
 from dataclasses import dataclass
 from functools import partial
 
+import hydra
 import jax
 import jax.numpy as jnp
 import jax.numpy.linalg as jnpl
@@ -11,6 +13,8 @@ import numpy as np
 from bnn_pref.alg.mcmc import build_hmc, build_mh, plot_samples, run_mcmc
 from bnn_pref.data import create_pref_data
 from bnn_pref.utils.type import Q1, Q2, Q2D, SD, D, Q
+
+logging.getLogger("jax._src.xla_bridge").setLevel(logging.ERROR)
 
 
 def alignment_metric(true_D: D, est_SD: SD):
@@ -85,23 +89,11 @@ def generate_pref_data(
     return features_Q2D, response_Q1
 
 
-if __name__ == "__main__":
+@hydra.main(version_base=None, config_name="config", config_path="../cfg")
+def main(cfg):
     # check RLHF paper
-    kwargs = {
-        "data": {
-            "n_demos": 200,
-            "n_feats": 2,
-            "n_queries": 1000,
-        },
-        "mcmc": {
-            "n_samples": 21000,
-            "burn_in": 5000,
-            "thinning": 2,
-            "normalize": True,
-        },
-    }
-    data_kw = kwargs["data"]
-    mcmc_kw = kwargs["mcmc"]
+    data_kw = cfg["data"]
+    mcmc_kw = cfg["mcmc"]
 
     # * generate true weights + preference data
     key = jr.key(0)
@@ -131,3 +123,7 @@ if __name__ == "__main__":
     print(f"Weight L2: {jnp.linalg.norm(true_reward_D - mean_weight_D):.2f}")
     print(f"Cosine Sim: {alignment_metric(true_reward_D, samples_SD):.2f}")
     # logpdf = dist.logpdf(features_Q2D, response_Q1, weights=true_reward_D)
+
+
+if __name__ == "__main__":
+    main()

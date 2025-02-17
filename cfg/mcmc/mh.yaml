@@ -1,0 +1,4 @@
+n_samples: 21000
+burn_in: 5000
+thinning: 2
+normalize: True
