@@ -36,7 +36,6 @@ def run_mcmc(
 
 
 def build_mh(log_pdf: Callable, sigma):
-    # sigma = jnp.ones_like(init_samples) * step_size
     kernel = blackjax.mcmc.random_walk.normal(sigma)
     rmh = blackjax.rmh(log_pdf, kernel)
     return rmh
@@ -72,7 +71,7 @@ def plot_trace(samples):
     for i in range(5):
         plt.subplot(5, 1, i + 1)
         plt.plot(samples[:, i])
-        plt.title(f"Trace plot for dimension {i+1}")
+        plt.title(f"Trace plot for dimension {i + 1}")
         plt.xlabel("Iteration")
         plt.ylabel("Value")
 

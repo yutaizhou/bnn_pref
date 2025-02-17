@@ -1,41 +1,66 @@
-from typing import Callable, Tuple
+from functools import partial
 
 import jax
 import jax.numpy as jnp
 import jax.random as jr
 import jax.scipy as jsp
+from attr import dataclass
 
 from bnn_pref.alg.mcmc import build_hmc, build_mh, plot_samples, run_mcmc
 from bnn_pref.data import create_pref_data
+from bnn_pref.utils.type import Q1, Q2, Q2D, D, Q
 
 
-def logpdf(x: Tuple[float, float], beta: float = 1.0) -> float:
-    raise NotImplementedError
+@dataclass
+class QueryWithResponse:
+    queries: Q2D
+    responses: Q1
+
+
+class BradleyTerry:
+    @staticmethod
+    def logpdf(
+        features: Q2D,
+        response_Q1: Q1,
+        weights: D,
+        beta: float = 1.0,  # rationality constant
+    ):
+        returns_Q2 = beta * features @ weights  # scale by rationality constant
+        returns_Q1 = jnp.take(returns_Q2, response_Q1)
+        return returns_Q1 - jsp.special.logsumexp(returns_Q2, axis=1)
+
+    @staticmethod
+    def potential(params: D, data: QueryWithResponse):
+        return BradleyTerry.logpdf(data.queries, data.responses, weights=params).sum()
 
 
 if __name__ == "__main__":
-    key = jr.key(0)
     n_demos = 200  # check RLHF
-    n_feats = 1000
-    n_queries = 200
+    n_feats = 100
+    n_queries = 800
 
-    demos_ND = jr.normal(key, (n_demos, n_feats))
-    true_reward_D = jr.normal(key, (n_feats,))
-
+    key = jr.key(0)
+    key, key1, key2 = jr.split(key, 3)
+    true_reward_D = jr.normal(key1, (n_feats,))
+    demos_ND = jr.normal(key2, (n_demos, n_feats))
     returns_N = demos_ND @ true_reward_D
-    returns_N = jnp.sort(returns_N)
+    returns_N = jnp.sort(returns_N)  # ascending
 
     key, subkey = jr.split(key)
-    queries_Q2, labels_Q1, num_mislabels = create_pref_data(
-        subkey, returns_N, n_queries
+    queries_idx_Q2, response_Q1, num_mislabels = create_pref_data(
+        subkey,
+        returns_N,
+        n_queries,
     )
-    init_samples = jnp.zeros_like(true_reward_D)
+    features_Q2D = demos_ND[queries_idx_Q2]
 
-    mh_kwargs = {"sigma": {}}
-    sigma = {"loc1": 0.0, "loc2": 0.0, "logvar": 1.0}
-    step_size = 0.1
-    sigma = jnp.ones(len(init_samples)) * step_size
-    alg = build_mh(logpdf, sigma)
+    dist = BradleyTerry()
+    data = QueryWithResponse(features_Q2D, response_Q1)
+    init_samples = jnp.zeros_like(true_reward_D)
+    logpdf = dist.logpdf(features_Q2D, response_Q1, weights=true_reward_D)
+
+    sigma = 0.05
+    alg = build_mh(partial(dist.potential, data=data), sigma)
 
     sampler_kwargs = {
         "init_samples": init_samples,
@@ -47,4 +72,9 @@ if __name__ == "__main__":
         key=key,
         alg=alg,
         **sampler_kwargs,
-    )
+    )  # (n_particles, n_features)
+
+    mean_weight_D = samples.mean(axis=0)
+    pred_response_Q1 = (features_Q2D @ mean_weight_D).argmax(axis=1, keepdims=True)
+    acc = jnp.mean(pred_response_Q1 == response_Q1)
+    print(f"Accuracy: {acc}")

@@ -22,8 +22,9 @@ def random_query_iterator(key, n: int, n_queries: int):
     Note this does not return ti=tj, and migth return duplicates
     """
     for _ in range(n_queries):
-        ti = jr.randint(key=key, shape=(), minval=0, maxval=n - 1)
-        tj = jr.randint(key=key, shape=(), minval=ti + 1, maxval=n)
+        key, key1, key2 = jr.split(key, 3)
+        ti = jr.randint(key=key1, shape=(), minval=0, maxval=n - 1)
+        tj = jr.randint(key=key2, shape=(), minval=ti + 1, maxval=n)
         yield ti, tj
 
 
@@ -82,12 +83,14 @@ def create_pref_data(
         if noisy_prefs:
             prob = bt_likelihood(ranked_returns[ti], ranked_returns[tj], bt_beta)
 
-            if jr.uniform(key) > prob:
+            key, subkey = jr.split(key)
+            if jr.uniform(subkey) > prob:
                 num_mislabels += 1
                 label = 0
 
         # * irrationality: label flip mistake
-        label = 1 - label if (jr.uniform(key) < mistake_prob) else label
+        key, subkey = jr.split(key)
+        label = 1 - label if (jr.uniform(subkey) < mistake_prob) else label
 
         queries.append((ti, tj))
         labels.append(label)
