@@ -63,7 +63,7 @@ if __name__ == "__main__":
     sigma = jnp.ones(len(init_samples)) * step_size
     alg = build_mh(partial(dist.potential, data=data), sigma)
 
-    sampler_kwargs = {
+    mcmc_kwargs = {
         "init_samples": init_samples,
         "n_samples": 50000,
         "burn_in": 10000,
@@ -71,11 +71,7 @@ if __name__ == "__main__":
     }
 
     key, mcmc_key = jr.split(key)
-    samples = run_mcmc(
-        key=mcmc_key,
-        alg=alg,
-        **sampler_kwargs,
-    )
+    samples = run_mcmc(key=mcmc_key, alg=alg, **mcmc_kwargs)
 
     key, *samples_key = jr.split(key, 1 + len(samples["loc1"]))
     learned_samples = jax.vmap(partial(dist.sample, n_samples=1))(
