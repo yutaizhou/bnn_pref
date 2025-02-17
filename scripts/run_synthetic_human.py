@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from functools import partial
 
 import jax
@@ -5,7 +6,6 @@ import jax.numpy as jnp
 import jax.random as jr
 import jax.scipy as jsp
 import numpy as np
-from attr import dataclass
 
 from bnn_pref.alg.mcmc import build_hmc, build_mh, plot_samples, run_mcmc
 from bnn_pref.data import create_pref_data
