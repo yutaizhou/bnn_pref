@@ -3,10 +3,12 @@ defaults:
 - mcmc: mh
 - data: base
 - optional local: default # specifies project dir & wandb login, goes after wandb
-
+# - optional run: debug
 - hydra: default
 
 paths:
   results_dir: ${paths.root_dir}/results
   sweep_dir: ${paths.root_dir}/results_sweep
   output_dir: ${hydra:runtime.output_dir}
+
+save_fig: False

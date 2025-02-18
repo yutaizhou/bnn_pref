@@ -8,21 +8,6 @@ import jax.scipy as jsp
 import matplotlib.pyplot as plt
 
 
-def inference_loop(key, kernel, initial_state, num_samples, normalize=False):
-    @jax.jit
-    def one_step(state, key):
-        state, _ = kernel(key, state)
-
-        if normalize:
-            w_normalized = state.position / jnp.linalg.norm(state.position)
-            state = state._replace(position=w_normalized)
-        return state, state
-
-    keys = jr.split(key, num_samples)
-    _, states = jax.lax.scan(f=one_step, init=initial_state, xs=keys)
-    return states
-
-
 def run_mcmc(
     key,
     alg,
@@ -32,6 +17,20 @@ def run_mcmc(
     thinning: int = 1,
     normalize: bool = False,
 ):
+    def inference_loop(key, kernel, initial_state, num_samples, normalize=False):
+        @jax.jit
+        def one_step(state, key):
+            state, _ = kernel(key, state)
+
+            if normalize:
+                w_normalized = state.position / jnp.linalg.norm(state.position)
+                state = state._replace(position=w_normalized)
+            return state, state
+
+        keys = jr.split(key, num_samples)
+        _, states = jax.lax.scan(f=one_step, init=initial_state, xs=keys)
+        return states
+
     state = alg.init(init_sample)
     kernel = alg.step
     states = inference_loop(key, kernel, state, n_samples, normalize)
@@ -71,13 +70,47 @@ def plot_samples(ax, samples, label, range, x=None, true_pdf=None):
         ax.plot(x, true_pdf, label="True Distribution (1st dimension)", color="red")
 
 
-def plot_trace(samples):
-    plt.figure(figsize=(12, 10))
-    for i in range(5):
-        plt.subplot(5, 1, i + 1)
-        plt.plot(samples[:, i])
-        plt.title(f"Trace plot for dimension {i + 1}")
-        plt.xlabel("Iteration")
-        plt.ylabel("Value")
+def plot_trace(samples_SD, true_D, bbox_dict=None):
+    """limit to 8 dimensions"""
+    limit = 8
+    n_dims = samples_SD.shape[1]
+    n_display = min(n_dims, limit)
 
-    plt.tight_layout()
+    fig, axs = plt.subplots(4, 2, figsize=(12, 8))
+    for i in range(n_display):
+        ax = axs[i // 2, i % 2]
+
+        true = true_D[i]
+        est = samples_SD[:, i].mean()
+        ax.plot(samples_SD[:, i], label="Samples")
+        ax.axhline(true, color="red", label="True", lw=0.5)
+        ax.set_title(f"Trace for dim {i + 1}: {true:.2f} vs. {est:.2f} ")
+        ax.set_xlabel("Iteration")
+        ax.set_ylabel("Value")
+        ax.set_ylim(-1.1, 1.1)
+
+    # legends
+    handles, labels = ax.get_legend_handles_labels()
+    fig.legend(handles, labels, loc="upper right")
+    fig.suptitle(f" True Weights: {true_D[:n_display]}")
+    fig.tight_layout()
+
+    # Hyperparameters to display in box
+    text_content = "\n".join([f"{k}: {v:.2f}" for k, v in bbox_dict.items()])
+    fig.text(
+        x=0.05,  # Right edge alignment
+        y=0.98,  # Top edge alignment
+        s=text_content,
+        fontfamily="monospace",
+        fontsize=8,
+        linespacing=1.0,
+        verticalalignment="top",
+        horizontalalignment="left",
+        bbox=dict(
+            boxstyle="round",
+            facecolor="white",
+            alpha=0.9,
+            edgecolor="black",
+            pad=0.8,
+        ),
+    )

@@ -9,7 +9,7 @@ run:
 
 # hydra:runtime.choices cannot be used in sweep.dir
 sweep: 
-  dir: ${paths.sweep_dir}/${hydra.job.name}${debug_str}/${env.name}/${now:%Y%m%d_%H%M%S}
+  dir: ${paths.sweep_dir}/${now:%Y%m%d_%H%M%S}
   # subdir: ${data.name}_${pl.name}_${rl.name}
   subdir: ${hydra.job.override_dirname}
 

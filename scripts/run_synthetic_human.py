@@ -1,5 +1,6 @@
 import logging
 from dataclasses import dataclass
+from datetime import datetime
 from functools import partial
 
 import hydra
@@ -8,13 +9,15 @@ import jax.numpy as jnp
 import jax.numpy.linalg as jnpl
 import jax.random as jr
 import jax.scipy as jsp
+import matplotlib.pyplot as plt
 import numpy as np
 
-from bnn_pref.alg.mcmc import build_hmc, build_mh, plot_samples, run_mcmc
+from bnn_pref.alg.mcmc import build_hmc, build_mh, plot_samples, plot_trace, run_mcmc
 from bnn_pref.data import create_pref_data
 from bnn_pref.utils.type import Q1, Q2, Q2D, SD, D, Q
 
 logging.getLogger("jax._src.xla_bridge").setLevel(logging.ERROR)
+jnp.set_printoptions(precision=2)
 
 
 def alignment_metric(true_D: D, est_SD: SD):
@@ -71,7 +74,11 @@ def generate_pref_data(
 ):
     key, key1, key2 = jr.split(key, 3)
 
+    # demos_ND = jnp.ones((n_demos, n_feats))
     demos_ND = jr.normal(key1, (n_demos, n_feats))
+    demos_ND = jr.multivariate_normal(
+        key1, jnp.zeros(n_feats), jnp.eye(n_feats), shape=(n_demos,)
+    )
     demos_ND /= jnp.linalg.norm(demos_ND, axis=1, keepdims=True)
 
     returns_N = demos_ND @ params_D
@@ -96,7 +103,8 @@ def main(cfg):
     mcmc_kw = cfg["mcmc"]
 
     # * generate true weights + preference data
-    key = jr.key(0)
+    # key = jr.key(0)
+    key = jax.random.key(int(datetime.now().timestamp()))
     key, key1, key2 = jr.split(key, 3)
     true_reward_D = get_gaussian_vector(key1, data_kw["n_feats"], normalize=True)
     features_Q2D, response_Q1 = generate_pref_data(key2, true_reward_D, **data_kw)
@@ -105,8 +113,8 @@ def main(cfg):
     # * build + run sampler
     dist = BradleyTerry()
     key, *subkeys = jr.split(key, 3)
-    init_sample = get_gaussian_vector(subkeys[0], len(true_reward_D), normalize=True)
-    # init_sample = jnp.zeros_like(true_reward_D)
+    # init_sample = get_gaussian_vector(subkeys[0], len(true_reward_D), normalize=True)
+    init_sample = jnp.zeros_like(true_reward_D)
     sigma = 0.05
     alg = build_mh(partial(dist.potential, data=data), sigma)
 
@@ -115,14 +123,33 @@ def main(cfg):
 
     # * posterior check
     mean_weight_D = samples_SD.mean(axis=0)
-    pred_response_Q1 = (features_Q2D @ mean_weight_D).argmax(axis=1, keepdims=True)
+    pred_response_Q1 = jnp.exp(features_Q2D @ mean_weight_D).argmax(
+        axis=1, keepdims=True
+    )
     acc = jnp.mean(pred_response_Q1 == response_Q1)
+    align = alignment_metric(true_reward_D, samples_SD)
 
     print(f"N={data_kw['n_demos']}, Q={data_kw['n_queries']}, D={data_kw['n_feats']}")
+    print(
+        f"{mcmc_kw['n_samples']} samples w/ {mcmc_kw['burn_in']} burn-in, then {mcmc_kw['thinning']} thinning"
+    )
+    print(f"MCMC Samples: {samples_SD.shape}")
     print(f"Accuracy: {acc:.2%}")
-    print(f"Weight L2: {jnp.linalg.norm(true_reward_D - mean_weight_D):.2f}")
-    print(f"Cosine Sim: {alignment_metric(true_reward_D, samples_SD):.2f}")
+    print(f"Cosine Sim: {align:.2f}")
     # logpdf = dist.logpdf(features_Q2D, response_Q1, weights=true_reward_D)
+
+    # * plotting
+    all_samples = jnp.concat([init_sample[None, :], samples_SD], axis=0)
+    bbox_dict = {
+        "D": data_kw["n_feats"],
+        "Q": data_kw["n_queries"],
+        "Acc": acc,
+        "m": align,
+    }
+    plot_trace(all_samples, true_reward_D, bbox_dict=bbox_dict)
+    # plt.show()
+    if cfg["save_fig"]:
+        plt.savefig(f"{cfg['paths']['output_dir']}/trace.png")
 
 
 if __name__ == "__main__":
