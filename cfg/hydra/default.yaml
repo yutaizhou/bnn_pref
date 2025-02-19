@@ -19,9 +19,9 @@ job:
       kv_sep: "="
       item_sep: ", "
       exclude_keys: # pl & data already in get_wandb_name
-        - pl
+        - save_fig
         - data
-        - env
+        - mcmc
         - wandb.group
         - wandb.job_type
         - debug # debug_str is already in the dir name, dont' use for subdir

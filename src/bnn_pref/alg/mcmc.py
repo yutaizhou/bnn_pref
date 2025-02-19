@@ -6,6 +6,7 @@ import jax.numpy as jnp
 import jax.random as jr
 import jax.scipy as jsp
 import matplotlib.pyplot as plt
+from jax_tqdm import scan_tqdm
 
 
 def run_mcmc(
@@ -17,7 +18,7 @@ def run_mcmc(
     thinning: int = 1,
     normalize: bool = False,
 ):
-    def inference_loop(key, kernel, initial_state, num_samples, normalize=False):
+    def inference_loop(key, kernel, initial_state, n_samples, normalize=False):
         @jax.jit
         def one_step(state, key):
             state, _ = kernel(key, state)
@@ -27,7 +28,7 @@ def run_mcmc(
                 state = state._replace(position=w_normalized)
             return state, state
 
-        keys = jr.split(key, num_samples)
+        keys = jr.split(key, n_samples)
         _, states = jax.lax.scan(f=one_step, init=initial_state, xs=keys)
         return states
 
@@ -70,21 +71,24 @@ def plot_samples(ax, samples, label, range, x=None, true_pdf=None):
         ax.plot(x, true_pdf, label="True Distribution (1st dimension)", color="red")
 
 
-def plot_trace(samples_SD, true_D, bbox_dict=None):
+def plot_trace(key, samples_SD, true_D, bbox_dict=None):
     """limit to 8 dimensions"""
     limit = 8
     n_dims = samples_SD.shape[1]
     n_display = min(n_dims, limit)
 
     fig, axs = plt.subplots(4, 2, figsize=(12, 8))
+    dims_display = jnp.sort(jr.choice(key, n_dims, shape=(n_display,), replace=False))
     for i in range(n_display):
         ax = axs[i // 2, i % 2]
 
-        true = true_D[i]
-        est = samples_SD[:, i].mean()
-        ax.plot(samples_SD[:, i], label="Samples")
+        d = dims_display[i] if n_dims > limit else i
+        true = true_D[d]
+        est = samples_SD[:, d].mean()
+
+        ax.plot(samples_SD[:, d], label="Samples")
         ax.axhline(true, color="red", label="True", lw=0.5)
-        ax.set_title(f"Trace for dim {i + 1}: {true:.2f} vs. {est:.2f} ")
+        ax.set_title(f"Trace for dim {d + 1}: {true:.2f} vs. {est:.2f} ")
         ax.set_xlabel("Iteration")
         ax.set_ylabel("Value")
         ax.set_ylim(-1.1, 1.1)
@@ -92,7 +96,7 @@ def plot_trace(samples_SD, true_D, bbox_dict=None):
     # legends
     handles, labels = ax.get_legend_handles_labels()
     fig.legend(handles, labels, loc="upper right")
-    fig.suptitle(f" True Weights: {true_D[:n_display]}")
+    fig.suptitle("True vs. Estimated Weights")
     fig.tight_layout()
 
     # Hyperparameters to display in box
