@@ -97,6 +97,35 @@ def generate_pref_data(
     return features_Q2D, response_Q1
 
 
+def compute_accuracy1(samples_SD, features_Q2D, response_Q1):
+    # * approach 1: mean sample from posterior
+    mean_weight_D = samples_SD.mean(axis=0)
+    mean_weight_D /= jnpl.norm(mean_weight_D)
+    probs_Q2 = jax.nn.softmax(features_Q2D @ mean_weight_D, axis=1)
+
+    pred_response_Q = probs_Q2.argmax(axis=1)
+    # pred_response_Q = jnp.exp(features_Q2D @ mean_weight_D).argmax(axis=1) # approach 0
+    acc = jnp.mean(pred_response_Q == response_Q1.squeeze())
+    return acc
+
+
+def compute_accuracy2(samples_SD, features_Q2D, response_Q1):
+    # * approach 2: mean predictive probability from posterior
+    @partial(jax.vmap, in_axes=(None, 0))
+    def compute_postpred_mean(params_SD, features_2D):
+        returns_S2 = params_SD @ features_2D.T
+        probs_S2 = jax.nn.softmax(returns_S2, axis=1)  # BT model
+        postpred_mean_prob_2 = probs_S2.mean(0)
+        return postpred_mean_prob_2
+
+    samples_SD /= jnpl.norm(samples_SD, axis=1, keepdims=True)
+    probs_Q2 = compute_postpred_mean(samples_SD, features_Q2D)
+
+    pred_response_Q = probs_Q2.argmax(axis=1)
+    acc = jnp.mean(pred_response_Q == response_Q1.squeeze())
+    return acc
+
+
 @hydra.main(version_base=None, config_name="config", config_path="../cfg")
 def main(cfg):
     # check RLHF paper
@@ -122,27 +151,8 @@ def main(cfg):
     samples_SD = run_mcmc(key1, alg=alg, init_sample=init_sample, **mcmc_kw)
 
     # * posterior check
-    def compute_accuracy(samples_SD, features_Q2D, response_Q1):
-        # * approach 1: mean sample from posterior
-        # mean_weight_D = samples_SD.mean(axis=0)
-        # mean_weight_D /= jnpl.norm(mean_weight_D)
-        # pred_response_Q = jnp.exp(features_Q2D @ mean_weight_D).argmax(axis=1)
-
-        # * approach 2: mean predictive probability from posterior
-        @partial(jax.vmap, in_axes=(None, 0))
-        def compute_postpred_mean(params_SD, features_2D):
-            returns_S2 = params_SD @ features_2D.T
-            probs_S2 = jax.nn.softmax(returns_S2, axis=1)  # BT model
-            postpred_mean_prob_2 = probs_S2.mean(0)
-            return postpred_mean_prob_2
-
-        samples_SD /= jnpl.norm(samples_SD, axis=1, keepdims=True)
-        probs_Q2 = compute_postpred_mean(samples_SD, features_Q2D)
-        pred_response_Q = probs_Q2.argmax(axis=1)
-        acc = jnp.mean(pred_response_Q == response_Q1.squeeze())
-        return acc
-
-    acc = compute_accuracy(samples_SD, features_Q2D, response_Q1)
+    # two approaches to computing acc should now be equivalent
+    acc = compute_accuracy2(samples_SD, features_Q2D, response_Q1)
     align = alignment_metric(true_reward_D, samples_SD)
     print_summary(cfg, samples_SD, acc, align)
     # logpdf = dist.logpdf(features_Q2D, response_Q1, weights=true_reward_D)
