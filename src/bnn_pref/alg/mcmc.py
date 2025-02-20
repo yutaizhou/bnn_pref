@@ -21,26 +21,25 @@ def run_mcmc(
     def inference_loop(key, kernel, initial_state, n_samples, normalize=False):
         @jax.jit
         def one_step(state, key):
-            state, _ = kernel(key, state)
+            state, info = kernel(key, state)
 
             if normalize:
                 w_normalized = state.position / jnp.linalg.norm(state.position)
                 state = state._replace(position=w_normalized)
-            return state, state
+            return state, (state, info)
 
         keys = jr.split(key, n_samples)
-        _, states = jax.lax.scan(f=one_step, init=initial_state, xs=keys)
-        return states
+        _, (states, infos) = jax.lax.scan(f=one_step, init=initial_state, xs=keys)
+        return states, infos
 
     state = alg.init(init_sample)
     kernel = alg.step
-    states = inference_loop(key, kernel, state, n_samples, normalize)
-    samples = states.position
-    samples = jax.tree_map(lambda x: x[burn_in::thinning], samples)
-    return samples
+    states, infos = inference_loop(key, kernel, state, n_samples, normalize)
+    samples = jax.tree_map(lambda x: x[burn_in::thinning], states.position)
+    return samples, states, infos
 
 
-def build_mh(log_pdf: Callable, sigma):
+def build_mh(log_pdf: Callable, sigma: float):
     kernel = blackjax.mcmc.random_walk.normal(sigma)
     rmh = blackjax.rmh(log_pdf, kernel)
     return rmh

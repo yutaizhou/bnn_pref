@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from functools import partial
 
+import arviz as az
 import hydra
 import jax
 import jax.numpy as jnp
@@ -19,16 +20,18 @@ from bnn_pref.utils.utils import (
     alignment_metric,
     get_gaussian_vector,
     get_uniform_vector,
+    tile_first_dim,
 )
 
 logging.getLogger("jax._src.xla_bridge").setLevel(logging.ERROR)
 jnp.set_printoptions(precision=2)
 
 
-def print_summary(cfg, samples_SD, acc: float, align: float):
+def print_summary(cfg, samples_SD, acc: float, align: float, seed: int):
     data_kw = cfg["data"]
     mcmc_kw = cfg["mcmc"]
 
+    print(f"Seed: {seed}")
     print(f"N={data_kw['n_demos']}, Q={data_kw['n_queries']}, D={data_kw['n_feats']}")
     print(
         f"{mcmc_kw['n_samples']} samples w/ {mcmc_kw['burn_in']} burn-in, then {mcmc_kw['thinning']} thinning"
@@ -134,8 +137,8 @@ def main(cfg):
     dist = BradleyTerry()
 
     # * generate true weights + preference data
-    # key = jr.key(0)
-    key = jax.random.key(int(datetime.now().timestamp()))
+    seed = int(datetime.now().timestamp()) if cfg["seed"] == -1 else cfg["seed"]
+    key = jax.random.key(seed=seed)
     key, key1, key2 = jr.split(key, 3)
     true_reward_D = get_gaussian_vector(key1, dim=data_kw["n_feats"], normalize=True)
     # true_reward_D = get_uniform_vector(key1, dim=data_kw["n_feats"], normalize=True)
@@ -143,18 +146,22 @@ def main(cfg):
     data = QueryWithResponse(features_Q2D, response_Q1)
 
     # * build + run sampler
-    key, key1 = jr.split(key, 2)
-    # init_sample = get_gaussian_vector(subkeys[0], len(true_reward_D), normalize=True)
+    key, key1, key2 = jr.split(key, 3)
+    # init_sample = get_gaussian_vector(key2, len(true_reward_D), normalize=True)
     init_sample = jnp.zeros_like(true_reward_D)
-    sigma = 0.05
-    alg = build_mh(partial(dist.potential, data=data), sigma)
-    samples_SD = run_mcmc(key1, alg=alg, init_sample=init_sample, **mcmc_kw)
+    alg = build_mh(partial(dist.potential, data=data), sigma=mcmc_kw["sigma"])
+    samples_SD, states, infos = run_mcmc(
+        key1,
+        alg=alg,
+        init_sample=init_sample,
+        **{k: mcmc_kw[k] for k in ["n_samples", "burn_in", "thinning", "normalize"]},
+    )
 
     # * posterior check
     # two approaches to computing acc should now be equivalent
     acc = compute_accuracy2(samples_SD, features_Q2D, response_Q1)
     align = alignment_metric(true_reward_D, samples_SD)
-    print_summary(cfg, samples_SD, acc, align)
+    print_summary(cfg, samples_SD, acc, align, seed)
     # logpdf = dist.logpdf(features_Q2D, response_Q1, weights=true_reward_D)
 
     # * plotting

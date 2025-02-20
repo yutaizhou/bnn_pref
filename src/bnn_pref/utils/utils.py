@@ -27,3 +27,9 @@ def get_uniform_vector(key, dim: int, normalize: bool = True) -> D:
     if normalize:
         vec /= jnp.linalg.norm(vec)
     return vec
+
+
+def tile_first_dim(x: jnp.ndarray, reps: int):
+    expanded = x[None, ...]
+    tile_seq = (reps,) + (1,) * x.ndim
+    return jnp.tile(expanded, tile_seq)
