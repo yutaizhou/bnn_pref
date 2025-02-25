@@ -56,8 +56,8 @@ class BradleyTerry:
         beta: float = 1.0,  # rationality constant
     ) -> Q1:
         returns_Q2 = beta * (features_Q2D @ weights_D)
-        returns_Q1 = jnp.take(returns_Q2, response_Q1)
-        return returns_Q1 - jsp.special.logsumexp(returns_Q2, axis=1)
+        returns_Q1 = jnp.take_along_axis(returns_Q2, response_Q1, axis=1)
+        return returns_Q1 - jax.nn.logsumexp(returns_Q2, axis=1, keepdims=True)
 
     @staticmethod
     def potential(params: D, data: QueryWithResponse):
@@ -136,9 +136,11 @@ def main(cfg):
     mcmc_kw = cfg["mcmc"]
     dist = BradleyTerry()
 
-    # * generate true weights + preference data
     seed = int(datetime.now().timestamp()) if cfg["seed"] == -1 else cfg["seed"]
+    # seed = 1740514373 # weird ass multimodal stuff
     key = jax.random.key(seed=seed)
+
+    # * generate true weights + preference data
     key, key1, key2 = jr.split(key, 3)
     true_reward_D = get_gaussian_vector(key1, dim=data_kw["n_feats"], normalize=True)
     # true_reward_D = get_uniform_vector(key1, dim=data_kw["n_feats"], normalize=True)
