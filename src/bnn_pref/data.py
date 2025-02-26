@@ -99,3 +99,88 @@ def create_pref_data(
     labels_Q1 = jnp.expand_dims(jnp.array(labels), 1).astype(jnp.int32)
 
     return queries_Q2, labels_Q1, num_mislabels
+
+
+# this was some cursor bullshit to get jit to work
+def create_pref_data_jit(
+    key,
+    ranked_returns: N,
+    n_queries: int = -1,
+    use_delta: bool = False,
+    delta_rank: int = 1,
+    delta_reward: float = 0,
+    noisy_prefs: bool = False,
+    bt_beta: float = 1.0,
+    skip_threshold: float = -jnp.inf,
+    mistake_prob: float = 0.0,
+) -> Tuple[Q2, Q1, int]:
+    """
+    Jit-compatible version of create_pref_data.
+    Instead of using Python lists and conditionals, uses jax arrays and jnp.where.
+
+    Args and outputs are the same as create_pref_data.
+    """
+    n_demos = len(ranked_returns)
+    if not isinstance(ranked_returns, jnp.ndarray):
+        ranked_returns = jnp.asarray(ranked_returns)
+
+    n_queries = n_queries if n_queries != -1 else math.comb(n_demos, 2)
+
+    # Pre-allocate arrays
+    queries = jnp.zeros((n_queries, 2), dtype=jnp.int32)
+    labels = jnp.ones(n_queries, dtype=jnp.int32)
+    num_mislabels = jnp.array(0)
+
+    def body_fun(i, state):
+        key, queries, labels, num_mislabels = state
+
+        # Generate random indices
+        key, key1, key2 = jr.split(key, 3)
+        ti = jr.randint(key=key1, shape=(), minval=0, maxval=n_demos - 1)
+        tj = jr.randint(key=key2, shape=(), minval=ti + 1, maxval=n_demos)
+
+        # Delta check
+        delta_mask = jnp.where(
+            use_delta,
+            jnp.where(
+                delta_rank > 1,
+                (tj - ti) >= delta_rank,
+                (ranked_returns[tj] - ranked_returns[ti]) >= delta_reward,
+            ),
+            1,
+        )
+
+        # Skip if both are bad
+        skip_bad = jnp.where(
+            jnp.maximum(ranked_returns[tj], ranked_returns[ti]) < skip_threshold, 0, 1
+        )
+
+        # Noisy preferences
+        prob = bt_likelihood(ranked_returns[ti], ranked_returns[tj], bt_beta)
+        key, subkey = jr.split(key)
+        noisy_label = jnp.where(
+            noisy_prefs, jnp.where(jr.uniform(subkey) > prob, 0, 1), 1
+        )
+
+        # Mistake flips
+        key, subkey = jr.split(key)
+        mistake_flip = jnp.where(jr.uniform(subkey) < mistake_prob, 1, 0)
+
+        # Update label
+        label = jnp.where(mistake_flip, 0, 1) * noisy_label * delta_mask * skip_bad
+
+        # Update arrays
+        queries = queries.at[i].set(jnp.array([ti, tj]))
+        labels = labels.at[i].set(label)
+        num_mislabels += (1 - noisy_label) * noisy_prefs + mistake_flip
+
+        return key, queries, labels, num_mislabels
+
+    # Run the loop
+    init_state = (key, queries, labels, num_mislabels)
+    key, queries_Q2, labels, num_mislabels = jax.lax.fori_loop(
+        0, n_queries, body_fun, init_state
+    )
+
+    labels_Q1 = jnp.expand_dims(labels, 1)
+    return queries_Q2, labels_Q1, num_mislabels
