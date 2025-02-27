@@ -1,20 +1,25 @@
+from typing import Optional, Tuple, Union
+
 import jax.numpy as jnp
 import optax
 from dynamax.nonlinear_gaussian_ssm import ParamsNLGSSM, extended_kalman_filter
 from einops import rearrange
-from flax.training import train_state
+from flax import linen as nn
+from flax.training.train_state import TrainState
 from jax import device_put, jit
 from jax.flatten_util import ravel_pytree
 from jax.random import split
+from jaxtyping import Array
 from sklearn.decomposition import PCA
 from tensorflow_probability.substrates import jax as tfp
 
 from bnn_pref.alg.agent_utils import (
-    convert_params_from_subspace_to_full,
     generate_random_basis,
-    train,
+    subspace2full_params,
+    train_sgd,
 )
 from bnn_pref.alg.train_utils import MLP
+from bnn_pref.utils.type import CAR, CARL, BeliefState
 
 tfd = tfp.distributions
 
@@ -22,17 +27,17 @@ tfd = tfp.distributions
 class SubspaceNeuralBanditDynamax:
     def __init__(
         self,
-        num_features,
-        num_arms,
-        model,
+        num_features: int,
+        num_arms: int,
+        model: Optional[nn.Module],
         opt,
-        prior_noise_variance,
-        nwarmup=1000,
-        nepochs=1000,
-        system_noise=0.0,
-        observation_noise=1.0,
-        n_components=0.9999,
-        random_projection=False,
+        prior_noise_variance: float,
+        nwarmup: int = 1000,
+        nepochs: int = 1000,
+        system_noise: float = 0.0,
+        observation_noise: float = 1.0,
+        n_components: Union[float, int] = 0.9999,
+        random_projection: bool = False,
     ):
         """
         Subspace Neural Bandit implementation.
@@ -54,6 +59,16 @@ class SubspaceNeuralBanditDynamax:
             The momentum for the optimizer used for the warmup phase.
         nepochs : int
             The number of epochs to be used for the warmup SGD phase.
+        nwarmup: int
+            How many of the SGD iterates to be treated / thrown away as warmup
+        system_noise: float
+            The system noise for the EKF.
+        observation_noise: float
+            The observation noise for the EKF.
+        n_components: Union[float, int]
+            The number of components to be used for the PCA.
+        random_projection: bool
+            Whether to use random projection.
         """
         self.num_features = num_features
         self.num_arms = num_arms
@@ -76,32 +91,28 @@ class SubspaceNeuralBanditDynamax:
         self.random_projection = random_projection
         self.context_dim = None
 
-    def init_bel(self, key, contexts, states, actions, rewards):
+    def init_bel(self, key, warmup_data: CARL) -> BeliefState:
         """
-        contexts: (num_steps, num_features)
-        states: (num_steps, num_actions) # predict class label given features
-        actions: (num_steps,) # taken actions, if warmup, should be round-robin
-        rewards: (num_steps,)
+        Run SGD on warmup data, get subspace projection matrix, initialize EKF
         """
+        contexts, actions, _, labels = warmup_data
         self.context_dim = contexts.shape[-1]
         warmup_key, projection_key = split(key, 2)
         actions = actions.astype(int)
-        initial_params = self.model.init(
-            warmup_key,
-            jnp.ones((1, self.num_features)),
-        )["params"]
+        dummy_context = jnp.ones((1, self.num_features))
+        initial_params = self.model.init(warmup_key, dummy_context)["params"]
 
-        initial_train_state = train_state.TrainState.create(
+        initial_ts = TrainState.create(
             apply_fn=self.model.apply, params=initial_params, tx=self.opt
         )
 
         def loss_fn(params):
             pred_reward = self.model.apply({"params": params}, contexts)[:, actions]
-            loss = optax.l2_loss(pred_reward, states[:, actions]).mean()
+            loss = optax.l2_loss(pred_reward, labels[:, actions]).mean()
             return loss, pred_reward
 
-        warmup_state, warmup_metrics = train(
-            initial_train_state, loss_fn=loss_fn, nepochs=self.nepochs
+        warmup_ts, warmup_metrics = train_sgd(
+            initial_ts, loss_fn=loss_fn, nepochs=self.nepochs
         )
 
         thinned_samples = warmup_metrics["params"][::2]  # (n_iterates, n_full_params)
@@ -115,31 +126,26 @@ class SubspaceNeuralBanditDynamax:
             projection_matrix = device_put(pca.components_)
         else:
             if type(self.n_components) is not int:
-                raise ValueError(
-                    f"n_components must be an integer, got {self.n_components}"
-                )
+                raise ValueError(f"{self.n_components=} must be an integer")
             total_dim = params_trace.shape[-1]
             subspace_dim = self.n_components
             projection_matrix = generate_random_basis(
-                projection_key, subspace_dim, total_dim
+                key=projection_key, d=subspace_dim, D=total_dim
             )
 
         Q = jnp.eye(subspace_dim) * self.system_noise  # transition model noise
         R = jnp.eye(1) * self.observation_noise  # obs model noise
 
-        params_full_init, reconstruct_tree_params = ravel_pytree(warmup_state.params)
+        params_full_init, reconstruct_tree_params = ravel_pytree(warmup_ts.params)
         params_subspace_init = jnp.zeros(subspace_dim)
         covariance_subspace_init = jnp.eye(subspace_dim) * self.prior_noise_variance
 
-        def predict_rewards(params_subspace_sample, context):
+        def predict_rewards(params_subspace, context):
             """
-            params_full_init and projection_matrix do not change. only the subspace
-            samples change.
+            Project params from subspace to full space, then apply model
             """
-            params_full = convert_params_from_subspace_to_full(
-                params_subspace_sample,
-                projection_matrix,
-                params_full_init,
+            params_full = subspace2full_params(
+                params_subspace, projection_matrix, params_full_init
             )
             params = reconstruct_tree_params(params_full)
             outputs = self.model.apply({"params": params}, context)
@@ -147,12 +153,16 @@ class SubspaceNeuralBanditDynamax:
 
         self.predict_rewards = predict_rewards
 
-        def fz(params, inputs):
-            """state transition model"""
+        def dynamics_fn(params, inputs):
+            """
+            dynamics model constant dynamics
+            """
             return params
 
-        def fx(params, inputs):
-            """observation model"""
+        def emission_fn(params, inputs):
+            """
+            emission model where inputs is (N, D + 1)
+            """
             context = inputs[..., : self.context_dim]
             action = inputs[..., self.context_dim].astype(int)
             return predict_rewards(params, context)[action, None]
@@ -160,37 +170,42 @@ class SubspaceNeuralBanditDynamax:
         ekf = ParamsNLGSSM(
             initial_mean=params_subspace_init,
             initial_covariance=covariance_subspace_init,
-            dynamics_function=fz,
+            dynamics_function=dynamics_fn,
             dynamics_covariance=Q,
-            emission_function=fx,
+            emission_function=emission_fn,
             emission_covariance=R,
         )
         self.ekf_params = ekf
 
-        bel = (params_subspace_init, covariance_subspace_init, 0)
+        bel = BeliefState(params_subspace_init, covariance_subspace_init, 0)
         return bel
 
-    def update_bel(self, bel, context, action, reward):
-        mean, cov, t = bel
+    def update_bel(
+        self,
+        bel: BeliefState,
+        batch: CAR,
+    ) -> BeliefState:
+        prior_mean, prior_cov, t = bel
+        context, action, reward = batch
 
         obs = rearrange(reward, " -> 1 1")
         inputs = jnp.concat((context, action[None]))
         inputs = rearrange(inputs, " d -> 1 d")
 
         self.ekf_params = self.ekf_params._replace(
-            initial_mean=mean,
-            initial_covariance=cov,
+            initial_mean=prior_mean,
+            initial_covariance=prior_cov,
         )
         ekf_posterior = extended_kalman_filter(
             self.ekf_params, emissions=obs, inputs=inputs
         )
 
-        new_mean = ekf_posterior.filtered_means[-1]
-        new_cov = ekf_posterior.filtered_covariances[-1]
-        bel = (new_mean, new_cov, t + 1)
+        posterior_mean = ekf_posterior.filtered_means[-1]
+        posterior_cov = ekf_posterior.filtered_covariances[-1]
+        bel = BeliefState(posterior_mean, posterior_cov, t + 1)
         return bel
 
-    def choose_action(self, key, bel, context):
+    def choose_action(self, key, bel: BeliefState, context: Array) -> int:
         # Thompson sampling strategy
         # Could also use epsilon greedy or UCB
         w = self.sample_params(key, bel)
@@ -198,12 +213,9 @@ class SubspaceNeuralBanditDynamax:
         action = predicted_reward.argmax()
         return action
 
-    def sample_params(self, key, bel):
+    def sample_params(self, key, bel: BeliefState) -> Array:
         """only used in choose_action()"""
-        params_subspace, covariance_subspace, t = bel
-        mv_normal = tfd.MultivariateNormalFullCovariance(
-            loc=params_subspace,
-            covariance_matrix=covariance_subspace,
-        )
-        params_subspace = mv_normal.sample(seed=key)
-        return params_subspace
+        mean, cov, t = bel
+        mvg = tfd.MultivariateNormalFullCovariance(mean, cov)
+        params = mvg.sample(seed=key)
+        return params

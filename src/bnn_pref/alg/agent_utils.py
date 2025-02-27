@@ -1,16 +1,20 @@
+from typing import Callable
+
 import jax.numpy as jnp
 import jax.random as jr
+from flax.training.train_state import TrainState
 from jax import jit, value_and_grad
 from jax.flatten_util import ravel_pytree
 from jax.lax import scan
+from jaxtyping import Array, Float
 
 
-def convert_params_from_subspace_to_full(
-    params_subspace,
-    projection_matrix,
-    params_full,
-):
-    params = jnp.matmul(params_subspace, projection_matrix) + params_full
+def subspace2full_params(
+    params_subspace: Float[Array, "subspace_dim"],
+    proj_matrix: Float[Array, "subspace_dim full_dim"],
+    params_full: Float[Array, "full_dim"],
+) -> Float[Array, "full_dim"]:
+    params = params_subspace @ proj_matrix + params_full
     return params
 
 
@@ -24,7 +28,12 @@ def generate_random_basis(key, d: int, D: int):
     return P
 
 
-def train(state, loss_fn, nepochs=300, has_aux=True):
+def train_sgd(
+    ts: TrainState,
+    loss_fn: Callable,
+    nepochs: int = 300,
+    has_aux: bool = True,
+):
     @jit
     def step(state, _):
         grad_fn = value_and_grad(loss_fn, has_aux=has_aux)
@@ -34,6 +43,6 @@ def train(state, loss_fn, nepochs=300, has_aux=True):
         flat_params, _ = ravel_pytree(state.params)
         return state, {"loss": loss, "params": flat_params}
 
-    state, metrics = scan(step, state, jnp.empty(nepochs))
+    ts, metrics = scan(step, init=ts, xs=jnp.empty(nepochs))
 
-    return state, metrics
+    return ts, metrics
