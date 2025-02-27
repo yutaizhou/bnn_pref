@@ -12,22 +12,13 @@ import jax.random as jr
 import jax.scipy as jsp
 import matplotlib.pyplot as plt
 import numpy as np
-from run_synthetic_human import (
-    BradleyTerry,
-    QueryWithResponse,
-    alignment_metric,
-    compute_accuracy2,
-    generate_pref_data,
-    print_summary,
-)
 
 from bnn_pref.alg.mcmc import build_hmc, build_mh, plot_samples, plot_trace, run_mcmc
-from bnn_pref.data import create_pref_data
-from bnn_pref.utils.type import Q1, Q2, Q2D, SD, D, Q
+from bnn_pref.data import BradleyTerry, QueryWithResponse, generate_pref_data
 from bnn_pref.utils.utils import (
     alignment_metric,
+    compute_accuracy2,
     get_gaussian_vector,
-    get_uniform_vector,
     tile_first_dim,
 )
 
@@ -44,13 +35,11 @@ def run_experiment(cfg, key, n_feats=None):
     # * generate true weights + preference data
     key, key1, key2 = jr.split(key, 3)
     true_reward_D = get_gaussian_vector(key1, dim=n_feats, normalize=True)
-    # true_reward_D = get_uniform_vector(key1, dim=n_feats, normalize=True)
     features_Q2D, response_Q1 = generate_pref_data(key2, true_reward_D, **data_kw)
     data = QueryWithResponse(features_Q2D, response_Q1)
 
     # * build + run sampler
     key, key1, key2 = jr.split(key, 3)
-    # init_sample = get_gaussian_vector(key2, len(true_reward_D), normalize=True)
     init_sample = jnp.zeros_like(true_reward_D)
     alg = build_mh(partial(dist.potential, data=data), sigma=mcmc_kw["sigma"])
     samples_SD, states, infos = run_mcmc(

@@ -1,11 +1,80 @@
 import math
+from dataclasses import dataclass
 from typing import Tuple
 
 import jax
 import jax.numpy as jnp
 import jax.random as jr
 
-from bnn_pref.utils.type import Q1, Q2, N
+from bnn_pref.utils.type import Q1, Q2, Q2D, D, N
+
+
+@dataclass
+class QueryWithResponse:
+    queries: Q2D
+    responses: Q1
+
+
+class BradleyTerry:
+    @staticmethod
+    def logpdf(
+        features_Q2D: Q2D,
+        response_Q1: Q1,
+        weights_D: D,
+        beta: float = 1.0,  # rationality constant
+    ) -> Q1:
+        returns_Q2 = beta * (features_Q2D @ weights_D)
+        returns_Q1 = jnp.take_along_axis(returns_Q2, response_Q1, axis=1)
+        return returns_Q1 - jax.nn.logsumexp(returns_Q2, axis=1, keepdims=True)
+
+    @staticmethod
+    def potential(params: D, data: QueryWithResponse):
+        ll_Q = BradleyTerry.logpdf(
+            features_Q2D=data.queries,
+            response_Q1=data.responses,
+            weights_D=params,
+        )
+        # prior = # just uniform log 1
+        joint_ll = ll_Q.sum()
+        return joint_ll
+
+
+def generate_pref_data(
+    key,
+    params_D: D,
+    n_demos: int,
+    n_feats: int,
+    n_queries: int,
+):
+    key, key1, key2 = jr.split(key, 3)
+
+    demos_ND = jr.normal(key1, (n_demos, n_feats))
+    # demos_ND /= jnp.linalg.norm(demos_ND, axis=1, keepdims=True)
+
+    returns_N = demos_ND @ params_D
+    sorted_idx = jnp.argsort(returns_N)  # ascending
+    returns_N = returns_N[sorted_idx]
+    demos_ND = demos_ND[sorted_idx]
+
+    # queries_idx_Q2, response_Q1, num_mislabels = create_pref_data(
+    #     key2,
+    #     ranked_returns=returns_N,
+    #     n_queries=n_queries,
+    #     noisy_prefs=False,
+    #     bt_beta=1.0,
+    # )
+
+    queries_idx_Q2, response_Q1, num_mislabels = create_pref_data_jit(
+        key2,
+        ranked_returns=returns_N,
+        n_queries=n_queries,
+        noisy_prefs=False,
+        bt_beta=1.0,
+    )
+
+    features_Q2D = demos_ND[queries_idx_Q2]  # todo check?
+
+    return features_Q2D, response_Q1
 
 
 def bt_likelihood(return_i: float, return_j: float, beta: float = 1.0) -> float:

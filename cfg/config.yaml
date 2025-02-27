@@ -1,6 +1,7 @@
 defaults:
 - _self_
 - mcmc: mh
+- bandit: ekf
 - data: base
 - optional local: default # specifies project dir & wandb login, goes after wandb
 # - optional run: debug
