@@ -1,0 +1,9 @@
+learning_rate: 0.05
+momentum: 0.9
+
+prior_noise_variance: 0.0001
+n_warmup: 2000
+n_epochs: 1000
+obs_noise: 0.0
+n_components: 470
+use_rnd: False
