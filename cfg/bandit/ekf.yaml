@@ -9,10 +9,13 @@ hidden_sizes:
   - 32
 
 cls:
-  n_warmup_iterates: 40
+  # Subspace Init w/ SGD
   n_epochs: 100 # 6
+  n_warmup_iterates: 40
+  n_components: 40 # 3
+  rnd_proj: True
+  
+  # Subspace Inference w/ EKF
   prior_noise: 0.0001 # variance
   dynamics_noise: 0.0
   obs_noise: 0.0
-  n_components: 40 # 3
-  random_projection: True

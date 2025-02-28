@@ -5,53 +5,52 @@ import jax.numpy as jnp
 import jax.random as jr
 from jaxtyping import Array, Float
 
-from bnn_pref.utils.type import CAR, CARL
+from bnn_pref.utils.type import CAR, CARL, Q2, Q2D
 
 
 class BanditEnvironment:
-    def __init__(self, key, X, Y, opt_rewards):
+    def __init__(self, key, X: Q2D, Y: Q2, opt_rewards=None):
         # Randomise dataset rows
-        n_obs, n_features = X.shape
-
-        new_ixs = jr.choice(key, n_obs, (n_obs,), replace=False)
-
+        self.n_obs, _, self.n_feats = X.shape
+        self.n_actions = Y.shape[1]
+        new_ixs = jr.choice(key, self.n_obs, (self.n_obs,), replace=False)
         X = jnp.asarray(X)[new_ixs]
         Y = jnp.asarray(Y)[new_ixs]
-        opt_rewards = jnp.asarray(opt_rewards)[new_ixs]
+        if opt_rewards is not None:
+            opt_rewards = jnp.asarray(opt_rewards)[new_ixs]
 
-        self.contexts_ND = X
-        self.labels_onehot_NA = Y
-        self.opt_rewards_NA = opt_rewards
+        self.contexts = X
+        self.labels_onehot = Y
+        self.opt_rewards = opt_rewards
 
-    def get_context(self, t) -> Float[Array, "n_features"]:
-        return self.contexts_ND[t]
+    def get_context(self, t) -> Float[Array, "2 D"]:
+        return self.contexts[t]
 
     def get_label(self, t) -> Float[Array, "n_actions"]:
-        return self.labels_onehot_NA[t]
+        return self.labels_onehot[t]
 
     def get_reward(self, t, action) -> float:
-        label = self.labels_onehot_NA[t, action]
+        label = self.labels_onehot[t, action]
         return jnp.float32(label)
 
-    def warmup(self, num_pulls: int) -> CARL:
+    def warmup(self, key, n_warmups: int) -> CARL:
         """
+        collect random samples from the dataset
+
         Outputs:
             contexts: jnp.ndarray
                 (n_pulls * n_actions, n_features)
-            states: jnp.ndarray
-                (n_pulls * n_actions, n_actions), one-hot
             actions: jnp.ndarray
                 (n_pulls * n_actions,)
             rewards: jnp.ndarray
                 (n_pulls * n_actions,)
+            labels: jnp.ndarray
+                (n_pulls * n_actions, n_actions), one-hot
         """
-        num_steps, num_actions = self.labels_onehot_NA.shape
-        # Create array of round-robin actions: 0, 1, 2, 0, 1, 2, 0, 1, 2, ...
-        warmup_actions = jnp.arange(num_actions)
-        warmup_actions = jnp.repeat(warmup_actions, num_pulls).reshape(num_actions, -1)
-        actions = warmup_actions.reshape(-1, order="F").astype(jnp.int32)
-        # num_warmup_actions, *_ = warmup_actions.shape
-
+        assert n_warmups <= self.n_obs, "more warmups than dataset size"
+        # Create array of round-robin actions: 0, 1, 2, 0, 1, 2,  ...
+        # actions = jnp.tile(jnp.arange(self.n_actions), n_warmups)
+        actions = jr.randint(key, shape=(n_warmups,), minval=0, maxval=self.n_actions)
         time_steps = jnp.arange(len(actions))
 
         @partial(jax.vmap, in_axes=(0, 0))

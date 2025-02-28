@@ -1,3 +1,4 @@
+import dataclasses
 from typing import Tuple
 
 import flax
@@ -19,15 +20,35 @@ Q2D = Float[Array, "Q 2 D"]
 SD = Float[Array, "S features"]
 
 
+def unpackable_dataclass(cls=None, **kwargs):
+    """Custom decorator extending flax.struct.dataclass to support unpacking."""
+
+    def wrap(cls):
+        # Apply flax.struct.dataclass to make the class JAX-compatible
+        cls = flax.struct.dataclass(cls, **kwargs)
+
+        # Add an __iter__ method to allow unpacking
+        def __iter__(self):
+            return iter(getattr(self, field.name) for field in dataclasses.fields(self))
+
+        cls.__iter__ = __iter__
+        return cls
+
+    # Support usage with or without parentheses
+    if cls is None:
+        return wrap
+    return wrap(cls)
+
+
 # EKF
-@flax.struct.dataclass
+@unpackable_dataclass
 class BeliefState:
     mean: Float[Array, "system_dim"]
     cov: Float[Array, "system_dim system_dim"]
     t: int
 
 
-@flax.struct.dataclass
+@unpackable_dataclass
 class CAR:
     """Context, Action, Reward"""
 
@@ -36,7 +57,7 @@ class CAR:
     rewards: Float[Array, "n"]
 
 
-@flax.struct.dataclass
+@unpackable_dataclass
 class CARL:
     """Context, Action, Reward, Label (one-hot)"""
 

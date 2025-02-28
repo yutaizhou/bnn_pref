@@ -3,12 +3,15 @@ from typing import Dict, Tuple
 
 import flax.linen as nn
 import jax.numpy as jnp
+import optax
 from jax import vmap
 from jax.lax import scan
 from jax.random import split
 from jaxtyping import Array, Float, Int, Key
+from omegaconf import OmegaConf
 
 from bnn_pref.alg.bandit_env import BanditEnvironment
+from bnn_pref.utils.network import RewardNet
 from bnn_pref.utils.type import CAR, CARL, BeliefState
 
 warnings.filterwarnings("ignore")
@@ -18,10 +21,9 @@ def bandit_pipeline(
     key,
     bandit_cls,
     env: BanditEnvironment,
-    npulls: int,
-    ntrials: int,
-    bandit_kwargs: Dict,
-    neural: bool = True,
+    n_warmup_obs: int,
+    n_trials: int,
+    bandit_kw: Dict,
 ):
     """
     Train a bandit on an environment.
@@ -35,7 +37,7 @@ def bandit_pipeline(
     ----------
     npulls: int
         The number of pulls (per arm) to be used for the warmup phase.
-    ntrials: int
+    n_trials: int
         The number of trials to be used for the training phase.
     bandit_kwargs: Dict
         The keyword arguments to be used for the bandit.
@@ -44,29 +46,28 @@ def bandit_pipeline(
     nsteps: int
         The number of steps to be used for the training phase.
     """
-    nsteps, nfeatures = env.contexts_ND.shape
-    _, narms = env.labels_onehot_NA.shape
-    bandit = bandit_cls(nfeatures, narms, **bandit_kwargs)
+    nsteps, _, nfeatures = env.contexts.shape
+    _, narms = env.labels_onehot.shape
+    model = RewardNet(bandit_kw["hidden_sizes"])
+    opt = optax.sgd(bandit_kw["learning_rate"])
+    bandit = bandit_cls(nfeatures, narms, model, opt, **bandit_kw["cls"])
 
     # npulls * n_arms worth of data, (contexts, states, actions, rewards)
-    key, key_belief_init = split(key)
-    warmup_data = env.warmup(npulls)
+    key, key_warmup, key_belief_init = split(key, 3)
+    warmup_data = env.warmup(key_warmup, n_warmup_obs)
     _, _, warmup_rewards, _ = warmup_data
     bel = bandit.init_bel(key_belief_init, warmup_data)
 
     def single_trial(key):
-        _, _, rewards = run_bandit(
-            key, bandit, bel, env, warmup_data, nsteps=nsteps, neural=neural
-        )
-        return rewards
+        final_bel, batch = run_bandit(key, bandit, bel, env, warmup_data, nsteps=nsteps)
+        return final_bel, batch.rewards
 
-    if ntrials > 1:
-        keys = split(key, ntrials)
-        rewards_trace = vmap(single_trial)(keys)
-    else:
-        rewards_trace = single_trial(key)
+    keys = split(key, n_trials)
+    final_bel, rewards_trace = vmap(single_trial)(keys)
 
-    return warmup_rewards, rewards_trace, env.opt_rewards_NA
+    rewards_info = (warmup_rewards, rewards_trace, env.opt_rewards)
+
+    return rewards_info, final_bel, bandit
 
 
 def run_bandit(
@@ -97,15 +98,15 @@ def run_bandit(
 
         bel = bandit.update_bel(bel, batch)
 
-        return bel, (context, action, reward)
+        return bel, batch
 
-    _, data = scan(step, init=bel, xs=(keys, steps))
+    final_bel, data = scan(step, init=bel, xs=(keys, steps))
 
     contexts = jnp.vstack([warmup_contexts, data.contexts])
     actions = jnp.append(warmup_actions, data.actions)
     rewards = jnp.append(warmup_rewards, data.rewards)
 
-    return CAR(contexts, actions, rewards)
+    return final_bel, CAR(contexts, actions, rewards)
 
 
 def summarize_results(warmup_rewards, rewards):

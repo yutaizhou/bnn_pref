@@ -16,12 +16,13 @@ class RewardNet(nn.Module):
         r2 = self.predict_single(x[:, 1])
         return jnp.concatenate([r1, r2], axis=1)  # N2
 
-    def predict_single(self, X_D):
+    def predict_single(self, x):
+        # x is (N, D)
         for layer in self.layers:
-            X_D = layer(X_D)
+            x = layer(x)
             if layer != self.layers[-1]:
-                X_D = nn.relu(X_D)
-        return X_D
+                x = nn.relu(x)
+        return x
 
 
 class MLP(nn.Module):
