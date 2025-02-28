@@ -31,7 +31,7 @@ def generate_random_basis(key, d: int, D: int):
 def train_sgd(
     ts: TrainState,
     loss_fn: Callable,
-    nepochs: int = 300,
+    n_epochs: int = 300,
     has_aux: bool = True,
 ):
     @jit
@@ -43,6 +43,6 @@ def train_sgd(
         flat_params, _ = ravel_pytree(state.params)
         return state, {"loss": loss, "params": flat_params}
 
-    ts, metrics = scan(step, init=ts, xs=jnp.empty(nepochs))
+    ts, metrics = scan(step, init=ts, xs=jnp.empty(n_epochs))
 
     return ts, metrics

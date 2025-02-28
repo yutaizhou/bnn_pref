@@ -1,9 +1,18 @@
-learning_rate: 0.05
+learning_rate: 0.001
 momentum: 0.9
 
-prior_noise_variance: 0.0001
-n_warmup: 2000
-n_epochs: 1000
-obs_noise: 0.0
-n_components: 470
-use_rnd: False
+n_warmup_obs: 200 # 0
+n_trials: 1
+
+hidden_sizes:
+  - 32
+  - 32
+
+cls:
+  n_warmup_iterates: 40
+  n_epochs: 100 # 6
+  prior_noise: 0.0001 # variance
+  dynamics_noise: 0.0
+  obs_noise: 0.0
+  n_components: 40 # 3
+  random_projection: True

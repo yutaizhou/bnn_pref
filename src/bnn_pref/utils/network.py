@@ -1,4 +1,27 @@
+from typing import List
+
+import einops
 import flax.linen as nn
+import jax.numpy as jnp
+
+
+class RewardNet(nn.Module):
+    hidden_sizes: List[int]
+
+    def setup(self):
+        self.layers = [nn.Dense(size) for size in self.hidden_sizes] + [nn.Dense(1)]
+
+    def __call__(self, x):  # Q2D
+        r1 = self.predict_single(x[:, 0])  # N1
+        r2 = self.predict_single(x[:, 1])
+        return jnp.concatenate([r1, r2], axis=1)  # N2
+
+    def predict_single(self, X_D):
+        for layer in self.layers:
+            X_D = layer(X_D)
+            if layer != self.layers[-1]:
+                X_D = nn.relu(X_D)
+        return X_D
 
 
 class MLP(nn.Module):

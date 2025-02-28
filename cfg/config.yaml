@@ -12,6 +12,6 @@ paths:
   sweep_dir: ${paths.root_dir}/results_sweep
   output_dir: ${hydra:runtime.output_dir}
 
-seed: -1
+seed: 0
 show_fig: False
 save_fig: False
