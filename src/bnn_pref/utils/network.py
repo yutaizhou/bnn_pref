@@ -3,6 +3,12 @@ from typing import List
 import einops
 import flax.linen as nn
 import jax.numpy as jnp
+from jaxtyping import Array, Float
+
+B2D = Float[Array, "batch 2 dim"]
+BD = Float[Array, "batch dim"]
+B1 = Float[Array, "batch 1 "]
+B2 = Float[Array, "batch 2 "]
 
 
 class RewardNet(nn.Module):
@@ -11,13 +17,12 @@ class RewardNet(nn.Module):
     def setup(self):
         self.layers = [nn.Dense(size) for size in self.hidden_sizes] + [nn.Dense(1)]
 
-    def __call__(self, x):  # Q2D
-        r1 = self.predict_single(x[:, 0])  # N1
+    def __call__(self, x: B2D) -> B2:
+        r1 = self.predict_single(x[:, 0])
         r2 = self.predict_single(x[:, 1])
-        return jnp.concatenate([r1, r2], axis=1)  # N2
+        return jnp.concatenate([r1, r2], axis=1)
 
-    def predict_single(self, x):
-        # x is (N, D)
+    def predict_single(self, x: BD) -> B1:
         for layer in self.layers:
             x = layer(x)
             if layer != self.layers[-1]:
