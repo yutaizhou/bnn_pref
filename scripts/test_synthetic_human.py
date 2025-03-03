@@ -43,24 +43,22 @@ def main(cfg):
     potential = partial(dist.potential, data=data)
 
     # generate a 2D pdf grid of bradley terry
-    res = 40
     lim = 3
-    x_R = jnp.linspace(-lim, lim, res)
-    y_R = jnp.linspace(-lim, lim, res)
-    X_RR, Y_RR = jnp.meshgrid(x_R, y_R)
+    X_RR, Y_RR = jnp.mgrid[-lim:lim:100j, -lim:lim:100j]
     pos_RR2 = jnp.stack([X_RR, Y_RR], axis=-1)
     Z_RR = jax.vmap(jax.vmap(potential))(pos_RR2)
+    print(pos_RR2.shape)
+    print(Z_RR.shape)
 
     plt.figure(figsize=(10, 8))
-    plt.contourf(X_RR, Y_RR, Z_RR, cmap="viridis")
+    plt.contourf(X_RR, Y_RR, Z_RR)
     plt.colorbar()
     plt.scatter(true_reward_D[0], true_reward_D[1], color="red", label="True Reward")
 
-    plt.xlabel("Dimension 1")
-    plt.ylabel("Dimension 2")
+    plt.xlabel("Param 1")
+    plt.ylabel("Param 2")
     plt.title("Bradley-Terry logpdf")
     plt.legend()
-    plt.grid(True)
     plt.show()
 
 
