@@ -41,13 +41,11 @@ def main(cfg):
     # * generate true weights + preference data
     key, key1, key2 = jr.split(key, 3)
     true_reward_D = get_gaussian_vector(key1, dim=n_feats, normalize=True)
-    # true_reward_D = get_uniform_vector(key1, dim=n_feats, normalize=True)
     features_Q2D, response_Q1 = generate_pref_data(key2, true_reward_D, **data_kw)
     data = QueryWithResponse(features_Q2D, response_Q1)
 
     # * build + run sampler
     key, key1, key2 = jr.split(key, 3)
-    # init_sample = get_gaussian_vector(key2, len(true_reward_D), normalize=True)
     init_sample = jnp.zeros_like(true_reward_D)
     alg = build_mh(partial(dist.potential, data=data), sigma=mcmc_kw["sigma"])
     samples_SD, states, infos = run_mcmc(

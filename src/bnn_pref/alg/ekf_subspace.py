@@ -134,6 +134,8 @@ class SubspaceNeuralBandit:
             pca = PCA(n_components=self.n_components)
             pca.fit(params_trace)
             sub_dim = pca.n_components_
+            if type(self.n_components) is float:
+                print(f"PCA found {sub_dim} components ({self.n_components=:.2%} var)")
             self.n_components = pca.n_components_
             projection_matrix = device_put(pca.components_)
 
