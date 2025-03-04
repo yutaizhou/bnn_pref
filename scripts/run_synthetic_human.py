@@ -48,9 +48,10 @@ def main(cfg):
     # * generate true params + preference data
     key, key1, key2, key3 = jr.split(key, 4)
     true_param_D = get_gaussian_vector(key1, dim=n_feats, normalize=True)
-    features_Q2D, response_Q1 = generate_pref_data(
+    demos_ND, returns_N, pref_data = generate_pref_data(
         key2, reward_fn=true_reward_fn, params_D=true_param_D, **data_kw
     )
+    features_Q2D, response_Q1 = pref_data.queries_Q2D, pref_data.responses_Q1
     train_idxes, test_idxes = jnp.split(
         jr.permutation(key3, jnp.arange(n_queries)),
         [int(n_queries * 0.8)],

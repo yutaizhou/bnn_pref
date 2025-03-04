@@ -8,7 +8,20 @@ import jax.random as jr
 import jax.scipy as jsp
 
 from bnn_pref.data import QueryWithResponse
-from bnn_pref.utils.type import Q1, Q2, Q2D, SD, D
+from bnn_pref.utils.type import ND, Q1, Q2, Q2D, SD, D
+
+
+def compute_accuracy_nn(pref_predictor: Callable, data: QueryWithResponse):
+    features_Q2D, response_Q1 = data.queries_Q2D, data.responses_Q1
+    logits_Q2 = pref_predictor(features_Q2D)
+    pred_response_Q = logits_Q2.argmax(axis=1)
+    acc = jnp.mean(pred_response_Q == response_Q1.squeeze())
+    return acc
+
+
+def compute_reward_nn(reward_predictor: Callable, demos_ND: ND):
+    rewards_N = reward_predictor(demos_ND)
+    return rewards_N
 
 
 def compute_accuracy1_mcmc(samples_SD, data: QueryWithResponse, reward_fn: Callable):

@@ -18,7 +18,11 @@ from bnn_pref.alg.train_utils import bandit_pipeline, summarize_results
 from bnn_pref.data import BradleyTerry, QueryWithResponse, generate_pref_data
 from bnn_pref.utils.plotting import plot_logpdf, plot_reward_heatmap
 from bnn_pref.utils.test_functions import test_functions_dict
-from bnn_pref.utils.utils import get_gaussian_vector
+from bnn_pref.utils.utils import (
+    compute_accuracy_nn,
+    compute_reward_nn,
+    get_gaussian_vector,
+)
 
 logging.getLogger("jax._src.xla_bridge").setLevel(logging.ERROR)
 jnp.set_printoptions(precision=2)
@@ -32,7 +36,7 @@ def main(cfg):
     dist = BradleyTerry()
     n_feats = data_kw["n_feats"]
     n_queries = data_kw["n_queries"]
-
+    n_demos = data_kw["n_demos"]
     seed = int(datetime.now().timestamp()) if cfg["seed"] == -1 else cfg["seed"]
     key = jr.key(seed=seed)
     print(f"Seed: {seed}")
@@ -45,9 +49,10 @@ def main(cfg):
     key, key1, key2, key3 = jr.split(key, 4)
     true_param_D = get_gaussian_vector(key1, dim=n_feats, normalize=True)
     true_reward_fn = test_functions_dict[cfg["f"]]
-    features_Q2D, response_Q1 = generate_pref_data(
+    demos_ND, returns_N, pref_data = generate_pref_data(
         key2, reward_fn=true_reward_fn, params_D=true_param_D, **data_kw
     )
+    features_Q2D, response_Q1 = pref_data.queries_Q2D, pref_data.responses_Q1
     train_idxes, test_idxes = jnp.split(
         jr.permutation(key3, jnp.arange(n_queries)),
         [int(n_queries * 0.8)],
@@ -78,13 +83,13 @@ def main(cfg):
     # todo n_trials beliefs..
     key, key1 = jr.split(key, 2)
     pref_predictor = jax.vmap(partial(bandit.apply_model, bel.mean[0]))
-    logits_Q2 = pref_predictor(test_data.queries_Q2D)
-    pred_response_Q = logits_Q2.argmax(axis=1)
-    acc = jnp.mean(pred_response_Q == test_data.responses_Q1.squeeze())
-    print(f"{acc=:.2%}")
+    train_acc = compute_accuracy_nn(pref_predictor, train_data)
+    test_acc = compute_accuracy_nn(pref_predictor, test_data)
+    print(f"{train_acc=:.2%}")
+    print(f"{test_acc=:.2%}")
 
     reward_predictor = jax.vmap(partial(bandit.predict_reward, bel.mean[0]))
-    rewards_Q = reward_predictor(test_data.queries_Q2D[:, 0, :]).squeeze()
+    rewards_Q = compute_reward_nn(reward_predictor, test_data.queries_Q2D[:, 0, :])
     print(rewards_Q.shape)
 
     if data_kw["n_feats"] == 2:

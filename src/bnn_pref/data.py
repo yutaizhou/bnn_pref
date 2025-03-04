@@ -6,7 +6,7 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 
-from bnn_pref.utils.type import Q1, Q2, Q2D, D, N
+from bnn_pref.utils.type import ND, Q1, Q2, Q2D, D, N
 
 
 @dataclass
@@ -47,8 +47,9 @@ def generate_pref_data(
     n_demos: int,
     n_feats: int,
     n_queries: int,
-) -> Tuple[Q2D, Q1]:
+) -> Tuple[ND, N, QueryWithResponse]:
     key, key1, key2 = jr.split(key, 3)
+    # todo currently, use all demos, split queries. could split demos instead.
 
     demos_ND = jr.normal(key1, (n_demos, n_feats))
     # demos_ND /= jnp.linalg.norm(demos_ND, axis=1, keepdims=True)
@@ -75,8 +76,7 @@ def generate_pref_data(
     )
 
     features_Q2D = demos_ND[queries_idx_Q2]
-
-    return features_Q2D, response_Q1
+    return demos_ND, returns_N, QueryWithResponse(features_Q2D, response_Q1)
 
 
 def bt_likelihood(return_i: float, return_j: float, beta: float = 1.0) -> float:
