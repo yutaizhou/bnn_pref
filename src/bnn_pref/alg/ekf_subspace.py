@@ -36,7 +36,7 @@ class SubspaceNeuralBandit:
         n_epochs: int = 1000,
         dynamics_noise: float = 0.0,
         obs_noise: float = 1.0,
-        n_components: Union[float, int] = 0.9999,
+        sub_dim: Union[float, int] = 0.9999,
         rnd_proj: bool = False,
     ):
         """
@@ -65,7 +65,7 @@ class SubspaceNeuralBandit:
             The system noise for the EKF.
         observation_noise: float
             The observation noise for the EKF.
-        n_components: Union[float, int]
+        sub_dim: Union[float, int]
             The number of components to be used for the PCA.
         rnd_proj: bool
             Whether to use random projection.
@@ -87,7 +87,7 @@ class SubspaceNeuralBandit:
         self.n_epochs = n_epochs
         self.system_noise = dynamics_noise
         self.observation_noise = obs_noise
-        self.n_components = n_components
+        self.sub_dim = sub_dim
         self.rnd_proj = rnd_proj
         self.context_dim = None
 
@@ -125,18 +125,18 @@ class SubspaceNeuralBandit:
         params_trace = thinned_samples[-self.n_warmup_iterates :]
 
         if self.rnd_proj:
-            assert type(self.n_components) is int
+            assert type(self.sub_dim) is int
             full_dim = params_trace.shape[-1]
-            sub_dim = self.n_components
+            sub_dim = self.sub_dim
             key, proj_key = jr.split(key, 2)
             projection_matrix = generate_random_basis(proj_key, sub_dim, full_dim)
         else:
-            pca = PCA(n_components=self.n_components)
+            pca = PCA(n_components=self.sub_dim)
             pca.fit(params_trace)
             sub_dim = pca.n_components_
-            if type(self.n_components) is float:
-                print(f"PCA found {sub_dim} components ({self.n_components=:.2%} var)")
-            self.n_components = pca.n_components_
+            if type(self.sub_dim) is float:
+                print(f"PCA found {sub_dim} components ({self.sub_dim=:.2%} var)")
+            self.sub_dim = pca.n_components_
             projection_matrix = device_put(pca.components_)
 
         print(f"Full Space Param Count: {count_params(initial_params)}")

@@ -12,7 +12,7 @@ cls:
   # Subspace Init w/ SGD
   n_epochs: 100 # 6
   n_warmup_iterates: 40
-  n_components: 40 # 3
+  sub_dim: 40 # 3
   rnd_proj: True
   
   # Subspace Inference w/ EKF
