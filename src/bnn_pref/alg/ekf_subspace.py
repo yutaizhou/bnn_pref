@@ -1,5 +1,6 @@
 from typing import Optional, Tuple, Union
 
+import einops
 import jax.numpy as jnp
 import jax.random as jr
 import optax
@@ -15,8 +16,8 @@ from tensorflow_probability.substrates import jax as tfp
 
 from bnn_pref.alg.agent_utils import (
     generate_random_basis,
+    run_sgd,
     subspace2full_params,
-    train_sgd,
 )
 from bnn_pref.utils.network import MLP, count_params
 from bnn_pref.utils.type import CAR, CARL, BeliefState, D, Scalar, TwoD
@@ -91,6 +92,8 @@ class SubspaceNeuralBandit:
         self.rnd_proj = rnd_proj
         self.context_dim = None
 
+        assert self.warm_burns < self.warm_epochs
+
     def init_bel(self, key, warmup_data: CARL) -> BeliefState:
         """
         Run SGD on warmup data, get subspace projection matrix, initialize EKF
@@ -106,7 +109,7 @@ class SubspaceNeuralBandit:
         initial_params = self.model.init(model_key, dummy_context)["params"]
         # print(nn.tabulate(self.model, model_key)(dummy_context))
 
-        initial_ts = TrainState.create(
+        ts = TrainState.create(
             apply_fn=self.model.apply, params=initial_params, tx=self.opt
         )
 
@@ -115,14 +118,8 @@ class SubspaceNeuralBandit:
             loss = optax.softmax_cross_entropy(logits_N2, labels).mean()
             return loss, logits_N2
 
-        warmup_ts, warmup_metrics = train_sgd(
-            initial_ts, loss_fn=loss_fn, n_epochs=self.warm_epochs
-        )
-        assert self.warm_burns < self.warm_epochs
-
-        # (n_iterates, n_full_params)
-        thinned_samples = warmup_metrics["params"][::2]
-        params_trace = thinned_samples[-self.warm_burns :]
+        warm_ts, warm_metrics = run_sgd(ts, loss_fn=loss_fn, n_epochs=self.warm_epochs)
+        params_trace = warm_metrics["params"][self.warm_burns :: 2]
 
         if self.rnd_proj:
             assert type(self.sub_dim) is int
@@ -141,10 +138,8 @@ class SubspaceNeuralBandit:
 
         print(f"Full Space Param Count: {count_params(initial_params)}")
         print(f"Subspace   Param Count: {sub_dim}")
-        Q = jnp.eye(sub_dim) * self.system_noise  # transition model noise
-        R = jnp.eye(1) * self.observation_noise  # obs model noise
 
-        params_full_init, reconstruct_tree_params = ravel_pytree(warmup_ts.params)
+        params_full_init, reconstruct_tree_params = ravel_pytree(warm_ts.params)
         params_subspace_init = jnp.zeros(sub_dim)
         covariance_subspace_init = jnp.eye(sub_dim) * self.prior_noise
 
@@ -191,6 +186,8 @@ class SubspaceNeuralBandit:
             action = inputs[..., -1].astype(int)
             return sub2full_apply(params, context)[action, None]
 
+        Q = jnp.eye(sub_dim) * self.system_noise  # transition model noise
+        R = jnp.eye(1) * self.observation_noise  # obs model noise
         ekf = ParamsNLGSSM(
             initial_mean=params_subspace_init,
             initial_covariance=covariance_subspace_init,
@@ -212,14 +209,10 @@ class SubspaceNeuralBandit:
         prior_mean, prior_cov, t = bel
         context_2D, action, reward = batch
 
+        context = rearrange(context_2D, "Two D -> (Two D)")
+        action = rearrange(action, " -> 1")
+        inputs = jnp.concat((context, action))[None, :]  # (1, 2 * D + 1)
         emission = rearrange(reward, " -> 1 1")
-        inputs = jnp.concat(
-            (
-                jnp.ravel(context_2D),  # (2 * D,)
-                action[None],  # (1,)
-            )
-        )
-        inputs = jnp.expand_dims(inputs, axis=0)  # (1, 2 * D + 1)
 
         self.ekf_params = self.ekf_params._replace(
             initial_mean=prior_mean,

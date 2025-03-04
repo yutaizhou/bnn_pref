@@ -39,7 +39,7 @@ def main(cfg):
     print(f"Seed: {seed}")
     print(f"N={data_kw['n_demos']}, Q={data_kw['n_queries']}, D={data_kw['n_feats']}")
     print(
-        f"EKF: sub_dim={ekf_kw['cls']['sub_dim']}, rnd_proj={ekf_kw['cls']['rnd_proj']}, warm_epochs={ekf_kw['cls']['warm_epochs']}, warm_burns={ekf_kw['cls']['warm_burns']}, warm_obs={ekf_kw['warm_obs']}, n_trials={ekf_kw['n_trials']}"
+        f"EKF: sub_dim={ekf_kw['cls']['sub_dim']}, rnd_proj={ekf_kw['cls']['rnd_proj']}, warm_epochs={ekf_kw['cls']['warm_epochs']}, warm_burns={ekf_kw['cls']['warm_burns']}, warm_obs={ekf_kw['warm_obs']}"
     )
 
     # * generate true params + preference data

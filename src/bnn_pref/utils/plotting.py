@@ -50,7 +50,8 @@ def plot_logpdf(
         ax.scatter(*sample_param, color="b", marker=".", label="Posterior Mean")
 
         # add a few MCMC iterates
-        iterates = samples_SD[jnp.arange(0, samples_SD.shape[0], 30).tolist(), :]
+        indices = jnp.linspace(0, samples_SD.shape[0] - 1, num=30, dtype=jnp.int32)
+        iterates = samples_SD[indices.tolist(), :]
         ax.scatter(
             iterates[:, 0],
             iterates[:, 1],

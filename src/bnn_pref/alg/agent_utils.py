@@ -28,7 +28,7 @@ def generate_random_basis(key, d: int, D: int):
     return P
 
 
-def train_sgd(
+def run_sgd(
     ts: TrainState,
     loss_fn: Callable,
     n_epochs: int = 300,
