@@ -17,7 +17,7 @@ from bnn_pref.alg.mcmc import build_hmc, build_mh, plot_samples, plot_trace, run
 from bnn_pref.data import BradleyTerry, QueryWithResponse, generate_pref_data
 from bnn_pref.utils.utils import (
     alignment_metric,
-    compute_accuracy2,
+    compute_accuracy2_mcmc,
     get_gaussian_vector,
     tile_first_dim,
 )
@@ -78,9 +78,7 @@ def run_dimensinality_exp(cfg):
         response_mQ1 = metadata["response"]
         true_reward_mD = metadata["true_reward"]
 
-        # acc = compute_accuracy2(samples_SD, features_Q2D, response_Q1)
-        # align = alignment_metric(true_reward_D, samples_SD)
-        accs = jax.vmap(compute_accuracy2, in_axes=(0, 0, 0))(
+        accs = jax.vmap(compute_accuracy2_mcmc, in_axes=(0, 0, 0))(
             samples_mSD, features_mQ2D, response_mQ1
         )
         aligns = jax.vmap(alignment_metric, in_axes=(0, 0))(true_reward_mD, samples_mSD)
@@ -96,8 +94,6 @@ def run_dimensinality_exp(cfg):
         print(
             f"{n_feats=}, acc = {accs.mean():.3f} ± {accs.std():.1f}, align = {aligns.mean():.3f} ± {aligns.std():.3f}"
         )
-
-    # plot n_feat vs. accs mean and std, with error bar on std. do this for aligns as well
 
     fig, axs = plt.subplots(1, 1)
     axs.errorbar(

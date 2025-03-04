@@ -17,6 +17,7 @@ from bnn_pref.alg.bandit_env import BanditEnvironment
 from bnn_pref.alg.ekf_subspace import SubspaceNeuralBandit
 from bnn_pref.alg.train_utils import bandit_pipeline, summarize_results
 from bnn_pref.data import BradleyTerry, QueryWithResponse, generate_pref_data
+from bnn_pref.utils.plotting import plot_logpdf, plot_reward_heatmap
 from bnn_pref.utils.type import Q1, Q2, Q2D, SD, D, Q
 from bnn_pref.utils.utils import (
     alignment_metric,
@@ -68,12 +69,41 @@ def main(cfg):
 
     key, key1 = jr.split(key, 2)
     # todo n_trials beliefs..
-    fn = jax.vmap(partial(bandit.predict_rewards, bel.mean[0]))
-    logits = fn(features_Q2D)
-    probs = jax.nn.softmax(logits, axis=1)
-    pred_response_Q = probs.argmax(axis=1)
+    pref_predictor = jax.vmap(partial(bandit.apply_model, bel.mean[0]))
+    logits_Q2 = pref_predictor(features_Q2D)
+    pred_response_Q = logits_Q2.argmax(axis=1)
     acc = jnp.mean(pred_response_Q == response_Q1.squeeze())
-    print(acc)
+    print(f"{acc=:.2%}")
+
+    reward_predictor = jax.vmap(partial(bandit.predict_reward, bel.mean[0]))
+    rewards_Q1 = reward_predictor(features_Q2D[:, 0, :])
+    print(rewards_Q1.shape)
+
+    # todo try other reward function classes
+    linear_reward_fn = lambda features_D, param_D: features_D @ param_D
+
+    if data_kw["n_feats"] == 2:
+        fig, axs = plt.subplots(1, 3, figsize=(12, 5))
+
+        ax = axs[0]
+        reward_fn = partial(linear_reward_fn, param_D=true_reward_D)
+        reward_fn = jax.vmap(jax.vmap(reward_fn))
+        plot_reward_heatmap(
+            ax,
+            reward_fn=reward_fn,
+            bounds=(features_Q2D.min(), features_Q2D.max()),
+            title=f"True Reward {true_reward_D}",
+        )
+
+        ax = axs[1]
+        plot_reward_heatmap(
+            ax,
+            reward_fn=reward_predictor,
+            bounds=(features_Q2D.min(), features_Q2D.max()),
+            title="Posterior Predictive Reward",
+        )
+
+        plt.show()
 
 
 if __name__ == "__main__":

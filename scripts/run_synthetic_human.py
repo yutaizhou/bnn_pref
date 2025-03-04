@@ -18,7 +18,7 @@ from bnn_pref.data import BradleyTerry, QueryWithResponse, generate_pref_data
 from bnn_pref.utils.plotting import plot_logpdf, plot_reward_heatmap
 from bnn_pref.utils.utils import (
     alignment_metric,
-    compute_accuracy2,
+    compute_accuracy2_mcmc,
     get_gaussian_vector,
     print_mcmc_summary,
     tile_first_dim,
@@ -57,7 +57,7 @@ def main(cfg):
     )
 
     # * posterior check
-    acc = compute_accuracy2(samples_SD, features_Q2D, response_Q1)
+    acc = compute_accuracy2_mcmc(samples_SD, features_Q2D, response_Q1)
     align = alignment_metric(true_reward_D, samples_SD)
     print_mcmc_summary(cfg, samples_SD, acc, align, seed)
 

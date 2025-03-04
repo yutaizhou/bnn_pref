@@ -9,7 +9,7 @@ from flax import linen as nn
 from flax.training.train_state import TrainState
 from jax import device_put, jit
 from jax.flatten_util import ravel_pytree
-from jaxtyping import Array
+from jaxtyping import Array, Float
 from sklearn.decomposition import PCA
 from tensorflow_probability.substrates import jax as tfp
 
@@ -19,7 +19,7 @@ from bnn_pref.alg.agent_utils import (
     train_sgd,
 )
 from bnn_pref.utils.network import MLP
-from bnn_pref.utils.type import CAR, CARL, BeliefState
+from bnn_pref.utils.type import CAR, CARL, BeliefState, D, Scalar, TwoD
 
 tfd = tfp.distributions
 
@@ -146,7 +146,23 @@ class SubspaceNeuralBandit:
         params_subspace_init = jnp.zeros(sub_dim)
         covariance_subspace_init = jnp.eye(sub_dim) * self.prior_noise
 
-        def predict_rewards(params_subspace, context):
+        def sub2full_predict_reward(params_subspace, x: D) -> Scalar:
+            params_full = subspace2full_params(
+                params_subspace, projection_matrix, params_full_init
+            )
+            params = reconstruct_tree_params(params_full)
+            # x = jnp.expand_dims(x, axis=0)  # (1, D)
+            outputs = self.model.apply(
+                {"params": params},
+                x,
+                method=self.model.predict_single,
+            )  # (1,)
+            return outputs
+
+        def sub2full_apply(
+            params_subspace,
+            context: Float[Array, "2 D"],
+        ) -> Float[Array, "2"]:
             """
             Project params from subspace to full space, then apply model
             """
@@ -158,7 +174,8 @@ class SubspaceNeuralBandit:
             outputs = self.model.apply({"params": params}, context)  # (1,2)
             return outputs.squeeze(0)  # (2,)
 
-        self.predict_rewards = predict_rewards
+        self.predict_reward = sub2full_predict_reward
+        self.apply_model = sub2full_apply
 
         def dynamics_fn(params, inputs):
             """
@@ -172,7 +189,7 @@ class SubspaceNeuralBandit:
             """
             context = inputs[..., :-1].reshape(2, -1)
             action = inputs[..., -1].astype(int)
-            return predict_rewards(params, context)[action, None]
+            return sub2full_apply(params, context)[action, None]
 
         ekf = ParamsNLGSSM(
             initial_mean=params_subspace_init,
@@ -217,12 +234,12 @@ class SubspaceNeuralBandit:
         bel = BeliefState(posterior_mean, posterior_cov, t + 1)
         return bel
 
-    def choose_action(self, key, bel: BeliefState, context: Array) -> int:
+    def choose_action(self, key, bel: BeliefState, context: Float[Array, "2 D"]) -> int:
         # Thompson sampling strategy
         # Could also use epsilon greedy or UCB
         w = self.sample_params(key, bel)
-        predicted_reward = self.predict_rewards(w, context)
-        action = predicted_reward.argmax()
+        logits_2 = self.apply_model(w, context)
+        action = logits_2.argmax()
         return action
 
     def sample_params(self, key, bel: BeliefState) -> Array:

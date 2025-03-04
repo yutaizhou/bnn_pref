@@ -9,7 +9,7 @@ import jax.scipy as jsp
 from bnn_pref.utils.type import Q1, Q2, Q2D, SD, D, Q
 
 
-def compute_accuracy1(samples_SD, features_Q2D, response_Q1):
+def compute_accuracy1_mcmc(samples_SD, features_Q2D, response_Q1):
     # * approach 1: mean sample from posterior
     mean_weight_D = samples_SD.mean(axis=0)
     mean_weight_D /= jnpl.norm(mean_weight_D)
@@ -21,7 +21,7 @@ def compute_accuracy1(samples_SD, features_Q2D, response_Q1):
     return acc
 
 
-def compute_accuracy2(samples_SD, features_Q2D, response_Q1):
+def compute_accuracy2_mcmc(samples_SD, features_Q2D, response_Q1):
     # * approach 2: mean predictive probability from posterior
     @partial(jax.vmap, in_axes=(None, 0))
     def compute_postpred_mean(params_SD, features_2D):
