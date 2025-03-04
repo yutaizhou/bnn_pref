@@ -1,4 +1,5 @@
 from functools import partial
+from typing import Callable
 
 import jax
 import jax.numpy as jnp
@@ -13,23 +14,23 @@ def linear_reward_fn(features_D: D, param_D: D) -> D:
     return features_D @ param_D
 
 
-def compute_accuracy1_mcmc(samples_SD, features_Q2D, response_Q1):
+def compute_accuracy1_mcmc(samples_SD, features_Q2D, response_Q1, reward_fn: Callable):
     # * approach 1: mean sample from posterior
     mean_weight_D = samples_SD.mean(axis=0)
     mean_weight_D /= jnpl.norm(mean_weight_D)
-    probs_Q2 = jax.nn.softmax(features_Q2D @ mean_weight_D, axis=1)
+    probs_Q2 = jax.nn.softmax(reward_fn(features_Q2D, mean_weight_D), axis=1)
 
     pred_response_Q = probs_Q2.argmax(axis=1)
-    # pred_response_Q = jnp.exp(features_Q2D @ mean_weight_D).argmax(axis=1) # approach 0
+    # pred_response_Q = jnp.exp(reward_fn(features_Q2D, mean_weight_D).argmax(axis=1) # approach 0
     acc = jnp.mean(pred_response_Q == response_Q1.squeeze())
     return acc
 
 
-def compute_accuracy2_mcmc(samples_SD, features_Q2D, response_Q1):
+def compute_accuracy2_mcmc(samples_SD, features_Q2D, response_Q1, reward_fn: Callable):
     # * approach 2: mean predictive probability from posterior
     @partial(jax.vmap, in_axes=(None, 0))
     def compute_postpred_mean(params_SD, features_2D):
-        returns_S2 = params_SD @ features_2D.T
+        returns_S2 = reward_fn(features_2D, params_SD.T).T  # todo make this robust
         probs_S2 = jax.nn.softmax(returns_S2, axis=1)  # BT model
         postpred_mean_prob_2 = probs_S2.mean(0)
         return postpred_mean_prob_2

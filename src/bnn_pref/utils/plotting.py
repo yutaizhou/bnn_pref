@@ -10,6 +10,10 @@ def plot_reward_heatmap(
     bounds: Tuple[float, float],
     title=None,
 ):
+    """
+    reward_fn: Callable, takes in a (100,100,2) feature array and returns a (100,100) reward array
+        may need to be vmapped over the first two dimensions
+    """
     feat_min, feat_max = bounds
     X, Y = jnp.mgrid[feat_min:feat_max:100j, feat_min:feat_max:100j]
     Z = reward_fn(jnp.stack([X, Y], axis=-1)).squeeze()
@@ -23,6 +27,10 @@ def plot_reward_heatmap(
 def plot_logpdf(
     ax, potential_fn, bounds, true_param_D=None, samples_SD=None, title=None
 ):
+    """
+    potential_fn: Callable, takes in a (100,100,2) parameter array and returns a (100,100) logpdf array
+        may need to be vmapped over the first two dimensions
+    """
     param_min, param_max = bounds
     X, Y = jnp.mgrid[param_min:param_max:100j, param_min:param_max:100j]
     Z = potential_fn(jnp.stack([X, Y], axis=-1))

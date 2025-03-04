@@ -2,6 +2,7 @@ from typing import List
 
 import einops
 import flax.linen as nn
+import jax
 import jax.numpy as jnp
 from jaxtyping import Array, Float
 
@@ -9,6 +10,13 @@ B2D = Float[Array, "batch 2 dim"]
 BD = Float[Array, "batch dim"]
 B1 = Float[Array, "batch 1 "]
 B2 = Float[Array, "batch 2 "]
+
+
+def count_params(params_dict: dict) -> int:
+    """
+    params_dict = model.init(key, dummy)["params"]
+    """
+    return sum(x.size for x in jax.tree_util.tree_leaves(params_dict))
 
 
 class RewardNet(nn.Module):

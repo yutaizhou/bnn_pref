@@ -18,7 +18,7 @@ from bnn_pref.alg.agent_utils import (
     subspace2full_params,
     train_sgd,
 )
-from bnn_pref.utils.network import MLP
+from bnn_pref.utils.network import MLP, count_params
 from bnn_pref.utils.type import CAR, CARL, BeliefState, D, Scalar, TwoD
 
 tfd = tfp.distributions
@@ -104,7 +104,7 @@ class SubspaceNeuralBandit:
         key, model_key = jr.split(key, 2)
         dummy_context = jnp.ones((1, 2, self.n_feats))
         initial_params = self.model.init(model_key, dummy_context)["params"]
-        print(nn.tabulate(self.model, model_key)(dummy_context))
+        # print(nn.tabulate(self.model, model_key)(dummy_context))
 
         initial_ts = TrainState.create(
             apply_fn=self.model.apply, params=initial_params, tx=self.opt
@@ -139,6 +139,8 @@ class SubspaceNeuralBandit:
             self.n_components = pca.n_components_
             projection_matrix = device_put(pca.components_)
 
+        print(f"Full Space Param Count: {count_params(initial_params)}")
+        print(f"Subspace   Param Count: {sub_dim}")
         Q = jnp.eye(sub_dim) * self.system_noise  # transition model noise
         R = jnp.eye(1) * self.observation_noise  # obs model noise
 

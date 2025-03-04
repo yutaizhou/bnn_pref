@@ -44,14 +44,20 @@ def main(cfg):
 
     # * generate true weights + preference data
     key, key1, key2 = jr.split(key, 3)
-    true_reward_D = get_gaussian_vector(key1, dim=n_feats, normalize=True)
-    features_Q2D, response_Q1 = generate_pref_data(key2, true_reward_D, **data_kw)
+    true_param_D = get_gaussian_vector(key1, dim=n_feats, normalize=True)
+    true_reward_fn = linear_reward_fn
+    features_Q2D, response_Q1 = generate_pref_data(
+        key2, reward_fn=true_reward_fn, params_D=true_param_D, **data_kw
+    )
     data = QueryWithResponse(features_Q2D, response_Q1)
 
     # * build + run sampler
     key, key1, key2 = jr.split(key, 3)
-    init_sample = jnp.zeros_like(true_reward_D)
-    alg = build_mh(partial(dist.potential, data=data), sigma=mcmc_kw["sigma"])
+    init_sample = jnp.zeros_like(true_param_D)
+    alg = build_mh(
+        partial(dist.potential, data=data, reward_fn=true_reward_fn),
+        sigma=mcmc_kw["sigma"],
+    )
     samples_SD, states, infos = run_mcmc(
         key1,
         alg=alg,
@@ -60,13 +66,13 @@ def main(cfg):
     )
 
     # * posterior check
-    acc = compute_accuracy2_mcmc(samples_SD, features_Q2D, response_Q1)
-    align = alignment_metric(true_reward_D, samples_SD)
+    acc = compute_accuracy2_mcmc(samples_SD, features_Q2D, response_Q1, true_reward_fn)
+    align = alignment_metric(true_param_D, samples_SD)
     print_mcmc_summary(cfg, samples_SD, acc, align, seed)
 
     # * arviz - post processing: label switch
     names = [f"weight_{i}" for i in range(n_feats)]
-    true_reward_D = jnp.sort(true_reward_D)
+    true_param_D = jnp.sort(true_param_D)
     idx = jnp.argsort(samples_SD[-1, :])
     samples_SD = samples_SD[:, idx]
 
@@ -89,9 +95,9 @@ def main(cfg):
     if cfg["show_fig"]:
         axs = az.plot_trace(idata)
         for i in range(n_feats):
-            axs[i, 0].axvline(true_reward_D[i], color="red", label="True", lw=0.5)
+            axs[i, 0].axvline(true_param_D[i], color="red", label="True", lw=0.5)
             axs[i, 0].set_xlim(-1.1, 1.1)
-            axs[i, 1].axhline(true_reward_D[i], color="red", label="True", lw=0.5)
+            axs[i, 1].axhline(true_param_D[i], color="red", label="True", lw=0.5)
             axs[i, 1].set_ylim(-1.1, 1.1)
         plt.tight_layout()
         plt.show()
@@ -114,35 +120,35 @@ def main(cfg):
         fig, axs = plt.subplots(1, 3, figsize=(12, 5))
 
         ax = axs[0]
-        true_reward_fn = partial(linear_reward_fn, param_D=true_reward_D)
-        true_reward_fn = jax.vmap(jax.vmap(true_reward_fn))
+        true_utility_fn = partial(linear_reward_fn, param_D=true_param_D)
+        true_utility_fn = jax.vmap(jax.vmap(true_utility_fn))
         plot_reward_heatmap(
             ax,
-            reward_fn=true_reward_fn,
+            reward_fn=true_utility_fn,
             bounds=(features_Q2D.min(), features_Q2D.max()),
-            title=f"True Reward {true_reward_D}",
+            title=f"True Reward {true_param_D}",
         )
 
         ax = axs[1]
         sample_param = samples_SD.mean(axis=0)
         sample_param /= jnpl.norm(sample_param)
-        posterior_reward_fn = partial(linear_reward_fn, param_D=sample_param)
-        posterior_reward_fn = jax.vmap(jax.vmap(posterior_reward_fn))
+        posterior_utility_fn = partial(linear_reward_fn, param_D=sample_param)
+        posterior_utility_fn = jax.vmap(jax.vmap(posterior_utility_fn))
         plot_reward_heatmap(
             ax,
-            reward_fn=posterior_reward_fn,
+            reward_fn=posterior_utility_fn,
             bounds=(features_Q2D.min(), features_Q2D.max()),
             title=f"Posterior Predictive Reward {sample_param}",
         )
 
         ax = axs[2]
-        potential = partial(dist.potential, data=data)
+        potential = partial(dist.potential, data=data, reward_fn=true_reward_fn)
         potential = jax.vmap(jax.vmap(potential))
         plot_logpdf(
             ax,
             potential_fn=potential,
             bounds=(-1.1, 1.1),
-            true_param_D=true_reward_D,
+            true_param_D=true_param_D,
             samples_SD=samples_SD,
             title="Logpdf",
         )

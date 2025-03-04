@@ -19,13 +19,7 @@ from bnn_pref.alg.train_utils import bandit_pipeline, summarize_results
 from bnn_pref.data import BradleyTerry, QueryWithResponse, generate_pref_data
 from bnn_pref.utils.plotting import plot_logpdf, plot_reward_heatmap
 from bnn_pref.utils.type import Q1, Q2, Q2D, SD, D, Q
-from bnn_pref.utils.utils import (
-    alignment_metric,
-    get_gaussian_vector,
-    get_uniform_vector,
-    linear_reward_fn,
-    tile_first_dim,
-)
+from bnn_pref.utils.utils import get_gaussian_vector, linear_reward_fn
 
 logging.getLogger("jax._src.xla_bridge").setLevel(logging.ERROR)
 jnp.set_printoptions(precision=2)
@@ -44,12 +38,17 @@ def main(cfg):
 
     seed = int(datetime.now().timestamp()) if cfg["seed"] == -1 else cfg["seed"]
     key = jr.key(seed=seed)
+    print(f"Seed: {seed}")
+    print(f"N={data_kw['n_demos']}, Q={data_kw['n_queries']}, D={data_kw['n_feats']}")
 
     # * generate true weights + preference data
     key, key1, key2 = jr.split(key, 3)
-    true_reward_D = get_gaussian_vector(key1, dim=n_feats, normalize=True)
-    features_Q2D, response_Q1 = generate_pref_data(key2, true_reward_D, **data_kw)
-    # data = QueryWithResponse(features_Q2D, response_Q1)
+    true_param_D = get_gaussian_vector(key1, dim=n_feats, normalize=True)
+    true_reward_fn = linear_reward_fn
+    features_Q2D, response_Q1 = generate_pref_data(
+        key2, reward_fn=true_reward_fn, params_D=true_param_D, **data_kw
+    )
+    data = QueryWithResponse(features_Q2D, response_Q1)
 
     # * build + run bandit alg
     key, key1, key2 = jr.split(key, 3)
@@ -87,13 +86,13 @@ def main(cfg):
         fig, axs = plt.subplots(1, 3, figsize=(12, 5))
 
         ax = axs[0]
-        reward_fn = partial(linear_reward_fn, param_D=true_reward_D)
-        reward_fn = jax.vmap(jax.vmap(reward_fn))
+        true_utility_fn = partial(true_reward_fn, param_D=true_param_D)
+        true_utility_fn = jax.vmap(jax.vmap(true_utility_fn))
         plot_reward_heatmap(
             ax,
-            reward_fn=reward_fn,
+            reward_fn=true_utility_fn,
             bounds=(features_Q2D.min(), features_Q2D.max()),
-            title=f"True Reward {true_reward_D}",
+            title=f"True Reward {true_param_D}",
         )
 
         ax = axs[1]
