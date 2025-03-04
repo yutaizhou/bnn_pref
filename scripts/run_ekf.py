@@ -1,31 +1,23 @@
 import logging
-from dataclasses import dataclass
 from datetime import datetime
 from functools import partial
 
-import arviz as az
 import hydra
 import jax
 import jax.numpy as jnp
-import jax.numpy.linalg as jnpl
 import jax.random as jr
-import jax.scipy as jsp
 import matplotlib.pyplot as plt
-import numpy as np
 
 from bnn_pref.alg.bandit_env import BanditEnvironment
 from bnn_pref.alg.ekf_subspace import SubspaceNeuralBandit
 from bnn_pref.alg.train_utils import bandit_pipeline, summarize_results
 from bnn_pref.data import BradleyTerry, QueryWithResponse, generate_pref_data
 from bnn_pref.utils.plotting import plot_logpdf, plot_reward_heatmap
-from bnn_pref.utils.type import Q1, Q2, Q2D, SD, D, Q
-from bnn_pref.utils.utils import get_gaussian_vector, linear_reward_fn
+from bnn_pref.utils.test_functions import test_functions_dict
+from bnn_pref.utils.utils import get_gaussian_vector
 
 logging.getLogger("jax._src.xla_bridge").setLevel(logging.ERROR)
 jnp.set_printoptions(precision=2)
-
-
-# todo try other reward function classes
 
 
 @hydra.main(version_base=None, config_name="config", config_path="../cfg")
@@ -44,7 +36,7 @@ def main(cfg):
     # * generate true weights + preference data
     key, key1, key2 = jr.split(key, 3)
     true_param_D = get_gaussian_vector(key1, dim=n_feats, normalize=True)
-    true_reward_fn = linear_reward_fn
+    true_reward_fn = test_functions_dict[cfg["f"]]
     features_Q2D, response_Q1 = generate_pref_data(
         key2, reward_fn=true_reward_fn, params_D=true_param_D, **data_kw
     )

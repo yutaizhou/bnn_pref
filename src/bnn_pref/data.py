@@ -29,7 +29,7 @@ class BradleyTerry:
         return returns_Q1 - jax.nn.logsumexp(returns_Q2, axis=1, keepdims=True)
 
     @staticmethod
-    def potential(params: D, reward_fn: Callable, data: QueryWithResponse):
+    def potential(params: D, reward_fn: Callable, data: QueryWithResponse) -> float:
         ll_Q = BradleyTerry.logpdf(
             features_Q2D=data.queries,
             response_Q1=data.responses,
@@ -48,7 +48,7 @@ def generate_pref_data(
     n_demos: int,
     n_feats: int,
     n_queries: int,
-):
+) -> Tuple[Q2D, Q1]:
     key, key1, key2 = jr.split(key, 3)
 
     demos_ND = jr.normal(key1, (n_demos, n_feats))
@@ -75,7 +75,7 @@ def generate_pref_data(
         bt_beta=1.0,
     )
 
-    features_Q2D = demos_ND[queries_idx_Q2]  # todo check?
+    features_Q2D = demos_ND[queries_idx_Q2]
 
     return features_Q2D, response_Q1
 

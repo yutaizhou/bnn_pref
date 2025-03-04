@@ -1,5 +1,4 @@
 import logging
-from dataclasses import dataclass
 from datetime import datetime
 from functools import partial
 
@@ -9,26 +8,22 @@ import jax
 import jax.numpy as jnp
 import jax.numpy.linalg as jnpl
 import jax.random as jr
-import jax.scipy as jsp
 import matplotlib.pyplot as plt
-import numpy as np
 
 from bnn_pref.alg.mcmc import build_hmc, build_mh, plot_samples, plot_trace, run_mcmc
 from bnn_pref.data import BradleyTerry, QueryWithResponse, generate_pref_data
 from bnn_pref.utils.plotting import plot_logpdf, plot_reward_heatmap
+from bnn_pref.utils.test_functions import test_functions_dict
 from bnn_pref.utils.utils import (
     alignment_metric,
     compute_accuracy2_mcmc,
     get_gaussian_vector,
-    linear_reward_fn,
     print_mcmc_summary,
     tile_first_dim,
 )
 
 logging.getLogger("jax._src.xla_bridge").setLevel(logging.ERROR)
 jnp.set_printoptions(precision=2)
-
-# todo try other reward function classes
 
 
 @hydra.main(version_base=None, config_name="config", config_path="../cfg")
@@ -39,13 +34,15 @@ def main(cfg):
     dist = BradleyTerry()
     n_feats = data_kw["n_feats"]
 
+    true_reward_fn = test_functions_dict[cfg["f"]]
+    learned_reward_fn = test_functions_dict[cfg["fhat"]]
+
     seed = int(datetime.now().timestamp()) if cfg["seed"] == -1 else cfg["seed"]
     key = jr.key(seed=seed)
 
     # * generate true weights + preference data
     key, key1, key2 = jr.split(key, 3)
     true_param_D = get_gaussian_vector(key1, dim=n_feats, normalize=True)
-    true_reward_fn = linear_reward_fn
     features_Q2D, response_Q1 = generate_pref_data(
         key2, reward_fn=true_reward_fn, params_D=true_param_D, **data_kw
     )
@@ -55,7 +52,7 @@ def main(cfg):
     key, key1, key2 = jr.split(key, 3)
     init_sample = jnp.zeros_like(true_param_D)
     alg = build_mh(
-        partial(dist.potential, data=data, reward_fn=true_reward_fn),
+        partial(dist.potential, data=data, reward_fn=learned_reward_fn),
         sigma=mcmc_kw["sigma"],
     )
     samples_SD, states, infos = run_mcmc(
@@ -66,7 +63,9 @@ def main(cfg):
     )
 
     # * posterior check
-    acc = compute_accuracy2_mcmc(samples_SD, features_Q2D, response_Q1, true_reward_fn)
+    acc = compute_accuracy2_mcmc(
+        samples_SD, features_Q2D, response_Q1, learned_reward_fn
+    )
     align = alignment_metric(true_param_D, samples_SD)
     print_mcmc_summary(cfg, samples_SD, acc, align, seed)
 
@@ -120,7 +119,7 @@ def main(cfg):
         fig, axs = plt.subplots(1, 3, figsize=(12, 5))
 
         ax = axs[0]
-        true_utility_fn = partial(linear_reward_fn, param_D=true_param_D)
+        true_utility_fn = partial(true_reward_fn, param_D=true_param_D)
         true_utility_fn = jax.vmap(jax.vmap(true_utility_fn))
         plot_reward_heatmap(
             ax,
@@ -132,7 +131,7 @@ def main(cfg):
         ax = axs[1]
         sample_param = samples_SD.mean(axis=0)
         sample_param /= jnpl.norm(sample_param)
-        posterior_utility_fn = partial(linear_reward_fn, param_D=sample_param)
+        posterior_utility_fn = partial(learned_reward_fn, param_D=sample_param)
         posterior_utility_fn = jax.vmap(jax.vmap(posterior_utility_fn))
         plot_reward_heatmap(
             ax,
@@ -147,7 +146,9 @@ def main(cfg):
         plot_logpdf(
             ax,
             potential_fn=potential,
-            bounds=(-1.1, 1.1),
+            # bounds=(-1.1, 1.1),
+            bounds=(-3, 3),
+            # bounds=(samples_SD.min(), samples_SD.max()),
             true_param_D=true_param_D,
             samples_SD=samples_SD,
             title="Logpdf",

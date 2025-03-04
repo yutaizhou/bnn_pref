@@ -10,10 +10,6 @@ import jax.scipy as jsp
 from bnn_pref.utils.type import Q1, Q2, Q2D, SD, D, Q
 
 
-def linear_reward_fn(features_D: D, param_D: D) -> D:
-    return features_D @ param_D
-
-
 def compute_accuracy1_mcmc(samples_SD, features_Q2D, response_Q1, reward_fn: Callable):
     # * approach 1: mean sample from posterior
     mean_weight_D = samples_SD.mean(axis=0)
