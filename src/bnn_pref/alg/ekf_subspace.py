@@ -32,8 +32,8 @@ class SubspaceNeuralBandit:
         model: Optional[nn.Module],
         opt,
         prior_noise: float,
-        n_warmup_iterates: int = 1000,
-        n_epochs: int = 1000,
+        warm_burns: int = 1000,
+        warm_epochs: int = 1000,
         dynamics_noise: float = 0.0,
         obs_noise: float = 1.0,
         sub_dim: Union[float, int] = 0.9999,
@@ -83,8 +83,8 @@ class SubspaceNeuralBandit:
 
         self.opt = opt
         self.prior_noise = prior_noise
-        self.n_warmup_iterates = n_warmup_iterates
-        self.n_epochs = n_epochs
+        self.warm_burns = warm_burns
+        self.warm_epochs = warm_epochs
         self.system_noise = dynamics_noise
         self.observation_noise = obs_noise
         self.sub_dim = sub_dim
@@ -116,13 +116,13 @@ class SubspaceNeuralBandit:
             return loss, logits_N2
 
         warmup_ts, warmup_metrics = train_sgd(
-            initial_ts, loss_fn=loss_fn, n_epochs=self.n_epochs
+            initial_ts, loss_fn=loss_fn, n_epochs=self.warm_epochs
         )
-        assert self.n_warmup_iterates < self.n_epochs
+        assert self.warm_burns < self.warm_epochs
 
         # (n_iterates, n_full_params)
         thinned_samples = warmup_metrics["params"][::2]
-        params_trace = thinned_samples[-self.n_warmup_iterates :]
+        params_trace = thinned_samples[-self.warm_burns :]
 
         if self.rnd_proj:
             assert type(self.sub_dim) is int

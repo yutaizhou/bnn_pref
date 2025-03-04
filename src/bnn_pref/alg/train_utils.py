@@ -21,7 +21,7 @@ def bandit_pipeline(
     key,
     bandit_cls,
     env: BanditEnvironment,
-    n_warmup_obs: int,
+    warmup_obs: int,
     n_trials: int,
     bandit_kw: Dict,
 ):
@@ -54,7 +54,7 @@ def bandit_pipeline(
 
     # npulls * n_arms worth of data, (contexts, states, actions, rewards)
     key, key_warmup, key_belief_init = split(key, 3)
-    warmup_data = env.warmup(key_warmup, n_warmup_obs)
+    warmup_data = env.warmup(key_warmup, warmup_obs)
     _, _, warmup_rewards, _ = warmup_data
     bel = bandit.init_bel(key_belief_init, warmup_data)
 

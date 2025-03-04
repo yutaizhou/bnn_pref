@@ -32,6 +32,9 @@ def main(cfg):
     key = jr.key(seed=seed)
     print(f"Seed: {seed}")
     print(f"N={data_kw['n_demos']}, Q={data_kw['n_queries']}, D={data_kw['n_feats']}")
+    print(
+        f"EKF: sub_dim={ekf_kw['cls']['sub_dim']}, rnd_proj={ekf_kw['cls']['rnd_proj']}, warm_epochs={ekf_kw['cls']['warm_epochs']}, warm_burns={ekf_kw['cls']['warm_burns']}, warm_obs={ekf_kw['warm_obs']}, n_trials={ekf_kw['n_trials']}"
+    )
 
     # * generate true weights + preference data
     key, key1, key2 = jr.split(key, 3)
@@ -55,7 +58,7 @@ def main(cfg):
         key2,
         SubspaceNeuralBandit,
         env,
-        n_warmup_obs=ekf_kw["n_warmup_obs"],
+        warmup_obs=ekf_kw["warm_obs"],
         n_trials=ekf_kw["n_trials"],
         bandit_kw=ekf_kw,
     )
