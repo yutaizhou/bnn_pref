@@ -47,10 +47,9 @@ def bandit_pipeline(
         The number of steps to be used for the training phase.
     """
     nsteps, _, nfeatures = env.contexts.shape
-    _, narms = env.labels_onehot.shape
     model = RewardNet(bandit_kw["hidden_sizes"])
     opt = optax.sgd(bandit_kw["learning_rate"])
-    bandit = bandit_cls(nfeatures, narms, model, opt, **bandit_kw["cls"])
+    bandit = bandit_cls(nfeatures, model, opt, **bandit_kw["cls"])
 
     # npulls * n_arms worth of data, (contexts, states, actions, rewards)
     key, key_warmup, key_belief_init = split(key, 3)

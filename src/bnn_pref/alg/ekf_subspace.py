@@ -29,59 +29,43 @@ class SubspaceNeuralBandit:
     def __init__(
         self,
         num_features: int,
-        num_arms: int,
-        model: Optional[nn.Module],
+        model: nn.Module,
         opt,
-        prior_noise: float,
-        warm_burns: int = 1000,
         warm_epochs: int = 1000,
-        dynamics_noise: float = 0.0,
-        obs_noise: float = 1.0,
+        warm_burns: int = 1000,
         sub_dim: Union[float, int] = 0.9999,
         rnd_proj: bool = False,
+        prior_noise: float = 0.0001,
+        dynamics_noise: float = 0.0,
+        obs_noise: float = 1.0,
     ):
         """
         Subspace Neural Bandit implementation.
         Parameters
         ----------
-        num_arms: int
-            Number of bandit arms / number of actions
-        environment : Environment
-            The environment to be used.
+        num_features : int
+            The number of input features of the model.
         model : flax.nn.Module
-            The flax model to be used for the bandits. Note that this model is independent of the
-            model architecture. The only constraint is that the last layer should have the same
-            number of outputs as the number of arms.
+            The flax model to be used for the bandits.
         opt: flax.optim.Optimizer
             The optimizer to be used for training the model.
-        learning_rate : float
-            The learning rate for the optimizer used for the warmup phase.
-        momentum : float
-            The momentum for the optimizer used for the warmup phase.
-        nepochs : int
-            The number of epochs to be used for the warmup SGD phase.
-        n_warmup_iterates: int
-            How many of the SGD iterates to be treated / thrown away as warmup
-        system_noise: float
-            The system noise for the EKF.
-        observation_noise: float
-            The observation noise for the EKF.
+        warm_epochs : int
+            The number of SGD epochs to be used for the warmup phase.
+        warm_burns : int
+            The number of SGD iterates to be thrown away for the warmup phase.
         sub_dim: Union[float, int]
             The number of components to be used for the PCA.
         rnd_proj: bool
             Whether to use random projection.
+        prior_noise : float
+            The prior noise for the EKF.
+        dynamics_noise: float
+            The dynamics noise for the EKF.
+        obs_noise: float
+            The observation noise for the EKF.
         """
         self.num_features = num_features
-        self.num_arms = num_arms
-
-        if model is None:
-            self.model = MLP(500, num_arms)
-        else:
-            try:
-                self.model = model()
-            except:
-                self.model = model
-
+        self.model = model
         self.opt = opt
         self.prior_noise = prior_noise
         self.warm_burns = warm_burns
@@ -140,17 +124,16 @@ class SubspaceNeuralBandit:
         print(f"Subspace   Param Count: {sub_dim}")
 
         params_full_init, reconstruct_tree_params = ravel_pytree(warm_ts.params)
-        params_subspace_init = jnp.zeros(sub_dim)
-        covariance_subspace_init = jnp.eye(sub_dim) * self.prior_noise
 
         def sub2full_predict_reward(params_subspace, x: D) -> Scalar:
             params_full = subspace2full_params(
                 params_subspace, projection_matrix, params_full_init
             )
             params = reconstruct_tree_params(params_full)
-            # x = jnp.expand_dims(x, axis=0)  # (1, D)
             outputs = self.model.apply(
-                {"params": params}, x, method=self.model.predict_single
+                {"params": params},
+                x,
+                method=self.model.predict_single,
             )
             return outputs  # (1,)
 
@@ -186,11 +169,13 @@ class SubspaceNeuralBandit:
             action = inputs[..., -1].astype(int)
             return sub2full_apply(params, context)[action, None]
 
+        params_subspace_init = jnp.zeros(sub_dim)
+        Sigma = jnp.eye(sub_dim) * self.prior_noise
         Q = jnp.eye(sub_dim) * self.system_noise  # transition model noise
         R = jnp.eye(1) * self.observation_noise  # obs model noise
         ekf = ParamsNLGSSM(
             initial_mean=params_subspace_init,
-            initial_covariance=covariance_subspace_init,
+            initial_covariance=Sigma,
             dynamics_function=dynamics_fn,
             dynamics_covariance=Q,
             emission_function=emission_fn,
@@ -198,7 +183,7 @@ class SubspaceNeuralBandit:
         )
         self.ekf_params = ekf
 
-        bel = BeliefState(params_subspace_init, covariance_subspace_init, 0)
+        bel = BeliefState(params_subspace_init, Sigma, 0)
         return bel
 
     def update_bel(
