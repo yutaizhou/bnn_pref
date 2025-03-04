@@ -9,6 +9,10 @@ import jax.scipy as jsp
 from bnn_pref.utils.type import Q1, Q2, Q2D, SD, D, Q
 
 
+def linear_reward_fn(features_D: D, param_D: D) -> D:
+    return features_D @ param_D
+
+
 def compute_accuracy1_mcmc(samples_SD, features_Q2D, response_Q1):
     # * approach 1: mean sample from posterior
     mean_weight_D = samples_SD.mean(axis=0)
@@ -40,7 +44,8 @@ def compute_accuracy2_mcmc(samples_SD, features_Q2D, response_Q1):
 
 def alignment_metric(true_D: D, est_SD: SD):
     """
-    assumes unit L2 norm!
+    Average cosine similarity of MCMC samples wrt true parameter.
+    Assumes unit L2 norm!
     """
     m = (est_SD @ true_D) / (jnpl.norm(est_SD, axis=1) * jnpl.norm(true_D, axis=0))
     return jnp.mean(m)

@@ -20,12 +20,15 @@ from bnn_pref.utils.utils import (
     alignment_metric,
     compute_accuracy2_mcmc,
     get_gaussian_vector,
+    linear_reward_fn,
     print_mcmc_summary,
     tile_first_dim,
 )
 
 logging.getLogger("jax._src.xla_bridge").setLevel(logging.ERROR)
 jnp.set_printoptions(precision=2)
+
+# todo try other reward function classes
 
 
 @hydra.main(version_base=None, config_name="config", config_path="../cfg")
@@ -106,9 +109,6 @@ def main(cfg):
     #     plt.show()
     # if cfg["save_fig"]:
     #     plt.savefig(f"{cfg['paths']['output_dir']}/trace.png")
-
-    # todo try other reward function classes
-    linear_reward_fn = lambda features_D, param_D: features_D @ param_D
 
     if data_kw["n_feats"] == 2:
         fig, axs = plt.subplots(1, 3, figsize=(12, 5))

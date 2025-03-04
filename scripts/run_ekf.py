@@ -23,11 +23,15 @@ from bnn_pref.utils.utils import (
     alignment_metric,
     get_gaussian_vector,
     get_uniform_vector,
+    linear_reward_fn,
     tile_first_dim,
 )
 
 logging.getLogger("jax._src.xla_bridge").setLevel(logging.ERROR)
 jnp.set_printoptions(precision=2)
+
+
+# todo try other reward function classes
 
 
 @hydra.main(version_base=None, config_name="config", config_path="../cfg")
@@ -78,9 +82,6 @@ def main(cfg):
     reward_predictor = jax.vmap(partial(bandit.predict_reward, bel.mean[0]))
     rewards_Q1 = reward_predictor(features_Q2D[:, 0, :])
     print(rewards_Q1.shape)
-
-    # todo try other reward function classes
-    linear_reward_fn = lambda features_D, param_D: features_D @ param_D
 
     if data_kw["n_feats"] == 2:
         fig, axs = plt.subplots(1, 3, figsize=(12, 5))

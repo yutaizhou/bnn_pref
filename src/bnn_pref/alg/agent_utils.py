@@ -10,8 +10,8 @@ from jaxtyping import Array, Float
 
 
 def subspace2full_params(
-    params_subspace: Float[Array, "subspace_dim"],
-    proj_matrix: Float[Array, "subspace_dim full_dim"],
+    params_subspace: Float[Array, "sub_dim"],
+    proj_matrix: Float[Array, "sub_dim full_dim"],
     params_full: Float[Array, "full_dim"],
 ) -> Float[Array, "full_dim"]:
     params = params_subspace @ proj_matrix + params_full
