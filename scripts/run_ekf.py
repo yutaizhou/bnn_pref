@@ -24,7 +24,7 @@ jnp.set_printoptions(precision=2)
 def main(cfg):
     # check RLHF paper
     data_kw = cfg["data"]
-    bandit_kw = cfg["bandit"]
+    ekf_kw = cfg["ekf"]
     dist = BradleyTerry()
     n_feats = data_kw["n_feats"]
 
@@ -55,9 +55,9 @@ def main(cfg):
         key2,
         SubspaceNeuralBandit,
         env,
-        n_warmup_obs=bandit_kw["n_warmup_obs"],
-        n_trials=bandit_kw["n_trials"],
-        bandit_kw=bandit_kw,
+        n_warmup_obs=ekf_kw["n_warmup_obs"],
+        n_trials=ekf_kw["n_trials"],
+        bandit_kw=ekf_kw,
     )
     warmup_rewards, rewards_trace, opt_rewards = rewards_info
     rtotal, rstd = summarize_results(warmup_rewards, rewards_trace)
