@@ -2,11 +2,12 @@ import dataclasses
 from typing import Tuple
 
 import flax
-from jaxtyping import Array, Float, Int
+from jaxtyping import Array, Float, Int, Scalar
 
 # demonstrations
 N = Float[Array, "N"]
 D = Float[Array, "D"]
+TwoD = Float[Array, "2 D"]
 ND = Float[Array, "N features"]
 N1 = Float[Array, "N 1"]
 

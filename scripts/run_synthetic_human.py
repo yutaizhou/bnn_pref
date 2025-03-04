@@ -15,6 +15,7 @@ import numpy as np
 
 from bnn_pref.alg.mcmc import build_hmc, build_mh, plot_samples, plot_trace, run_mcmc
 from bnn_pref.data import BradleyTerry, QueryWithResponse, generate_pref_data
+from bnn_pref.utils.plotting import plot_logpdf, plot_reward_heatmap
 from bnn_pref.utils.utils import (
     alignment_metric,
     compute_accuracy2,
@@ -106,96 +107,41 @@ def main(cfg):
     # if cfg["save_fig"]:
     #     plt.savefig(f"{cfg['paths']['output_dir']}/trace.png")
 
+    # todo try other reward function classes
     linear_reward_fn = lambda features_D, param_D: features_D @ param_D
-
-    def plot_reward_heatmap(ax, reward_fn, title=None):
-        feat_min = features_Q2D.min()
-        feat_max = features_Q2D.max()
-        X, Y = jnp.mgrid[feat_min:feat_max:100j, feat_min:feat_max:100j]
-        Z = jax.vmap(jax.vmap(reward_fn))(jnp.stack([X, Y], axis=-1))
-        # ax.pcolormesh(X, Y, Z)
-        ax.contourf(X, Y, Z, levels=10)
-        ax.set_xlabel("Feature 1")
-        ax.set_ylabel("Feature 2")
-        if title is not None:
-            ax.set_title(title)
-
-    def plot_logpdf(ax, potential, true_param_D=None, samples_SD=None, title=None):
-        param_min = -1.1
-        param_max = 1.1
-        X, Y = jnp.mgrid[param_min:param_max:100j, param_min:param_max:100j]
-        Z = jax.vmap(jax.vmap(potential))(jnp.stack([X, Y], axis=-1))
-        ax.contourf(X, Y, Z, levels=10)
-        ax.set_xlabel("Param 1")
-        ax.set_ylabel("Param 2")
-
-        if title is not None:
-            ax.set_title(title)
-
-        if true_param_D is not None:
-            ax.scatter(*true_param_D, color="r", marker="*", label="True")
-
-        if samples_SD is not None:
-            sample_param = samples_SD.mean(axis=0)
-            sample_param /= jnpl.norm(sample_param)
-            ax.scatter(*sample_param, color="b", marker=".", label="Posterior Mean")
-
-            # add a few MCMC iterates
-            iterates = samples_SD[jnp.arange(0, samples_SD.shape[0], 30).tolist(), :]
-            ax.scatter(
-                iterates[:, 0],
-                iterates[:, 1],
-                color="black",
-                marker="x",
-                alpha=0.1,
-                s=5,
-                label="MCMC Iterates",
-            )
-            # Add confidence ellipses
-            cov = jnp.cov(samples_SD.T)
-            eigvals, eigvecs = jnpl.eigh(cov)
-            theta = jnp.linspace(0, 2 * jnp.pi, 100)
-
-            for n_std in [
-                1,
-            ]:
-                ellipse_x = (
-                    sample_param[0]
-                    + n_std * jnp.sqrt(eigvals[0]) * jnp.cos(theta) * eigvecs[0, 0]
-                    + n_std * jnp.sqrt(eigvals[1]) * jnp.sin(theta) * eigvecs[0, 1]
-                )
-                ellipse_y = (
-                    sample_param[1]
-                    + n_std * jnp.sqrt(eigvals[0]) * jnp.cos(theta) * eigvecs[1, 0]
-                    + n_std * jnp.sqrt(eigvals[1]) * jnp.sin(theta) * eigvecs[1, 1]
-                )
-                ax.plot(
-                    ellipse_x, ellipse_y, "b--", alpha=0.1, label=f"{n_std}σ confidence"
-                )
 
     if data_kw["n_feats"] == 2:
         fig, axs = plt.subplots(1, 3, figsize=(12, 5))
 
         ax = axs[0]
+        true_reward_fn = partial(linear_reward_fn, param_D=true_reward_D)
+        true_reward_fn = jax.vmap(jax.vmap(true_reward_fn))
         plot_reward_heatmap(
             ax,
-            reward_fn=partial(linear_reward_fn, param_D=true_reward_D),
+            reward_fn=true_reward_fn,
+            bounds=(features_Q2D.min(), features_Q2D.max()),
             title=f"True Reward {true_reward_D}",
         )
 
         ax = axs[1]
         sample_param = samples_SD.mean(axis=0)
         sample_param /= jnpl.norm(sample_param)
+        posterior_reward_fn = partial(linear_reward_fn, param_D=sample_param)
+        posterior_reward_fn = jax.vmap(jax.vmap(posterior_reward_fn))
         plot_reward_heatmap(
             ax,
-            reward_fn=partial(linear_reward_fn, param_D=sample_param),
-            title=f"Posterior Mean {sample_param}",
+            reward_fn=posterior_reward_fn,
+            bounds=(features_Q2D.min(), features_Q2D.max()),
+            title=f"Posterior Predictive Reward {sample_param}",
         )
 
         ax = axs[2]
+        potential = partial(dist.potential, data=data)
+        potential = jax.vmap(jax.vmap(potential))
         plot_logpdf(
             ax,
-            potential=partial(dist.potential, data=data),
+            potential_fn=potential,
+            bounds=(-1.1, 1.1),
             true_param_D=true_reward_D,
             samples_SD=samples_SD,
             title="Logpdf",
