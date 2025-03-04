@@ -24,6 +24,15 @@ def compute_reward_nn(reward_predictor: Callable, demos_ND: ND):
     return rewards_N
 
 
+def compute_pref_ranking_acc(reward_predictor: Callable, data: QueryWithResponse):
+    # todo why same output as compute_accuracy_nn?
+    features_Q2D, response_Q1 = data.queries_Q2D, data.responses_Q1
+    left_rewards = reward_predictor(features_Q2D[:, 0, :])
+    right_rewards = reward_predictor(features_Q2D[:, 1, :])
+    pred_prefs = (left_rewards < right_rewards).astype(int)
+    return jnp.mean(pred_prefs == response_Q1.squeeze())
+
+
 def compute_accuracy1_mcmc(samples_SD, data: QueryWithResponse, reward_fn: Callable):
     features_Q2D, response_Q1 = data.queries_Q2D, data.responses_Q1
     # * approach 1: mean sample from posterior

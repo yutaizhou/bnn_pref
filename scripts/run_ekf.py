@@ -20,6 +20,7 @@ from bnn_pref.utils.plotting import plot_logpdf, plot_reward_heatmap
 from bnn_pref.utils.test_functions import test_functions_dict
 from bnn_pref.utils.utils import (
     compute_accuracy_nn,
+    compute_pref_ranking_acc,
     compute_reward_nn,
     get_gaussian_vector,
 )
@@ -83,14 +84,13 @@ def main(cfg):
     # todo n_trials beliefs..
     key, key1 = jr.split(key, 2)
     pref_predictor = jax.vmap(partial(bandit.apply_model, bel.mean[0]))
+    reward_predictor = jax.vmap(partial(bandit.predict_reward, bel.mean[0]))
     train_acc = compute_accuracy_nn(pref_predictor, train_data)
     test_acc = compute_accuracy_nn(pref_predictor, test_data)
+    pref_acc = compute_pref_ranking_acc(reward_predictor, test_data)
     print(f"{train_acc=:.2%}")
     print(f"{test_acc=:.2%}")
-
-    reward_predictor = jax.vmap(partial(bandit.predict_reward, bel.mean[0]))
-    rewards_Q = compute_reward_nn(reward_predictor, test_data.queries_Q2D[:, 0, :])
-    print(rewards_Q.shape)
+    print(f"{pref_acc=:.2%}")
 
     if data_kw["n_feats"] == 2:
         fig, axs = plt.subplots(1, 3, figsize=(12, 5))
