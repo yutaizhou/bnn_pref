@@ -211,7 +211,7 @@ class SubspaceNeuralBandit:
 
         context = rearrange(context_2D, "Two D -> (Two D)")
         action = rearrange(action, " -> 1")
-        inputs = jnp.concat((context, action))[None, :]  # (1, 2 * D + 1)
+        inputs = rearrange(jnp.concat((context, action)), "CA -> 1 CA")
         emission = rearrange(reward, " -> 1 1")
 
         self.ekf_params = self.ekf_params._replace(
