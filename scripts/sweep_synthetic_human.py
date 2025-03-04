@@ -15,12 +15,8 @@ import numpy as np
 
 from bnn_pref.alg.mcmc import build_hmc, build_mh, plot_samples, plot_trace, run_mcmc
 from bnn_pref.data import BradleyTerry, QueryWithResponse, generate_pref_data
-from bnn_pref.utils.utils import (
-    alignment_metric,
-    compute_accuracy2_mcmc,
-    get_gaussian_vector,
-    tile_first_dim,
-)
+from bnn_pref.utils.metrics import alignment_metric, compute_accuracy2_mcmc
+from bnn_pref.utils.utils import get_gaussian_vector, tile_first_dim
 
 
 # @partial(jax.jit, static_argnames=("cfg"))

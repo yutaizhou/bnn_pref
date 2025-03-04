@@ -16,13 +16,9 @@ from run_synthetic_human import BradleyTerry, QueryWithResponse, generate_pref_d
 
 from bnn_pref.alg.mcmc import build_hmc, build_mh, plot_samples, plot_trace, run_mcmc
 from bnn_pref.data import create_pref_data
+from bnn_pref.utils.metrics import alignment_metric
 from bnn_pref.utils.type import Q1, Q2, Q2D, SD, D, Q
-from bnn_pref.utils.utils import (
-    alignment_metric,
-    get_gaussian_vector,
-    get_uniform_vector,
-    tile_first_dim,
-)
+from bnn_pref.utils.utils import get_gaussian_vector, tile_first_dim
 
 
 @hydra.main(version_base=None, config_name="config", config_path="../cfg")
@@ -37,7 +33,6 @@ def main(cfg):
     key = jax.random.key(seed=seed)
     key, key1, key2 = jr.split(key, 3)
     true_reward_D = get_gaussian_vector(key1, dim=data_kw["n_feats"], normalize=True)
-    # true_reward_D = get_uniform_vector(key1, dim=data_kw["n_feats"], normalize=True)
     features_Q2D, response_Q1 = generate_pref_data(key2, true_reward_D, **data_kw)
     data = QueryWithResponse(features_Q2D, response_Q1)
     potential = partial(dist.potential, data=data)

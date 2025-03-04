@@ -16,14 +16,10 @@ from bnn_pref.alg.bandit_env import BanditEnvironment
 from bnn_pref.alg.ekf_subspace import SubspaceNeuralBandit
 from bnn_pref.alg.train_utils import bandit_pipeline, summarize_results
 from bnn_pref.data import BradleyTerry, QueryWithResponse, generate_pref_data
+from bnn_pref.utils.metrics import compute_accuracy_nn, compute_pref_ranking_acc
 from bnn_pref.utils.plotting import plot_logpdf, plot_reward_heatmap
 from bnn_pref.utils.test_functions import test_functions_dict
-from bnn_pref.utils.utils import (
-    compute_accuracy_nn,
-    compute_pref_ranking_acc,
-    compute_reward_nn,
-    get_gaussian_vector,
-)
+from bnn_pref.utils.utils import get_gaussian_vector
 
 logging.getLogger("jax._src.xla_bridge").setLevel(logging.ERROR)
 jnp.set_printoptions(precision=2)
