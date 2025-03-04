@@ -155,11 +155,9 @@ class SubspaceNeuralBandit:
             params = reconstruct_tree_params(params_full)
             # x = jnp.expand_dims(x, axis=0)  # (1, D)
             outputs = self.model.apply(
-                {"params": params},
-                x,
-                method=self.model.predict_single,
-            )  # (1,)
-            return outputs
+                {"params": params}, x, method=self.model.predict_single
+            )
+            return outputs  # (1,)
 
         def sub2full_apply(
             params_subspace,
@@ -212,12 +210,12 @@ class SubspaceNeuralBandit:
         batch: CAR,
     ) -> BeliefState:
         prior_mean, prior_cov, t = bel
-        context, action, reward = batch
+        context_2D, action, reward = batch
 
         emission = rearrange(reward, " -> 1 1")
         inputs = jnp.concat(
             (
-                jnp.ravel(context),  # (2 * D,)
+                jnp.ravel(context_2D),  # (2 * D,)
                 action[None],  # (1,)
             )
         )
@@ -236,11 +234,16 @@ class SubspaceNeuralBandit:
         bel = BeliefState(posterior_mean, posterior_cov, t + 1)
         return bel
 
-    def choose_action(self, key, bel: BeliefState, context: Float[Array, "2 D"]) -> int:
+    def choose_action(
+        self,
+        key,
+        bel: BeliefState,
+        context_2D: Float[Array, "2 D"],
+    ) -> int:
         # Thompson sampling strategy
         # Could also use epsilon greedy or UCB
         w = self.sample_params(key, bel)
-        logits_2 = self.apply_model(w, context)
+        logits_2 = self.apply_model(w, context_2D)
         action = logits_2.argmax()
         return action
 

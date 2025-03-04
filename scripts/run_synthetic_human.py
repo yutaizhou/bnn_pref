@@ -1,3 +1,7 @@
+import os
+
+os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
+os.environ["DISABLE_CODESIGN_WARNING"] = "1"
 import logging
 from datetime import datetime
 from functools import partial
@@ -33,6 +37,7 @@ def main(cfg):
     mcmc_kw = cfg["mcmc"]
     dist = BradleyTerry()
     n_feats = data_kw["n_feats"]
+    n_queries = data_kw["n_queries"]
 
     true_reward_fn = test_functions_dict[cfg["f"]]
     learned_reward_fn = test_functions_dict[cfg["fhat"]]
@@ -40,19 +45,24 @@ def main(cfg):
     seed = int(datetime.now().timestamp()) if cfg["seed"] == -1 else cfg["seed"]
     key = jr.key(seed=seed)
 
-    # * generate true weights + preference data
-    key, key1, key2 = jr.split(key, 3)
+    # * generate true params + preference data
+    key, key1, key2, key3 = jr.split(key, 4)
     true_param_D = get_gaussian_vector(key1, dim=n_feats, normalize=True)
     features_Q2D, response_Q1 = generate_pref_data(
         key2, reward_fn=true_reward_fn, params_D=true_param_D, **data_kw
     )
-    data = QueryWithResponse(features_Q2D, response_Q1)
+    train_idxes, test_idxes = jnp.split(
+        jr.permutation(key3, jnp.arange(n_queries)),
+        [int(n_queries * 0.8)],
+    )
+    train_data = QueryWithResponse(features_Q2D[train_idxes], response_Q1[train_idxes])
+    test_data = QueryWithResponse(features_Q2D[test_idxes], response_Q1[test_idxes])
 
     # * build + run sampler
     key, key1, key2 = jr.split(key, 3)
     init_sample = jnp.zeros_like(true_param_D)
     alg = build_mh(
-        partial(dist.potential, data=data, reward_fn=learned_reward_fn),
+        partial(dist.potential, data=train_data, reward_fn=learned_reward_fn),
         sigma=mcmc_kw["sigma"],
     )
     samples_SD, states, infos = run_mcmc(
@@ -63,11 +73,10 @@ def main(cfg):
     )
 
     # * posterior check
-    acc = compute_accuracy2_mcmc(
-        samples_SD, features_Q2D, response_Q1, learned_reward_fn
-    )
+    train_acc = compute_accuracy2_mcmc(samples_SD, train_data, learned_reward_fn)
+    test_acc = compute_accuracy2_mcmc(samples_SD, test_data, learned_reward_fn)
     align = alignment_metric(true_param_D, samples_SD)
-    print_mcmc_summary(cfg, samples_SD, acc, align, seed)
+    print_mcmc_summary(cfg, samples_SD, train_acc, test_acc, align, seed)
 
     # * arviz - post processing: label switch
     names = [f"weight_{i}" for i in range(n_feats)]
@@ -106,7 +115,8 @@ def main(cfg):
     bbox_dict = {
         "D": data_kw["n_feats"],
         "Q": data_kw["n_queries"],
-        "Acc": acc,
+        "Train Acc": train_acc,
+        "Test Acc": test_acc,
         "m": align,
     }
     # plot_trace(key, all_samples, true_reward_D, bbox_dict=bbox_dict)
@@ -141,7 +151,7 @@ def main(cfg):
         )
 
         ax = axs[2]
-        potential = partial(dist.potential, data=data, reward_fn=true_reward_fn)
+        potential = partial(dist.potential, data=train_data, reward_fn=true_reward_fn)
         potential = jax.vmap(jax.vmap(potential))
         plot_logpdf(
             ax,

@@ -1,3 +1,7 @@
+import os
+
+os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
+os.environ["DISABLE_CODESIGN_WARNING"] = "1"
 import logging
 from datetime import datetime
 from functools import partial
@@ -27,6 +31,7 @@ def main(cfg):
     ekf_kw = cfg["ekf"]
     dist = BradleyTerry()
     n_feats = data_kw["n_feats"]
+    n_queries = data_kw["n_queries"]
 
     seed = int(datetime.now().timestamp()) if cfg["seed"] == -1 else cfg["seed"]
     key = jr.key(seed=seed)
@@ -36,22 +41,27 @@ def main(cfg):
         f"EKF: sub_dim={ekf_kw['cls']['sub_dim']}, rnd_proj={ekf_kw['cls']['rnd_proj']}, warm_epochs={ekf_kw['cls']['warm_epochs']}, warm_burns={ekf_kw['cls']['warm_burns']}, warm_obs={ekf_kw['warm_obs']}, n_trials={ekf_kw['n_trials']}"
     )
 
-    # * generate true weights + preference data
-    key, key1, key2 = jr.split(key, 3)
+    # * generate true params + preference data
+    key, key1, key2, key3 = jr.split(key, 4)
     true_param_D = get_gaussian_vector(key1, dim=n_feats, normalize=True)
     true_reward_fn = test_functions_dict[cfg["f"]]
     features_Q2D, response_Q1 = generate_pref_data(
         key2, reward_fn=true_reward_fn, params_D=true_param_D, **data_kw
     )
-    data = QueryWithResponse(features_Q2D, response_Q1)
+    train_idxes, test_idxes = jnp.split(
+        jr.permutation(key3, jnp.arange(n_queries)),
+        [int(n_queries * 0.8)],
+    )
+    train_data = QueryWithResponse(features_Q2D[train_idxes], response_Q1[train_idxes])
+    test_data = QueryWithResponse(features_Q2D[test_idxes], response_Q1[test_idxes])
 
     # * build + run bandit alg
     key, key1, key2 = jr.split(key, 3)
 
     env = BanditEnvironment(
         key1,
-        X=features_Q2D,
-        Y=jax.nn.one_hot(response_Q1.squeeze(), num_classes=2),
+        X=train_data.queries_Q2D,
+        Y=jax.nn.one_hot(train_data.responses_Q1.squeeze(), num_classes=2),
     )
 
     rewards_info, bel, bandit = bandit_pipeline(
@@ -65,17 +75,17 @@ def main(cfg):
     warmup_rewards, rewards_trace, opt_rewards = rewards_info
     rtotal, rstd = summarize_results(warmup_rewards, rewards_trace)
 
-    key, key1 = jr.split(key, 2)
     # todo n_trials beliefs..
+    key, key1 = jr.split(key, 2)
     pref_predictor = jax.vmap(partial(bandit.apply_model, bel.mean[0]))
-    logits_Q2 = pref_predictor(features_Q2D)
+    logits_Q2 = pref_predictor(test_data.queries_Q2D)
     pred_response_Q = logits_Q2.argmax(axis=1)
-    acc = jnp.mean(pred_response_Q == response_Q1.squeeze())
+    acc = jnp.mean(pred_response_Q == test_data.responses_Q1.squeeze())
     print(f"{acc=:.2%}")
 
     reward_predictor = jax.vmap(partial(bandit.predict_reward, bel.mean[0]))
-    rewards_Q1 = reward_predictor(features_Q2D[:, 0, :])
-    print(rewards_Q1.shape)
+    rewards_Q = reward_predictor(test_data.queries_Q2D[:, 0, :]).squeeze()
+    print(rewards_Q.shape)
 
     if data_kw["n_feats"] == 2:
         fig, axs = plt.subplots(1, 3, figsize=(12, 5))

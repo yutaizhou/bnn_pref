@@ -32,7 +32,7 @@ def run_experiment(cfg, key, n_feats=None):
     data_kw["n_feats"] = n_feats if n_feats is not None else data_kw["n_feats"]
     n_feats = data_kw["n_feats"]
 
-    # * generate true weights + preference data
+    # * generate true params + preference data
     key, key1, key2 = jr.split(key, 3)
     true_reward_D = get_gaussian_vector(key1, dim=n_feats, normalize=True)
     features_Q2D, response_Q1 = generate_pref_data(key2, true_reward_D, **data_kw)

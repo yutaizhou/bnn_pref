@@ -11,29 +11,28 @@ from bnn_pref.utils.type import Q1, Q2, Q2D, D, N
 
 @dataclass
 class QueryWithResponse:
-    queries: Q2D
-    responses: Q1
+    queries_Q2D: Q2D
+    responses_Q1: Q1
 
 
 class BradleyTerry:
     @staticmethod
     def logpdf(
-        features_Q2D: Q2D,
-        response_Q1: Q1,
-        weights_D: D,
+        params_D: D,
+        data: QueryWithResponse,
         reward_fn: Callable,
         beta: float = 1.0,  # rationality constant
     ) -> Q1:
-        returns_Q2 = beta * reward_fn(features_Q2D, weights_D)
+        features_Q2D, response_Q1 = data.queries_Q2D, data.responses_Q1
+        returns_Q2 = beta * reward_fn(features_Q2D, params_D)
         returns_Q1 = jnp.take_along_axis(returns_Q2, response_Q1, axis=1)
         return returns_Q1 - jax.nn.logsumexp(returns_Q2, axis=1, keepdims=True)
 
     @staticmethod
     def potential(params: D, reward_fn: Callable, data: QueryWithResponse) -> float:
         ll_Q = BradleyTerry.logpdf(
-            features_Q2D=data.queries,
-            response_Q1=data.responses,
-            weights_D=params,
+            params_D=params,
+            data=data,
             reward_fn=reward_fn,
         )
         # prior = # just uniform log 1

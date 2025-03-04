@@ -32,7 +32,7 @@ def main(cfg):
     mcmc_kw = cfg["mcmc"]
     dist = BradleyTerry()
 
-    # * generate true weights + preference data
+    # * generate true params + preference data
     seed = int(datetime.now().timestamp()) if cfg["seed"] == -1 else cfg["seed"]
     key = jax.random.key(seed=seed)
     key, key1, key2 = jr.split(key, 3)

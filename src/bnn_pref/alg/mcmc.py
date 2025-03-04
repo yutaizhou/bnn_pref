@@ -95,7 +95,7 @@ def plot_trace(key, samples_SD, true_D, bbox_dict=None):
     # legends
     handles, labels = ax.get_legend_handles_labels()
     fig.legend(handles, labels, loc="upper right")
-    fig.suptitle("True vs. Estimated Weights")
+    fig.suptitle("True vs. Estimated Params")
     fig.tight_layout()
 
     # Hyperparameters to display in box

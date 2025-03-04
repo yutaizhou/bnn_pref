@@ -7,10 +7,12 @@ import jax.numpy.linalg as jnpl
 import jax.random as jr
 import jax.scipy as jsp
 
-from bnn_pref.utils.type import Q1, Q2, Q2D, SD, D, Q
+from bnn_pref.data import QueryWithResponse
+from bnn_pref.utils.type import Q1, Q2, Q2D, SD, D
 
 
-def compute_accuracy1_mcmc(samples_SD, features_Q2D, response_Q1, reward_fn: Callable):
+def compute_accuracy1_mcmc(samples_SD, data: QueryWithResponse, reward_fn: Callable):
+    features_Q2D, response_Q1 = data.queries_Q2D, data.responses_Q1
     # * approach 1: mean sample from posterior
     mean_weight_D = samples_SD.mean(axis=0)
     mean_weight_D /= jnpl.norm(mean_weight_D)
@@ -22,7 +24,9 @@ def compute_accuracy1_mcmc(samples_SD, features_Q2D, response_Q1, reward_fn: Cal
     return acc
 
 
-def compute_accuracy2_mcmc(samples_SD, features_Q2D, response_Q1, reward_fn: Callable):
+def compute_accuracy2_mcmc(samples_SD, data: QueryWithResponse, reward_fn: Callable):
+    features_Q2D, response_Q1 = data.queries_Q2D, data.responses_Q1
+
     # * approach 2: mean predictive probability from posterior
     @partial(jax.vmap, in_axes=(None, 0))
     def compute_postpred_mean(params_SD, features_2D):
@@ -68,7 +72,14 @@ def tile_first_dim(x: jnp.ndarray, reps: int):
     return jnp.tile(expanded, tile_seq)
 
 
-def print_mcmc_summary(cfg, samples_SD, acc: float, align: float, seed: int):
+def print_mcmc_summary(
+    cfg,
+    samples_SD,
+    train_acc: float,
+    test_acc: float,
+    align: float,
+    seed: int,
+):
     data_kw = cfg["data"]
     mcmc_kw = cfg["mcmc"]
 
@@ -78,5 +89,6 @@ def print_mcmc_summary(cfg, samples_SD, acc: float, align: float, seed: int):
         f"{mcmc_kw['n_samples']} samples w/ {mcmc_kw['burn_in']} burn-in, then {mcmc_kw['thinning']} thinning"
     )
     print(f"MCMC Samples: {samples_SD.shape}")
-    print(f"Accuracy: {acc:.2%}")
+    print(f"Train acc: {train_acc:.2%}")
+    print(f"Test acc: {test_acc:.2%}")
     print(f"Cosine Sim: {align:.2f}")
