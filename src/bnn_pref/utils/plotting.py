@@ -9,6 +9,7 @@ def plot_reward_heatmap(
     reward_fn: Callable,
     bounds: Tuple[float, float],
     title=None,
+    plot_3d: bool = False,
 ):
     """
     reward_fn: Callable, takes in a (100,100,2) feature array and returns a (100,100) reward array
@@ -17,7 +18,11 @@ def plot_reward_heatmap(
     feat_min, feat_max = bounds
     X, Y = jnp.mgrid[feat_min:feat_max:100j, feat_min:feat_max:100j]
     Z = reward_fn(jnp.stack([X, Y], axis=-1)).squeeze()
-    ax.contourf(X, Y, Z, levels=10)
+    if plot_3d:
+        ax.plot_surface(X, Y, Z, cmap="viridis")
+        ax.set_zlabel("Reward")
+    else:
+        ax.contourf(X, Y, Z, levels=10)
     ax.set_xlabel("Feature 1")
     ax.set_ylabel("Feature 2")
     if title is not None:

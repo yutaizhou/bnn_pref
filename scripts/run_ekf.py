@@ -90,25 +90,31 @@ def main(cfg):
     print(f"{pref_acc=:.2%}")
 
     if data_kw["n_feats"] == 2:
-        fig, axs = plt.subplots(1, 3, figsize=(12, 5))
+        # fig, axs = plt.subplots(1, 3, figsize=(12, 5))
+        nrows, ncols = 2, 3
+        fig = plt.figure(figsize=(12, 5))
 
-        ax = axs[0]
         true_utility_fn = partial(true_reward_fn, param_D=true_param_D)
         true_utility_fn = jax.vmap(jax.vmap(true_utility_fn))
-        plot_reward_heatmap(
-            ax,
-            reward_fn=true_utility_fn,
-            bounds=(features_Q2D.min(), features_Q2D.max()),
-            title=f"True Reward {true_param_D}",
-        )
+        title = f"True Reward {true_param_D}"
+        true_reward_plotkw = {
+            "reward_fn": true_utility_fn,
+            "bounds": (features_Q2D.min(), features_Q2D.max()),
+        }
+        ax = fig.add_subplot(nrows, ncols, 1, projection="3d", title=title)
+        plot_reward_heatmap(ax, **true_reward_plotkw, plot_3d=True)
+        ax = fig.add_subplot(nrows, ncols, 4)
+        plot_reward_heatmap(ax, **true_reward_plotkw, plot_3d=False)
 
-        ax = axs[1]
-        plot_reward_heatmap(
-            ax,
-            reward_fn=reward_predictor,
-            bounds=(features_Q2D.min(), features_Q2D.max()),
-            title="Posterior Predictive Reward",
-        )
+        learned_reward_plotkw = {
+            "reward_fn": reward_predictor,
+            "bounds": (features_Q2D.min(), features_Q2D.max()),
+        }
+        title = "Learned Reward"
+        ax = fig.add_subplot(nrows, ncols, 2, projection="3d", title=title)
+        plot_reward_heatmap(ax, **learned_reward_plotkw, plot_3d=True)
+        ax = fig.add_subplot(nrows, ncols, 5)
+        plot_reward_heatmap(ax, **learned_reward_plotkw, plot_3d=False)
 
         plt.show()
 
