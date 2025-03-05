@@ -80,15 +80,14 @@ def run_bandit(
     warmup_contexts, warmup_actions, warmup_rewards, _ = warmup_data
     nwarmup = len(warmup_rewards)
 
-    # start from t=nwarmup, end at t=nsteps
-    steps = jnp.arange(nsteps - nwarmup) + nwarmup
+    steps = jnp.arange(nwarmup, nsteps)
     keys = split(key, nsteps - nwarmup)
 
     def step(
         bel: BeliefState,
-        curr: Tuple[Key, int],
+        curr: Tuple[int, Key],
     ) -> Tuple[BeliefState, CAR]:
-        mykey, t = curr
+        t, mykey = curr
 
         context = env.get_context(t)
         action = bandit.choose_action(mykey, bel, context)
@@ -99,7 +98,7 @@ def run_bandit(
 
         return bel, batch
 
-    final_bel, data = scan(step, init=bel, xs=(keys, steps))
+    final_bel, data = scan(step, init=bel, xs=(steps, keys))
 
     contexts = jnp.vstack([warmup_contexts, data.contexts])
     actions = jnp.append(warmup_actions, data.actions)

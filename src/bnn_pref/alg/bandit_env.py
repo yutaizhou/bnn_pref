@@ -39,27 +39,27 @@ class BanditEnvironment:
 
         Outputs:
             contexts: jnp.ndarray
-                (n_pulls * n_actions, n_features)
+                (n_warmups, n_features)
             actions: jnp.ndarray
-                (n_pulls * n_actions,)
+                (n_warmups,)
             rewards: jnp.ndarray
-                (n_pulls * n_actions,)
+                (n_warmups,)
             labels: jnp.ndarray
-                (n_pulls * n_actions, n_actions), one-hot
+                (n_warmups, n_actions), one-hot
         """
         assert n_warmups <= self.n_obs, "more warmups than dataset size"
         # Create array of round-robin actions: 0, 1, 2, 0, 1, 2,  ...
         # actions = jnp.tile(jnp.arange(self.n_actions), n_warmups)
+        idxes = jnp.arange(n_warmups)
         actions = jr.randint(key, shape=(n_warmups,), minval=0, maxval=self.n_actions)
-        time_steps = jnp.arange(len(actions))
 
         @partial(jax.vmap, in_axes=(0, 0))
-        def get_contexts_and_rewards(t: int, a: int):
-            context = self.get_context(t)
-            label = self.get_label(t)
-            reward = self.get_reward(t, a)
+        def get_contexts_and_rewards(i: int, a: int):
+            context = self.get_context(i)
+            label = self.get_label(i)
+            reward = self.get_reward(i, a)
             return context, label, reward
 
-        contexts, labels, rewards = get_contexts_and_rewards(time_steps, actions)
+        contexts, labels, rewards = get_contexts_and_rewards(idxes, actions)
 
         return CARL(contexts, actions, rewards, labels)
