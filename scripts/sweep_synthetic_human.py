@@ -2,6 +2,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime
 from functools import partial
+from pathlib import Path
 
 import arviz as az
 import hydra
@@ -82,16 +83,16 @@ def run_dimensinality_exp(cfg):
     key = jr.key(seed)
 
     # n_feats_list = [2, 3]
-    # n_feats_list = [2, 3, 5, 8, 15, 30, 50, 100, 200, 500]
     n_feats_list = [3, 10, 30, 50, 100, 150, 300, 500, 1000]
     stats = []
     for n_feats in n_feats_list:
         key, *subkeys = jr.split(key, 1 + cfg["seeds"])  # m = 1 + n_seeds
-        # samples_SD, metadata = run_experiment(cfg, subkey, n_feats=n_feats)
+
+        start_time = datetime.now()
         results, metadata = jax.vmap(run_experiment, in_axes=(None, 0, None))(
             cfg, jnp.array(subkeys), n_feats
         )
-
+        duration = (datetime.now() - start_time).total_seconds()
         stats.append(
             {
                 "n_feats": n_feats,
@@ -102,8 +103,9 @@ def run_dimensinality_exp(cfg):
             }
         )
         print(
-            f"{n_feats=}, acc = {results['accs'].mean():.2%} ± {results['accs'].std():.1%}, "
-            f"align = {results['aligns'].mean():.2%} ± {results['aligns'].std():.1%}"
+            f"n_feats={n_feats:4}, acc = {results['accs'].mean():.2%} ± {results['accs'].std():.1%}, "
+            f"align = {results['aligns'].mean():.2f} ± {results['aligns'].std():.1f}, "
+            f"Time: {duration:.1f} seconds"
         )
 
     fig, axs = plt.subplots(1, 1)
@@ -128,6 +130,9 @@ def run_dimensinality_exp(cfg):
     axs.set_xlabel("Num Dimensions")
     axs.set_ylim(0, 1)
     plt.show()
+
+    fp = Path(cfg.paths.output_dir) / "mcmc_sweep.png"
+    plt.savefig(fp)
 
 
 if __name__ == "__main__":

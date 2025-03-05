@@ -97,9 +97,8 @@ def main(cfg):
     key = jr.key(seed)
 
     # n_feats_list = [3, 10, 30]
-    # n_feats_list = [3, 10, 15, 30, 40, 50, 80, 100, 150, 300, 500, 1000, 2000]
-    n_feats_list = [3, 10, 30, 50, 100, 150, 300, 500, 1000, 2000, 4000, 8000]
-    # n_feats_list = [500, 1000]
+    n_feats_list = [3, 10, 30, 50, 100, 150, 300, 500, 1000]
+    # n_feats_list = [3, 10, 30, 50, 100, 150, 300, 500, 1000, 2000, 4000, 8000]
 
     stats = []
     for n_feats in n_feats_list:

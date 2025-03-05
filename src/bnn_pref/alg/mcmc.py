@@ -6,7 +6,6 @@ import jax.numpy as jnp
 import jax.random as jr
 import jax.scipy as jsp
 import matplotlib.pyplot as plt
-from jax_tqdm import scan_tqdm
 
 
 def run_mcmc(
