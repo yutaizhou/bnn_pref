@@ -22,7 +22,6 @@ def bandit_pipeline(
     bandit_cls,
     env: BanditEnvironment,
     warmup_obs: int,
-    n_trials: int,
     bandit_kw: Dict,
 ):
     """
@@ -32,41 +31,21 @@ def bandit_pipeline(
     3. Init belief on warmup data: sgd + PCA/random projection + EKF init
     4. Run trials: interact with the env and run EKF filtering
     5. Return rewards from: warmup, trials, and opt_rewards
-
-    Parameters
-    ----------
-    npulls: int
-        The number of pulls (per arm) to be used for the warmup phase.
-    n_trials: int
-        The number of trials to be used for the training phase.
-    bandit_kwargs: Dict
-        The keyword arguments to be used for the bandit.
-    neural: bool
-        Whether to use a neural network for the bandit.
-    nsteps: int
-        The number of steps to be used for the training phase.
     """
     nsteps, _, nfeatures = env.contexts.shape
     model = RewardNet(bandit_kw["hidden_sizes"])
     opt = optax.sgd(bandit_kw["learning_rate"])
     bandit = bandit_cls(nfeatures, model, opt, **bandit_kw["cls"])
 
-    # npulls * n_arms worth of data, (contexts, states, actions, rewards)
     key, key_warmup, key_belief_init = split(key, 3)
     warmup_data = env.warmup(key_warmup, warmup_obs)
     _, _, warmup_rewards, _ = warmup_data
+
     bel = bandit.init_bel(key_belief_init, warmup_data)
+    bel_trace, batches = run_bandit(key, bandit, bel, env, warmup_data, nsteps=nsteps)
+    rewards_info = (warmup_rewards, batches.rewards, env.opt_rewards)  # all 1D
 
-    def single_trial(key):
-        final_bel, batch = run_bandit(key, bandit, bel, env, warmup_data, nsteps=nsteps)
-        return final_bel, batch.rewards
-
-    keys = split(key, n_trials)
-    final_bel, rewards_trace = vmap(single_trial)(keys)
-
-    rewards_info = (warmup_rewards, rewards_trace, env.opt_rewards)
-
-    return rewards_info, final_bel, bandit
+    return rewards_info, bel_trace, bandit
 
 
 def run_bandit(
@@ -76,7 +55,7 @@ def run_bandit(
     env: BanditEnvironment,
     warmup_data: CARL,
     nsteps: int,
-):
+) -> Tuple[BeliefState, CAR]:
     warmup_contexts, warmup_actions, warmup_rewards, _ = warmup_data
     nwarmup = len(warmup_rewards)
 
@@ -96,15 +75,15 @@ def run_bandit(
 
         bel = bandit.update_bel(bel, batch)
 
-        return bel, batch
+        return bel, (bel, batch)
 
-    final_bel, data = scan(step, init=bel, xs=(steps, keys))
+    final_bel, (bel_trace, batches) = scan(step, init=bel, xs=(steps, keys))
 
-    contexts = jnp.vstack([warmup_contexts, data.contexts])
-    actions = jnp.append(warmup_actions, data.actions)
-    rewards = jnp.append(warmup_rewards, data.rewards)
+    contexts = jnp.vstack([warmup_contexts, batches.contexts])
+    actions = jnp.append(warmup_actions, batches.actions)
+    rewards = jnp.append(warmup_rewards, batches.rewards)
 
-    return final_bel, CAR(contexts, actions, rewards)
+    return bel_trace, CAR(contexts, actions, rewards)
 
 
 def summarize_results(warmup_rewards, rewards):

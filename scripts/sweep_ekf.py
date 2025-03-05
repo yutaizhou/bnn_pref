@@ -56,21 +56,19 @@ def run_ekf(key, cfg, n_feats=None):
         Y=jax.nn.one_hot(train_data.responses_Q1.squeeze(), num_classes=2),
     )
 
-    rewards_info, bel, bandit = bandit_pipeline(
+    rewards_info, bel_trace, bandit = bandit_pipeline(
         key2,
         SubspaceNeuralBandit,
         env,
         warmup_obs=ekf_kw["warm_obs"],
-        n_trials=ekf_kw["n_trials"],
         bandit_kw=ekf_kw,
     )
-    warmup_rewards, rewards_trace, opt_rewards = rewards_info
-    # rtotal, rstd = summarize_results(warmup_rewards, rewards_trace)
+    bel = jax.tree_util.tree_map(lambda x: x[-1], bel_trace)
+    warmup_rewards, rewards_trace, _ = rewards_info
 
-    # todo n_trials beliefs..
     key, key1 = jr.split(key, 2)
-    pref_predictor = jax.vmap(partial(bandit.apply_model, bel.mean[0]))
-    reward_predictor = jax.vmap(partial(bandit.predict_reward, bel.mean[0]))
+    pref_predictor = jax.vmap(partial(bandit.apply_model, bel.mean))
+    reward_predictor = jax.vmap(partial(bandit.predict_reward, bel.mean))
     train_acc = compute_accuracy_nn(pref_predictor, train_data)
     test_acc = compute_accuracy_nn(pref_predictor, test_data)
     pref_acc = compute_pref_ranking_acc(reward_predictor, test_data)

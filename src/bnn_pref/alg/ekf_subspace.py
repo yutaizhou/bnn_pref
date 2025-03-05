@@ -11,7 +11,6 @@ from flax.training.train_state import TrainState
 from jax import device_put, jit
 from jax.flatten_util import ravel_pytree
 from jaxtyping import Array, Float
-from sklearn.decomposition import PCA
 from tensorflow_probability.substrates import jax as tfp
 
 from bnn_pref.alg.agent_utils import (
@@ -20,7 +19,7 @@ from bnn_pref.alg.agent_utils import (
     run_sgd,
     subspace2full_params,
 )
-from bnn_pref.utils.network import MLP, count_params
+from bnn_pref.utils.network import count_params
 from bnn_pref.utils.type import CAR, CARL, BeliefState, D, Scalar, TwoD
 
 tfd = tfp.distributions
