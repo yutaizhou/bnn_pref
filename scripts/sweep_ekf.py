@@ -29,21 +29,15 @@ def run_ekf(key, cfg, n_feats=None):
     data_kw = cfg["data"]
     ekf_kw = cfg["ekf"]
     dist = BradleyTerry()
+    data_kw["n_feats"] = n_feats if n_feats is not None else data_kw["n_feats"]
     n_feats = data_kw["n_feats"]
     n_queries = data_kw["n_queries"]
     n_demos = data_kw["n_demos"]
-    seed = int(datetime.now().timestamp()) if cfg["seed"] == -1 else cfg["seed"]
-    key = jr.key(seed=seed)
-    # print(f"Seed: {seed}")
-    # print(f"N={data_kw['n_demos']}, Q={data_kw['n_queries']}, D={data_kw['n_feats']}")
-    # print(
-    #     f"EKF: sub_dim={ekf_kw['cls']['sub_dim']}, rnd_proj={ekf_kw['cls']['rnd_proj']}, warm_epochs={ekf_kw['cls']['warm_epochs']}, warm_burns={ekf_kw['cls']['warm_burns']}, warm_obs={ekf_kw['warm_obs']}"
-    # )
 
     # * generate true params + preference data
+    true_reward_fn = test_functions_dict[cfg["f"]]
     key, key1, key2, key3 = jr.split(key, 4)
     true_param_D = get_gaussian_vector(key1, dim=n_feats, normalize=True)
-    true_reward_fn = test_functions_dict[cfg["f"]]
     demos_ND, returns_N, pref_data = generate_pref_data(
         key2, reward_fn=true_reward_fn, params_D=true_param_D, **data_kw
     )
@@ -88,7 +82,12 @@ def run_ekf(key, cfg, n_feats=None):
         "pref_acc": pref_acc,
     }
 
-    return results
+    metadata = {
+        "full_param_count": bandit.full_params_count,
+        "subspace_param_count": bandit.subspace_params_count,
+    }
+
+    return results, metadata
 
 
 @hydra.main(version_base=None, config_name="config", config_path="../cfg")
@@ -103,7 +102,7 @@ def main(cfg):
     for n_feats in n_feats_list:
         # Run multiple seeds
         key, *subkeys = jr.split(key, 1 + n_seeds)  # m = 1 + n_seeds
-        results_m = jax.vmap(run_ekf, in_axes=(0, None, None))(
+        results_m, metadata_m = jax.vmap(run_ekf, in_axes=(0, None, None))(
             jnp.array(subkeys), cfg, n_feats
         )
 
@@ -116,8 +115,10 @@ def main(cfg):
             }
         )
         print(
-            f"{n_feats=}, acc = {results_m['test_acc'].mean():.3f} ± {results_m['test_acc'].std():.1f}"
+            f"{n_feats=}, acc = {results_m['test_acc'].mean():.2%} ± {results_m['test_acc'].std():.1%}, "
+            f"Param count: {metadata_m['full_param_count'][0]} -> {metadata_m['subspace_param_count'][0]}"
         )
+
     fig, axs = plt.subplots(1, 1)
     axs.errorbar(
         [stat["n_feats"] for stat in stats],

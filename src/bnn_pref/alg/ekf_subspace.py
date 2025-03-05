@@ -15,6 +15,7 @@ from sklearn.decomposition import PCA
 from tensorflow_probability.substrates import jax as tfp
 
 from bnn_pref.alg.agent_utils import (
+    JaxPCA,
     generate_random_basis,
     run_sgd,
     subspace2full_params,
@@ -112,10 +113,18 @@ class SubspaceNeuralBandit:
             key, proj_key = jr.split(key, 2)
             projection_matrix = generate_random_basis(proj_key, sub_dim, full_dim)
         else:
-            pca = PCA(n_components=self.sub_dim)
+            # pca = PCA(n_components=self.sub_dim)
+            # pca.fit(params_trace)
+            # sub_dim = pca.n_components_
+            # if type(self.sub_dim) is float:
+            #     print(f"PCA found {sub_dim} components ({self.sub_dim=:.2%} var)")
+            # self.sub_dim = pca.n_components_
+            # projection_matrix = device_put(pca.components_)
+
+            pca = JaxPCA(n_components=self.sub_dim)
             pca.fit(params_trace)
             sub_dim = pca.n_components_
-            if type(self.sub_dim) is float:
+            if isinstance(self.sub_dim, float):
                 print(f"PCA found {sub_dim} components ({self.sub_dim=:.2%} var)")
             self.sub_dim = pca.n_components_
             projection_matrix = device_put(pca.components_)

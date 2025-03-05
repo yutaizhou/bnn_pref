@@ -29,9 +29,9 @@ def run_experiment(cfg, key, n_feats=None):
     data_kw["n_feats"] = n_feats if n_feats is not None else data_kw["n_feats"]
     n_feats = data_kw["n_feats"]
     n_queries = data_kw["n_queries"]
-    true_reward_fn = test_functions_dict[cfg["f"]]
 
     # * generate true params + preference data
+    true_reward_fn = test_functions_dict[cfg["f"]]
     key, key1, key2, key3 = jr.split(key, 4)
     true_param_D = get_gaussian_vector(key1, dim=n_feats, normalize=True)
     demos_ND, returns_N, pref_data = generate_pref_data(
@@ -103,7 +103,8 @@ def run_dimensinality_exp(cfg):
             }
         )
         print(
-            f"{n_feats=}, acc = {results['accs'].mean():.3f} ± {results['accs'].std():.1f}, align = {results['aligns'].mean():.3f} ± {results['aligns'].std():.3f}"
+            f"{n_feats=}, acc = {results['accs'].mean():.2%} ± {results['accs'].std():.1%}, "
+            f"align = {results['aligns'].mean():.2%} ± {results['aligns'].std():.1%}"
         )
 
     fig, axs = plt.subplots(1, 1)
