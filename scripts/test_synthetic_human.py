@@ -30,7 +30,7 @@ def main(cfg):
 
     # * generate true params + preference data
     seed = int(datetime.now().timestamp()) if cfg["seed"] == -1 else cfg["seed"]
-    key = jax.random.key(seed=seed)
+    key = jr.key(seed)
     key, key1, key2 = jr.split(key, 3)
     true_reward_D = get_gaussian_vector(key1, dim=data_kw["n_feats"], normalize=True)
     features_Q2D, response_Q1 = generate_pref_data(key2, true_reward_D, **data_kw)

@@ -79,15 +79,14 @@ def run_experiment(cfg, key, n_feats=None):
 @hydra.main(version_base=None, config_name="config", config_path="../cfg")
 def run_dimensinality_exp(cfg):
     seed = int(datetime.now().timestamp()) if cfg["seed"] == -1 else cfg["seed"]
-    key = jr.key(seed=seed)
-    n_seeds = 3
+    key = jr.key(seed)
 
     # n_feats_list = [2, 3]
     # n_feats_list = [2, 3, 5, 8, 15, 30, 50, 100, 200, 500]
     n_feats_list = [3, 10, 30, 50, 100, 150, 300, 500, 1000]
     stats = []
     for n_feats in n_feats_list:
-        key, *subkeys = jr.split(key, 1 + n_seeds)  # m = 1 + n_seeds
+        key, *subkeys = jr.split(key, 1 + cfg["seeds"])  # m = 1 + n_seeds
         # samples_SD, metadata = run_experiment(cfg, subkey, n_feats=n_feats)
         results, metadata = jax.vmap(run_experiment, in_axes=(None, 0, None))(
             cfg, jnp.array(subkeys), n_feats

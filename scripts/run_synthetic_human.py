@@ -38,7 +38,7 @@ def main(cfg):
     learned_reward_fn = test_functions_dict[cfg["fhat"]]
 
     seed = int(datetime.now().timestamp()) if cfg["seed"] == -1 else cfg["seed"]
-    key = jr.key(seed=seed)
+    key = jr.key(seed)
 
     # * generate true params + preference data
     key, key1, key2, key3 = jr.split(key, 4)

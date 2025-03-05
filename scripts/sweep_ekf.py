@@ -1,8 +1,5 @@
-import os
-
-os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
-os.environ["DISABLE_CODESIGN_WARNING"] = "1"
 import logging
+import os
 from datetime import datetime
 from functools import partial
 
@@ -25,6 +22,7 @@ logging.getLogger("jax._src.xla_bridge").setLevel(logging.ERROR)
 jnp.set_printoptions(precision=2)
 
 
+@partial(jax.jit, static_argnums=(1, 2))
 def run_ekf(key, cfg, n_feats=None):
     data_kw = cfg["data"]
     ekf_kw = cfg["ekf"]
@@ -82,6 +80,8 @@ def run_ekf(key, cfg, n_feats=None):
         "pref_acc": pref_acc,
     }
 
+    results = jax.tree.map(lambda x: jnp.float32(x), results)
+
     metadata = {
         "full_param_count": bandit.full_params_count,
         "subspace_param_count": bandit.subspace_params_count,
@@ -93,31 +93,31 @@ def run_ekf(key, cfg, n_feats=None):
 @hydra.main(version_base=None, config_name="config", config_path="../cfg")
 def main(cfg):
     seed = int(datetime.now().timestamp()) if cfg["seed"] == -1 else cfg["seed"]
-    key = jr.key(seed=seed)
-    n_seeds = 3
+    key = jr.key(seed)
 
     # n_feats_list = [3, 10, 30]
     # n_feats_list = [3, 10, 15, 30, 40, 50, 80, 100, 150, 300, 500, 1000, 2000]
-    n_feats_list = [3, 10, 30, 50, 100, 150, 300, 500, 1000]
+    # n_feats_list = [3, 10, 30, 50, 100, 150, 300, 500, 1000]
+    n_feats_list = [1000, 500]
 
     stats = []
     for n_feats in n_feats_list:
         # Run multiple seeds
-        key, *subkeys = jr.split(key, 1 + n_seeds)  # m = 1 + n_seeds
+        key, *subkeys = jr.split(key, 1 + cfg["seeds"])  # m = 1 + n_seeds
         results_m, metadata_m = jax.vmap(run_ekf, in_axes=(0, None, None))(
             jnp.array(subkeys), cfg, n_feats
         )
 
         # Compute statistics
-        stats.append(
-            {
-                "n_feats": n_feats,
-                "accs_mean": results_m["test_acc"].mean(),
-                "accs_std": results_m["test_acc"].std(),
-            }
-        )
+        results = {
+            "n_feats": n_feats,
+            "accs_mean": results_m["test_acc"].mean(),
+            "accs_std": 0,
+        }
+        stats.append(results)
+
         print(
-            f"{n_feats=}, acc = {results_m['test_acc'].mean():.2%} ± {results_m['test_acc'].std():.1%}, "
+            f"{n_feats=}, acc = {results['accs_mean']:.2%} ± {results['accs_std']:.1%}, "
             f"Param count: {metadata_m['full_param_count'][0]} -> {metadata_m['subspace_param_count'][0]}"
         )
 
@@ -135,6 +135,8 @@ def main(cfg):
     axs.set_xlabel("Num Dimensions")
     axs.set_ylim(0, 1)
     plt.show()
+
+    plt.savefig(f"figs/ekf_sweep_{cfg['f']}.png")
 
 
 if __name__ == "__main__":

@@ -35,7 +35,7 @@ def main(cfg):
     n_queries = data_kw["n_queries"]
     n_demos = data_kw["n_demos"]
     seed = int(datetime.now().timestamp()) if cfg["seed"] == -1 else cfg["seed"]
-    key = jr.key(seed=seed)
+    key = jr.key(seed)
     print(f"Seed: {seed}")
     print(f"N={data_kw['n_demos']}, Q={data_kw['n_queries']}, D={data_kw['n_feats']}")
     print(
