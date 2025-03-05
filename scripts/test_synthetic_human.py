@@ -12,13 +12,13 @@ import jax.random as jr
 import jax.scipy as jsp
 import matplotlib.pyplot as plt
 import numpy as np
-from run_synthetic_human import BradleyTerry, QueryWithResponse, generate_pref_data
 
 from bnn_pref.alg.mcmc import build_hmc, build_mh, plot_samples, plot_trace, run_mcmc
 from bnn_pref.data import create_pref_data
 from bnn_pref.utils.metrics import alignment_metric
 from bnn_pref.utils.type import Q1, Q2, Q2D, SD, D, Q
 from bnn_pref.utils.utils import get_gaussian_vector, tile_first_dim
+from scripts.run_mcmc import BradleyTerry, QueryWithResponse, generate_pref_data
 
 
 @hydra.main(version_base=None, config_name="config", config_path="../cfg")
