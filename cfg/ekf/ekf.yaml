@@ -13,7 +13,7 @@ cls:
   warm_epochs: 100 # 6
   warm_burns: 40
   sub_dim: 40 # 3
-  rnd_proj: True
+  rnd_proj: False
   
   # Subspace Inference w/ EKF
   prior_noise: 0.0001 # variance

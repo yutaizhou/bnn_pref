@@ -97,7 +97,9 @@ def main(cfg):
     n_seeds = 3
 
     # n_feats_list = [3, 10, 30]
-    n_feats_list = [3, 10, 15, 30, 40, 50, 80, 100, 150, 300, 500, 1000, 2000]
+    # n_feats_list = [3, 10, 15, 30, 40, 50, 80, 100, 150, 300, 500, 1000, 2000]
+    n_feats_list = [3, 10, 30, 50, 100, 150, 300, 500, 1000]
+
     stats = []
     for n_feats in n_feats_list:
         # Run multiple seeds
