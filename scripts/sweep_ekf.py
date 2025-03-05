@@ -25,9 +25,7 @@ logging.getLogger("jax._src.xla_bridge").setLevel(logging.ERROR)
 jnp.set_printoptions(precision=2)
 
 
-@hydra.main(version_base=None, config_name="config", config_path="../cfg")
-def main(cfg):
-    # check RLHF paper
+def run_ekf(key, cfg, n_feats=None):
     data_kw = cfg["data"]
     ekf_kw = cfg["ekf"]
     dist = BradleyTerry()
@@ -36,11 +34,11 @@ def main(cfg):
     n_demos = data_kw["n_demos"]
     seed = int(datetime.now().timestamp()) if cfg["seed"] == -1 else cfg["seed"]
     key = jr.key(seed=seed)
-    print(f"Seed: {seed}")
-    print(f"N={data_kw['n_demos']}, Q={data_kw['n_queries']}, D={data_kw['n_feats']}")
-    print(
-        f"EKF: sub_dim={ekf_kw['cls']['sub_dim']}, rnd_proj={ekf_kw['cls']['rnd_proj']}, warm_epochs={ekf_kw['cls']['warm_epochs']}, warm_burns={ekf_kw['cls']['warm_burns']}, warm_obs={ekf_kw['warm_obs']}"
-    )
+    # print(f"Seed: {seed}")
+    # print(f"N={data_kw['n_demos']}, Q={data_kw['n_queries']}, D={data_kw['n_feats']}")
+    # print(
+    #     f"EKF: sub_dim={ekf_kw['cls']['sub_dim']}, rnd_proj={ekf_kw['cls']['rnd_proj']}, warm_epochs={ekf_kw['cls']['warm_epochs']}, warm_burns={ekf_kw['cls']['warm_burns']}, warm_obs={ekf_kw['warm_obs']}"
+    # )
 
     # * generate true params + preference data
     key, key1, key2, key3 = jr.split(key, 4)
@@ -74,7 +72,7 @@ def main(cfg):
         bandit_kw=ekf_kw,
     )
     warmup_rewards, rewards_trace, opt_rewards = rewards_info
-    rtotal, rstd = summarize_results(warmup_rewards, rewards_trace)
+    # rtotal, rstd = summarize_results(warmup_rewards, rewards_trace)
 
     # todo n_trials beliefs..
     key, key1 = jr.split(key, 2)
@@ -83,34 +81,57 @@ def main(cfg):
     train_acc = compute_accuracy_nn(pref_predictor, train_data)
     test_acc = compute_accuracy_nn(pref_predictor, test_data)
     pref_acc = compute_pref_ranking_acc(reward_predictor, test_data)
-    print(f"Full Space Param Count: {bandit.full_params_count}")
-    print(f"Subspace   Param Count: {bandit.subspace_params_count}")
-    print(f"{train_acc=:.2%}")
-    print(f"{test_acc=:.2%}")
-    print(f"{pref_acc=:.2%}")
 
-    if data_kw["n_feats"] == 2:
-        fig, axs = plt.subplots(1, 3, figsize=(12, 5))
+    results = {
+        "train_acc": train_acc,
+        "test_acc": test_acc,
+        "pref_acc": pref_acc,
+    }
 
-        ax = axs[0]
-        true_utility_fn = partial(true_reward_fn, param_D=true_param_D)
-        true_utility_fn = jax.vmap(jax.vmap(true_utility_fn))
-        plot_reward_heatmap(
-            ax,
-            reward_fn=true_utility_fn,
-            bounds=(features_Q2D.min(), features_Q2D.max()),
-            title=f"True Reward {true_param_D}",
+    return results
+
+
+@hydra.main(version_base=None, config_name="config", config_path="../cfg")
+def main(cfg):
+    seed = int(datetime.now().timestamp()) if cfg["seed"] == -1 else cfg["seed"]
+    key = jr.key(seed=seed)
+    n_seeds = 3
+
+    # n_feats_list = [3, 10, 30]
+    n_feats_list = [3, 10, 15, 30, 40, 50, 80, 100, 150, 300, 500, 1000, 2000]
+    stats = []
+    for n_feats in n_feats_list:
+        # Run multiple seeds
+        key, *subkeys = jr.split(key, 1 + n_seeds)  # m = 1 + n_seeds
+        results_m = jax.vmap(run_ekf, in_axes=(0, None, None))(
+            jnp.array(subkeys), cfg, n_feats
         )
 
-        ax = axs[1]
-        plot_reward_heatmap(
-            ax,
-            reward_fn=reward_predictor,
-            bounds=(features_Q2D.min(), features_Q2D.max()),
-            title="Posterior Predictive Reward",
+        # Compute statistics
+        stats.append(
+            {
+                "n_feats": n_feats,
+                "accs_mean": results_m["test_acc"].mean(),
+                "accs_std": results_m["test_acc"].std(),
+            }
         )
-
-        plt.show()
+        print(
+            f"{n_feats=}, acc = {results_m['test_acc'].mean():.3f} ± {results_m['test_acc'].std():.1f}"
+        )
+    fig, axs = plt.subplots(1, 1)
+    axs.errorbar(
+        [stat["n_feats"] for stat in stats],
+        [stat["accs_mean"] for stat in stats],
+        yerr=[stat["accs_std"] for stat in stats],
+        label="Accuracy",
+        marker="o",
+        markersize=3,
+    )
+    axs.set_title("EKF Sweep")
+    axs.legend()
+    axs.set_xlabel("Num Dimensions")
+    axs.set_ylim(0, 1)
+    plt.show()
 
 
 if __name__ == "__main__":
