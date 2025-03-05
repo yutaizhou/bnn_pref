@@ -60,7 +60,7 @@ def run_experiment(cfg, key, n_feats=None):
         **{k: mcmc_kw[k] for k in ["n_samples", "burn_in", "thinning", "normalize"]},
     )
 
-    accs = compute_accuracy2_mcmc(samples_SD, train_data, true_reward_fn)
+    accs = compute_accuracy2_mcmc(samples_SD, test_data, true_reward_fn)
     aligns = alignment_metric(true_param_D, samples_SD)
 
     results = {
