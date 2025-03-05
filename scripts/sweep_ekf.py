@@ -98,7 +98,7 @@ def main(cfg):
 
     # n_feats_list = [3, 10, 30]
     # n_feats_list = [3, 10, 30, 50, 100, 150, 300, 500, 1000]
-    n_feats_list = [3, 20, 100, 500, 1000, 2000, 4000, 8000, 16000]
+    n_feats_list = [16000, 32000, 64000, 128000, 256000]
 
     stats = []
     for n_feats in n_feats_list:
