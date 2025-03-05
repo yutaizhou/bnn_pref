@@ -69,26 +69,21 @@ class JaxPCA:
         self.mean_ = None
         self.n_components_ = None
 
-    def fit(self, X: Float[Array, "N D"]) -> "JaxPCA":
+    def fit(self, X: Float[Array, "N D"]):
         """Fit the model with X."""
         # Center the data
         self.mean_ = jnp.mean(X, axis=0, keepdims=True)
         X_centered = X - self.mean_
 
-        # Compute covariance matrix and its eigendecomposition
-        cov = (X_centered.T @ X_centered) / (X.shape[0] - 1)
-        eigenvals, eigenvecs = jnp.linalg.eigh(cov)
+        # Use SVD instead of eigendecomposition of covariance matrix
+        U, S, Vt = jnp.linalg.svd(X_centered, full_matrices=False)
 
-        # Sort in descending order
-        idx = jnp.argsort(eigenvals)[::-1]
-        eigenvals = eigenvals[idx]
-        eigenvecs = eigenvecs[:, idx]
-
-        # Store explained variance and ratio
-        self.explained_variance_ = eigenvals
-        total_var = jnp.sum(eigenvals)
-        self.explained_variance_ratio_ = eigenvals / total_var
-        self.singular_values_ = jnp.sqrt(eigenvals * (X.shape[0] - 1))
+        # Compute explained variance and ratio directly from singular values
+        n_samples = X.shape[0]
+        self.singular_values_ = S
+        self.explained_variance_ = (S**2) / (n_samples - 1)
+        total_var = jnp.sum(self.explained_variance_)
+        self.explained_variance_ratio_ = self.explained_variance_ / total_var
 
         # Determine number of components
         if isinstance(self.n_components, float):
@@ -97,8 +92,8 @@ class JaxPCA:
         else:
             self.n_components_ = self.n_components
 
-        # Store components
-        self.components_ = eigenvecs[:, : self.n_components_].T
+        # Store components (right singular vectors)
+        self.components_ = Vt[: self.n_components_]
         return self
 
     def transform(self, X: Float[Array, "N D"]) -> Float[Array, "N K"]:

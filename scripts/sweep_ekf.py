@@ -2,6 +2,7 @@ import logging
 import os
 from datetime import datetime
 from functools import partial
+from pathlib import Path
 
 import hydra
 import jax
@@ -97,28 +98,32 @@ def main(cfg):
 
     # n_feats_list = [3, 10, 30]
     # n_feats_list = [3, 10, 15, 30, 40, 50, 80, 100, 150, 300, 500, 1000, 2000]
-    # n_feats_list = [3, 10, 30, 50, 100, 150, 300, 500, 1000]
-    n_feats_list = [1000, 500]
+    n_feats_list = [3, 10, 30, 50, 100, 150, 300, 500, 1000, 2000, 4000, 8000]
+    # n_feats_list = [500, 1000]
 
     stats = []
     for n_feats in n_feats_list:
         # Run multiple seeds
         key, *subkeys = jr.split(key, 1 + cfg["seeds"])  # m = 1 + n_seeds
+
+        start_time = datetime.now()
         results_m, metadata_m = jax.vmap(run_ekf, in_axes=(0, None, None))(
             jnp.array(subkeys), cfg, n_feats
         )
+        duration = (datetime.now() - start_time).total_seconds()
 
         # Compute statistics
         results = {
             "n_feats": n_feats,
             "accs_mean": results_m["test_acc"].mean(),
-            "accs_std": 0,
+            "accs_std": results_m["test_acc"].std(),
         }
         stats.append(results)
 
         print(
-            f"{n_feats=}, acc = {results['accs_mean']:.2%} ± {results['accs_std']:.1%}, "
-            f"Param count: {metadata_m['full_param_count'][0]} -> {metadata_m['subspace_param_count'][0]}"
+            f"n_feats={n_feats:4}, acc = {results['accs_mean']:.2%} ± {results['accs_std']:.1%}, "
+            f"Param count: {metadata_m['full_param_count'][0]} -> {metadata_m['subspace_param_count'][0]}, "
+            f"Time: {duration:.1f} seconds"
         )
 
     fig, axs = plt.subplots(1, 1)
@@ -136,7 +141,8 @@ def main(cfg):
     axs.set_ylim(0, 1)
     plt.show()
 
-    plt.savefig(f"figs/ekf_sweep_{cfg['f']}.png")
+    fp = Path(cfg.paths.output_dir) / "ekf_sweep.png"
+    plt.savefig(fp)
 
 
 if __name__ == "__main__":

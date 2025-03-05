@@ -34,6 +34,7 @@ class SubspaceNeuralBandit:
         opt,
         warm_epochs: int = 1000,
         warm_burns: int = 1000,
+        thinning: int = 2,
         sub_dim: Union[float, int] = 0.9999,
         rnd_proj: bool = False,
         prior_noise: float = 0.0001,
@@ -71,13 +72,14 @@ class SubspaceNeuralBandit:
         self.prior_noise = prior_noise
         self.warm_burns = warm_burns
         self.warm_epochs = warm_epochs
+        self.thinning = thinning
         self.system_noise = dynamics_noise
         self.observation_noise = obs_noise
         self.sub_dim = sub_dim
         self.rnd_proj = rnd_proj
         self.context_dim = None
 
-        assert self.warm_burns < self.warm_epochs
+        assert (warm_epochs - warm_burns) // thinning >= sub_dim
 
     def init_bel(self, key, warmup_data: CARL) -> BeliefState:
         """
@@ -104,7 +106,7 @@ class SubspaceNeuralBandit:
             return loss, logits_N2
 
         warm_ts, warm_metrics = run_sgd(ts, loss_fn=loss_fn, n_epochs=self.warm_epochs)
-        params_trace = warm_metrics["params"][self.warm_burns :: 2]
+        params_trace = warm_metrics["params"][self.warm_burns :: self.thinning]
 
         if self.rnd_proj:
             assert type(self.sub_dim) is int
