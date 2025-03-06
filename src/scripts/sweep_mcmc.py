@@ -15,10 +15,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from bnn_pref.alg.mcmc import build_hmc, build_mh, plot_samples, plot_trace, run_mcmc
-from bnn_pref.data import BradleyTerry, QueryWithResponse, generate_pref_data
+from bnn_pref.data.data import BradleyTerry, make_synthetic_data
 from bnn_pref.utils.metrics import alignment_metric, compute_accuracy2_mcmc
-from bnn_pref.utils.test_functions import test_functions_dict
-from bnn_pref.utils.utils import get_gaussian_vector
+from bnn_pref.utils.utils import get_random_seed
 
 
 # @partial(jax.jit, static_argnames=("cfg"))
@@ -29,22 +28,11 @@ def run_experiment(cfg, key, n_feats=None):
     dist = BradleyTerry()
     data_kw["n_feats"] = n_feats if n_feats is not None else data_kw["n_feats"]
     n_feats = data_kw["n_feats"]
-    n_queries = data_kw["n_queries"]
 
     # * generate true params + preference data
-    true_reward_fn = test_functions_dict[cfg["f"]]
-    key, key1, key2, key3 = jr.split(key, 4)
-    true_param_D = get_gaussian_vector(key1, dim=n_feats, normalize=True)
-    demos_ND, returns_N, pref_data = generate_pref_data(
-        key2, reward_fn=true_reward_fn, params_D=true_param_D, **data_kw
-    )
-    features_Q2D, response_Q1 = pref_data.queries_Q2D, pref_data.responses_Q1
-    train_idxes, test_idxes = jnp.split(
-        jr.permutation(key3, jnp.arange(n_queries)),
-        [int(n_queries * 0.8)],
-    )
-    train_data = QueryWithResponse(features_Q2D[train_idxes], response_Q1[train_idxes])
-    test_data = QueryWithResponse(features_Q2D[test_idxes], response_Q1[test_idxes])
+    output = make_synthetic_data(key, cfg)
+    train_data, test_data = output["train_prefs"], output["test_prefs"]
+    true_param_D, true_reward_fn = output["true_param"], output["true_reward_fn"]
 
     # * build + run sampler
     key, key1, key2 = jr.split(key, 3)
@@ -63,23 +51,15 @@ def run_experiment(cfg, key, n_feats=None):
     accs = compute_accuracy2_mcmc(samples_SD, test_data, true_reward_fn)
     aligns = alignment_metric(true_param_D, samples_SD)
 
-    results = {
-        "accs": accs,
-        "aligns": aligns,
-    }
-
-    metadata = {
-        "features": features_Q2D,
-        "response": response_Q1,
-        "true_reward": true_param_D,
-    }
+    results = {"accs": accs, "aligns": aligns}
+    metadata = {"true_reward": true_param_D}
 
     return results, metadata
 
 
 @hydra.main(version_base=None, config_name="config", config_path="../cfg")
 def run_dimensinality_exp(cfg):
-    seed = int(datetime.now().timestamp()) if cfg["seed"] == -1 else cfg["seed"]
+    seed = get_random_seed() if cfg["seed"] == -1 else cfg["seed"]
     key = jr.key(seed)
 
     # n_feats_list = [2, 3]

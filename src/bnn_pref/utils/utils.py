@@ -1,3 +1,4 @@
+from datetime import datetime
 from functools import partial
 from typing import Callable
 
@@ -7,8 +8,11 @@ import jax.numpy.linalg as jnpl
 import jax.random as jr
 import jax.scipy as jsp
 
-from bnn_pref.data import QueryWithResponse
-from bnn_pref.utils.type import ND, Q1, Q2, Q2D, SD, D
+from bnn_pref.utils.type import D
+
+
+def get_random_seed() -> int:
+    return int(datetime.now().timestamp())
 
 
 def get_gaussian_vector(key, dim: int, normalize: bool = True) -> D:

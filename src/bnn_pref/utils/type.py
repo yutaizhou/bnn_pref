@@ -9,6 +9,7 @@ N = Float[Array, "N"]
 D = Float[Array, "D"]
 TwoD = Float[Array, "2 D"]
 ND = Float[Array, "N features"]
+NTD = Float[Array, "N T D"]
 N1 = Float[Array, "N 1"]
 
 # queries
@@ -16,6 +17,7 @@ Q = Float[Array, "Q"]
 Q1 = Float[Array, "Q 1"]
 Q2 = Float[Array, "Q 2"]
 Q2D = Float[Array, "Q 2 D"]
+Q2TD = Float[Array, "Q 2 T D"]
 
 # MCMC samples
 SD = Float[Array, "S features"]

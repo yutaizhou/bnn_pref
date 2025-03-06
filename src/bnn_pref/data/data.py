@@ -1,12 +1,15 @@
 import math
 from dataclasses import dataclass
+from functools import partial
 from typing import Callable, Tuple
 
 import jax
 import jax.numpy as jnp
 import jax.random as jr
 
+from bnn_pref.utils.test_functions import test_functions_dict
 from bnn_pref.utils.type import ND, Q1, Q2, Q2D, D, N
+from bnn_pref.utils.utils import get_gaussian_vector
 
 
 @dataclass
@@ -38,6 +41,62 @@ class BradleyTerry:
         # prior = # just uniform log 1
         joint_ll = ll_Q.sum()
         return joint_ll
+
+
+def make_synthetic_data(key, cfg) -> Tuple[ND, N, QueryWithResponse]:
+    data_kw = cfg["data"]
+    n_demos = data_kw["n_demos"]
+    n_feats = data_kw["n_feats"]
+    n_queries = data_kw["n_queries"]
+    train_frac = 0.8
+
+    key, key1, key2, key3, key4 = jr.split(key, 5)
+    true_param_D = get_gaussian_vector(key1, dim=n_feats, normalize=True)
+    true_reward_fn = test_functions_dict[cfg["f"]]
+
+    demos_ND = jr.normal(key2, (n_demos, n_feats))
+    # demos_ND /= jnp.linalg.norm(demos_ND, axis=1, keepdims=True)
+    n_train_demos = int(n_demos * train_frac)
+    train_demos_ND = demos_ND[:n_train_demos]
+    test_demos_ND = demos_ND[n_train_demos:]
+    true_util_fn = partial(true_reward_fn, param_D=true_param_D)
+    train_returns_N, train_pref_data = demos_to_pref_data(
+        key3, demos_ND=train_demos_ND, reward_fn=true_util_fn, n_queries=n_queries
+    )
+    test_returns_N, test_pref_data = demos_to_pref_data(
+        key4, demos_ND=test_demos_ND, reward_fn=true_util_fn, n_queries=-1
+    )
+    output = {
+        "true_param": true_param_D,
+        "true_reward_fn": true_reward_fn,
+        "train_demos": train_demos_ND,
+        "train_returns": train_returns_N,
+        "train_prefs": train_pref_data,
+        "test_demos": test_demos_ND,
+        "test_returns": test_returns_N,
+        "test_prefs": test_pref_data,
+    }
+    return output
+
+
+def demos_to_pref_data(
+    key, demos_ND: ND, reward_fn: Callable, n_queries: int = -1
+) -> QueryWithResponse:
+    returns_N = reward_fn(demos_ND)
+    sorted_idx = jnp.argsort(returns_N)  # ascending
+    demos_ND = demos_ND[sorted_idx]
+    returns_N = returns_N[sorted_idx]
+
+    queries_idx_Q2, response_Q1, num_mislabels = create_pref_data_jit(
+        key,
+        ranked_returns=returns_N,
+        n_queries=n_queries,
+        noisy_prefs=False,
+        bt_beta=1.0,
+    )
+
+    features_Q2D = demos_ND[queries_idx_Q2]
+    return returns_N, QueryWithResponse(features_Q2D, response_Q1)
 
 
 def generate_pref_data(
