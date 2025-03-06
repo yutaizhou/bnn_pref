@@ -39,12 +39,10 @@ def bandit_pipeline(
 
     key, key_warmup, key_belief_init = split(key, 3)
     warmup_data = env.warmup(key_warmup, warmup_obs)
-    _, _, warmup_rewards, _ = warmup_data
-
     bel = bandit.init_bel(key_belief_init, warmup_data)
     bel_trace, batches = run_bandit(key, bandit, bel, env, warmup_data, nsteps=nsteps)
-    rewards_info = (warmup_rewards, batches.rewards, env.opt_rewards)  # all 1D
 
+    rewards_info = (warmup_data.rewards, batches.rewards, env.opt_rewards)  # all 1D
     return rewards_info, bel_trace, bandit
 
 

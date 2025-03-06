@@ -115,13 +115,6 @@ class SubspaceNeuralBandit:
             projection_matrix = generate_random_basis(proj_key, sub_dim, full_dim)
         else:
             # pca = PCA(n_components=self.sub_dim)
-            # pca.fit(params_trace)
-            # sub_dim = pca.n_components_
-            # if type(self.sub_dim) is float:
-            #     print(f"PCA found {sub_dim} components ({self.sub_dim=:.2%} var)")
-            # self.sub_dim = pca.n_components_
-            # projection_matrix = device_put(pca.components_)
-
             pca = JaxPCA(n_components=self.sub_dim)
             pca.fit(params_trace)
             sub_dim = pca.n_components_
@@ -181,8 +174,8 @@ class SubspaceNeuralBandit:
 
         params_subspace_init = jnp.zeros(sub_dim)
         Sigma = jnp.eye(sub_dim) * self.prior_noise
-        Q = jnp.eye(sub_dim) * self.system_noise  # transition model noise
-        R = jnp.eye(1) * self.observation_noise  # obs model noise
+        Q = jnp.eye(sub_dim) * self.system_noise
+        R = jnp.eye(1) * self.observation_noise
         ekf = ParamsNLGSSM(
             initial_mean=params_subspace_init,
             initial_covariance=Sigma,
@@ -206,7 +199,7 @@ class SubspaceNeuralBandit:
 
         context = rearrange(context_2D, "Two D -> (Two D)")
         action = rearrange(action, " -> 1")
-        inputs = rearrange(jnp.concat((context, action)), "CA -> 1 CA")
+        inputs = rearrange(jnp.concat((context, action)), "d -> 1 d")
         emission = rearrange(reward, " -> 1 1")
 
         self.ekf_params = self.ekf_params._replace(
