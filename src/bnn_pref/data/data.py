@@ -56,9 +56,9 @@ def make_synthetic_data(key, cfg) -> Tuple[ND, N, QueryWithResponse]:
     true_reward_fn = test_functions_dict[cfg["f"]]
 
     demos_NTD = jr.normal(key2, (n_demos, demo_len, n_feats))
+    demos_NTD /= jnp.linalg.norm(demos_NTD, axis=2, keepdims=True)
     demos_NTD = demos_NTD - jnp.mean(demos_NTD, axis=(0, 1))
     demos_NTD = demos_NTD / jnp.std(demos_NTD, axis=(0, 1))
-    demos_NTD /= jnp.linalg.norm(demos_NTD, axis=2, keepdims=True)
 
     n_train_demos = int(n_demos * train_frac)
     train_demos_NTD = demos_NTD[:n_train_demos]
