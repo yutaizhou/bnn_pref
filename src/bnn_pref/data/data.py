@@ -47,7 +47,7 @@ def make_synthetic_data(key, cfg) -> Tuple[ND, N, QueryWithResponse]:
     data_kw = cfg["data"]
     n_feats = data_kw["n_feats"]
     n_demos = data_kw["n_demos"]
-    demo_len = data_kw["demo_len"]
+    demo_len = data_kw["length"]
     train_frac = data_kw["train_frac"]
     n_queries = data_kw["n_queries"]
 

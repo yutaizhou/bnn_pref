@@ -1,0 +1,6 @@
+# * synthetic data:
+n_demos: 200 
+length: 1
+n_feats: 4
+train_frac: 0.8 #  train/val split on n_demos
+n_queries: 1000 #  n_queries is for training; test query uses (n choose 2) val demos
