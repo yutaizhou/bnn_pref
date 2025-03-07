@@ -30,10 +30,11 @@ def main(cfg):
     # check RLHF paper
     data_kw = cfg["data"]
     ekf_kw = cfg["ekf"]
-    print(f"Seed: {seed}")
-    print(f"N={data_kw['n_demos']}, Q={data_kw['n_queries']}, D={data_kw['n_feats']}")
+    # combine these into one multiline print statement
     print(
-        f"EKF: sub_dim={ekf_kw['cls']['sub_dim']}, rnd_proj={ekf_kw['cls']['rnd_proj']}, warm_epochs={ekf_kw['cls']['warm_epochs']}, warm_burns={ekf_kw['cls']['warm_burns']}, warm_obs={ekf_kw['warm_obs']}"
+        f"Seed: {seed}\n"
+        f"N={data_kw['n_demos']}, Q={data_kw['n_queries']} (warm_obs={ekf_kw['warm_obs']}), T={data_kw['demo_len']}, D={data_kw['n_feats']}\n"
+        f"EKF: rnd_proj={ekf_kw['cls']['rnd_proj']}, warm_epochs={ekf_kw['cls']['warm_epochs']}, warm_burns={ekf_kw['cls']['warm_burns']}"
     )
 
     # * generate true params + preference data
@@ -65,12 +66,11 @@ def main(cfg):
     reward_predictor = jax.vmap(partial(bandit.predict_reward, bel.mean))
     train_acc = compute_accuracy_nn(pref_predictor, train_data)
     test_acc = compute_accuracy_nn(pref_predictor, test_data)
-    pref_acc = compute_pref_ranking_acc(reward_predictor, test_data)
-    print(f"Full Space Param Count: {bandit.full_params_count}")
-    print(f"Subspace   Param Count: {bandit.subspace_params_count}")
-    print(f"{train_acc=:.2%}")
-    print(f"{test_acc=:.2%}")
-    print(f"{pref_acc=:.2%}")
+    # pref_acc = compute_pref_ranking_acc(reward_predictor, test_data)
+    print(f"Param Count: {bandit.full_params_count} -> {bandit.subspace_params_count}")
+    print(f"Train acc: {train_acc:.2%}")
+    print(f"Test acc:  {test_acc:.2%}")
+    # print(f"{pref_acc=:.2%}")
 
     if data_kw["n_feats"] == 2 and data_kw["demo_len"] == 1:
         # fig, axs = plt.subplots(1, 3, figsize=(12, 5))

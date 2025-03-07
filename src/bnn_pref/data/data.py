@@ -51,6 +51,7 @@ def make_synthetic_data(key, cfg) -> Tuple[ND, N, QueryWithResponse]:
     train_frac = data_kw["train_frac"]
     n_queries = data_kw["n_queries"]
 
+    # * generate true params + demonstrations
     key, key1, key2, key3, key4 = jr.split(key, 5)
     true_param_D = get_gaussian_vector(key1, dim=n_feats, normalize=True)
     true_reward_fn = test_functions_dict[cfg["f"]]
@@ -60,6 +61,7 @@ def make_synthetic_data(key, cfg) -> Tuple[ND, N, QueryWithResponse]:
     demos_NTD = demos_NTD - jnp.mean(demos_NTD, axis=(0, 1))
     demos_NTD = demos_NTD / jnp.std(demos_NTD, axis=(0, 1))
 
+    # * split into train/test demos, and generate preference data for each split
     n_train_demos = int(n_demos * train_frac)
     train_demos_NTD = demos_NTD[:n_train_demos]
     test_demos_NTD = demos_NTD[n_train_demos:]

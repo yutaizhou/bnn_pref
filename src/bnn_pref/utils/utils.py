@@ -53,5 +53,5 @@ def print_mcmc_summary(
     )
     print(f"MCMC Samples: {samples_SD.shape}")
     print(f"Train acc: {train_acc:.2%}")
-    print(f"Test acc: {test_acc:.2%}")
+    print(f"Test acc:  {test_acc:.2%}")
     print(f"Cosine Sim: {align:.2f}")

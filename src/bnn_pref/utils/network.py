@@ -41,15 +41,18 @@ class RewardNet(nn.Module):
         for layer in self.layers:
             x = layer(x)
             if layer != self.layers[-1]:
-                x = nn.selu(x)
+                x = nn.relu(x)
+        # for stability in computing logits for Bradley-Terry
         if T > 1:
-            # for stability...
             x = nn.tanh(x) * 0.5
         return rearrange(x, "B T 1 -> B T")
 
     def predict_traj_return(self, x: BTD) -> B:
-        r = self.predict_traj_rewards(x)
-        return einops.reduce(r, "B T -> B", reduction="sum")
+        B, T, D = x.shape
+        rewards = self.predict_traj_rewards(x)  # (B,T,D) -> (B,T)
+        traj_return = rewards.sum(axis=1)
+        traj_return /= jnp.sqrt(T)
+        return traj_return
 
 
 class MLP(nn.Module):
