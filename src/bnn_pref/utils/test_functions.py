@@ -1,18 +1,19 @@
 import jax.numpy as jnp
 
-from bnn_pref.utils.type import Q1, Q2, Q2D, SD, D, Q
+from bnn_pref.utils.type import TD
 
 
-def linear_reward_fn(features_D: D, param_D: D) -> D:
-    return features_D @ param_D
+# T can be 1 for traj-level embedding rather than state-level
+def linear_reward_fn(features: TD, param_D):
+    return (features @ param_D).sum(-1)
 
 
-def polynomial_reward_fn(features_D, param_D):
-    return features_D**2 @ param_D**2
+def polynomial_reward_fn(features: TD, param_D):
+    return (features**2 @ param_D**2).sum(-1)
 
 
-def sinusoidal_reward_fn(features_D, param_D):
-    return jnp.sin(features_D @ param_D)
+def sinusoidal_reward_fn(features: TD, param_D):
+    return jnp.sin(features @ param_D).sum(-1)
 
 
 test_functions_dict = {

@@ -1,3 +1,7 @@
-n_demos: 200
 n_feats: 4
-n_queries: 1000
+demo_len: 1
+
+# * synthetic data: train/val on n_demos, train query on n_queries, test query on all val demos
+n_demos: 200 
+train_frac: 0.8
+n_queries: 1000 

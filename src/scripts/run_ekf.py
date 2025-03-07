@@ -72,7 +72,7 @@ def main(cfg):
     print(f"{test_acc=:.2%}")
     print(f"{pref_acc=:.2%}")
 
-    if data_kw["n_feats"] == 2:
+    if data_kw["n_feats"] == 2 and data_kw["demo_len"] == 1:
         # fig, axs = plt.subplots(1, 3, figsize=(12, 5))
         nrows, ncols = 2, 3
         fig = plt.figure(figsize=(12, 5))
@@ -86,7 +86,10 @@ def main(cfg):
         ax = fig.add_subplot(nrows, ncols, 4)
         plot_reward_heatmap(ax, **true_reward_plotkw, plot_3d=False)
 
-        learn_reward_plotkw = {"reward_fn": reward_predictor, "bounds": feature_bounds}
+        learn_reward_plotkw = {
+            "reward_fn": jax.vmap(reward_predictor),
+            "bounds": feature_bounds,
+        }
         title = "Learned Reward"
         ax = fig.add_subplot(nrows, ncols, 2, projection="3d", title=title)
         plot_reward_heatmap(ax, **learn_reward_plotkw, plot_3d=True)

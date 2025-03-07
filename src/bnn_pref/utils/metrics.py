@@ -12,8 +12,8 @@ from bnn_pref.utils.type import ND, Q1, Q2, Q2D, SD, D
 
 
 def compute_accuracy_nn(pref_predictor: Callable, data: QueryWithResponse):
-    features_Q2D, response_Q1 = data.queries_Q2D, data.responses_Q1
-    logits_Q2 = pref_predictor(features_Q2D)
+    features_Q2TD, response_Q1 = data.queries_Q2D, data.responses_Q1
+    logits_Q2 = pref_predictor(features_Q2TD)
     pred_response_Q = logits_Q2.argmax(axis=1)
     acc = jnp.mean(pred_response_Q == response_Q1.squeeze())
     return acc
@@ -26,11 +26,11 @@ def compute_reward_nn(reward_predictor: Callable, demos_ND: ND):
 
 def compute_pref_ranking_acc(reward_predictor: Callable, data: QueryWithResponse):
     # todo why same output as compute_accuracy_nn?
-    features_Q2D, response_Q1 = data.queries_Q2D, data.responses_Q1
-    left_rewards = reward_predictor(features_Q2D[:, 0, :])
-    right_rewards = reward_predictor(features_Q2D[:, 1, :])
-    pred_prefs = (left_rewards < right_rewards).astype(int)
-    return jnp.mean(pred_prefs == response_Q1.squeeze())
+    features_Q2TD, response_Q1 = data.queries_Q2D, data.responses_Q1
+    left_rewards_Q = reward_predictor(features_Q2TD[:, 0]).squeeze()
+    right_rewards_Q = reward_predictor(features_Q2TD[:, 1]).squeeze()
+    pred_prefs_Q = (left_rewards_Q < right_rewards_Q).astype(int)
+    return jnp.mean(pred_prefs_Q == response_Q1.squeeze())
 
 
 def compute_accuracy1_mcmc(samples_SD, data: QueryWithResponse, reward_fn: Callable):

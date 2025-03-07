@@ -32,10 +32,10 @@ def bandit_pipeline(
     4. Run trials: interact with the env and run EKF filtering
     5. Return rewards from: warmup, trials, and opt_rewards
     """
-    nsteps, _, nfeatures = env.contexts.shape
+    nsteps, *_, n_feats = env.contexts.shape
     model = RewardNet(bandit_kw["hidden_sizes"])
     opt = optax.sgd(bandit_kw["learning_rate"])
-    bandit = bandit_cls(nfeatures, model, opt, **bandit_kw["cls"])
+    bandit = bandit_cls(n_feats, model, opt, **bandit_kw["cls"])
 
     key, key_warmup, key_belief_init = split(key, 3)
     warmup_data = env.warmup(key_warmup, warmup_obs)

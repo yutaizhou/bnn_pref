@@ -10,6 +10,7 @@ D = Float[Array, "D"]
 TwoD = Float[Array, "2 D"]
 ND = Float[Array, "N features"]
 NTD = Float[Array, "N T D"]
+TD = Float[Array, "T D"]
 N1 = Float[Array, "N 1"]
 
 # queries

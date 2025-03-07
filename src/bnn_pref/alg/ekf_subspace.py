@@ -10,7 +10,7 @@ from flax import linen as nn
 from flax.training.train_state import TrainState
 from jax import device_put, jit
 from jax.flatten_util import ravel_pytree
-from jaxtyping import Array, Float
+from jaxtyping import Array, Float, Scalar
 from tensorflow_probability.substrates import jax as tfp
 
 from bnn_pref.alg.agent_utils import (
@@ -20,7 +20,7 @@ from bnn_pref.alg.agent_utils import (
     subspace2full_params,
 )
 from bnn_pref.utils.network import count_params
-from bnn_pref.utils.type import CAR, CARL, BeliefState, D, Scalar, TwoD
+from bnn_pref.utils.type import CAR, CARL, BeliefState, D, TwoD
 
 tfd = tfp.distributions
 
@@ -28,7 +28,7 @@ tfd = tfp.distributions
 class SubspaceNeuralBandit:
     def __init__(
         self,
-        num_features: int,
+        n_feats: int,
         model: nn.Module,
         opt,
         warm_epochs: int = 1000,
@@ -65,7 +65,7 @@ class SubspaceNeuralBandit:
         obs_noise: float
             The observation noise for the EKF.
         """
-        self.num_features = num_features
+        self.n_feats = n_feats
         self.model = model
         self.opt = opt
         self.prior_noise = prior_noise
@@ -83,15 +83,14 @@ class SubspaceNeuralBandit:
     def init_bel(self, key, warmup_data: CARL) -> BeliefState:
         """
         Run SGD on warmup data, get subspace projection matrix, initialize EKF
-        contexts: Q2D
+        contexts: Q2TD
         actions: Q
         rewards: Q
         labels: Q2 (onehot)
         """
         contexts, _, _, labels = warmup_data
-        self.n_feats = contexts.shape[-1]
         key, model_key = jr.split(key, 2)
-        dummy_context = jnp.ones((1, 2, self.n_feats))
+        dummy_context = rearrange(jnp.ones_like(contexts[0]), "K T D  -> 1 K T D", K=2)
         initial_params = self.model.init(model_key, dummy_context)["params"]
         # print(nn.tabulate(self.model, model_key)(dummy_context))
 
@@ -112,7 +111,7 @@ class SubspaceNeuralBandit:
             full_dim = params_trace.shape[-1]
             sub_dim = self.sub_dim
             key, proj_key = jr.split(key, 2)
-            projection_matrix = generate_random_basis(proj_key, sub_dim, full_dim)
+            proj_matrix = generate_random_basis(proj_key, sub_dim, full_dim)
         else:
             # pca = PCA(n_components=self.sub_dim)
             pca = JaxPCA(n_components=self.sub_dim)
@@ -121,42 +120,48 @@ class SubspaceNeuralBandit:
             if isinstance(self.sub_dim, float):
                 print(f"PCA found {sub_dim} components ({self.sub_dim=:.2%} var)")
             self.sub_dim = pca.n_components_
-            projection_matrix = device_put(pca.components_)
+            proj_matrix = device_put(pca.components_)
 
         self.full_params_count = count_params(initial_params)
         self.subspace_params_count = sub_dim
 
         params_full_init, reconstruct_tree_params = ravel_pytree(warm_ts.params)
 
-        def sub2full_predict_reward(params_subspace, x: D) -> Scalar:
+        def sub2full_predict_reward(
+            params_subspace,
+            traj: Float[Array, "T D"],
+        ) -> Scalar:
             params_full = subspace2full_params(
-                params_subspace, projection_matrix, params_full_init
+                params_subspace, proj_matrix, params_full_init
             )
             params = reconstruct_tree_params(params_full)
             outputs = self.model.apply(
                 {"params": params},
-                x,
-                method=self.model.predict_single,
+                rearrange(traj, "T D -> 1 T D"),
+                method=self.model.predict_traj_return,
             )
-            return outputs  # (1,)
+            return outputs
 
-        def sub2full_apply(
+        def sub2full_apply_model(
             params_subspace,
-            context: Float[Array, "2 D"],
+            context: Float[Array, "2 T D"],
         ) -> Float[Array, "2"]:
             """
             Project params from subspace to full space, then apply model
+            to get logits for both trajectories
             """
             params_full = subspace2full_params(
-                params_subspace, projection_matrix, params_full_init
+                params_subspace, proj_matrix, params_full_init
             )
             params = reconstruct_tree_params(params_full)
-            context = jnp.expand_dims(context, axis=0)  # (1, 2, D)
-            outputs = self.model.apply({"params": params}, context)  # (1,2)
-            return outputs.squeeze(0)  # (2,)
+
+            context = rearrange(context, "K T D -> 1 K T D", K=2)
+            outputs = self.model.apply({"params": params}, context)
+            outputs = rearrange(outputs, "1 K -> K", K=2)
+            return outputs
 
         self.predict_reward = sub2full_predict_reward
-        self.apply_model = sub2full_apply
+        self.apply_model = sub2full_apply_model
 
         def dynamics_fn(params, inputs):
             """
@@ -168,9 +173,9 @@ class SubspaceNeuralBandit:
             """
             emission model where inputs is (N, D + 1)
             """
-            context = inputs[..., :-1].reshape(2, -1)
+            context = inputs[..., :-1].reshape(2, -1, self.n_feats)
             action = inputs[..., -1].astype(int)
-            return sub2full_apply(params, context)[action, None]
+            return sub2full_apply_model(params, context)[action, None]
 
         params_subspace_init = jnp.zeros(sub_dim)
         Sigma = jnp.eye(sub_dim) * self.prior_noise
@@ -195,9 +200,10 @@ class SubspaceNeuralBandit:
         batch: CAR,
     ) -> BeliefState:
         prior_mean, prior_cov, t = bel
-        context_2D, action, reward = batch
+        context, action, reward = batch
 
-        context = rearrange(context_2D, "Two D -> (Two D)")
+        # context = rearrange(context_2D, "Two D -> (Two D)")
+        context = rearrange(context, "K T D -> (K T D)", K=2)
         action = rearrange(action, " -> 1")
         inputs = rearrange(jnp.concat((context, action)), "d -> 1 d")
         emission = rearrange(reward, " -> 1 1")
@@ -219,12 +225,12 @@ class SubspaceNeuralBandit:
         self,
         key,
         bel: BeliefState,
-        context_2D: Float[Array, "2 D"],
-    ) -> int:
+        context: Float[Array, "2 T D"],
+    ) -> Scalar:
         # Thompson sampling strategy
         # Could also use epsilon greedy or UCB
         w = self.sample_params(key, bel)
-        logits_2 = self.apply_model(w, context_2D)
+        logits_2 = self.apply_model(w, context)
         action = logits_2.argmax()
         return action
 

@@ -2,6 +2,7 @@ from typing import Callable, Tuple
 
 import jax.numpy as jnp
 import jax.numpy.linalg as jnpl
+from einops import rearrange
 
 
 def plot_reward_heatmap(
@@ -12,12 +13,14 @@ def plot_reward_heatmap(
     plot_3d: bool = False,
 ):
     """
-    reward_fn: Callable, takes in a (100,100,2) feature array and returns a (100,100) reward array
+    reward_fn: Callable, takes in a (100,100,1,2) feature array and returns a (100,100) reward array
         may need to be vmapped over the first two dimensions
     """
     feat_min, feat_max = bounds
     X, Y = jnp.mgrid[feat_min:feat_max:100j, feat_min:feat_max:100j]
-    Z = reward_fn(jnp.stack([X, Y], axis=-1)).squeeze()
+    inputs = jnp.stack([X, Y], axis=-1)  # 100,100,2
+    inputs = rearrange(inputs, "H W D -> H W 1 D", D=2)  # for time dim
+    Z = reward_fn(inputs).squeeze()
     if plot_3d:
         ax.plot_surface(X, Y, Z, cmap="viridis")
         ax.set_zlabel("Reward")

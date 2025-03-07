@@ -4,12 +4,18 @@ import einops
 import flax.linen as nn
 import jax
 import jax.numpy as jnp
+from einops import rearrange
 from jaxtyping import Array, Float
 
 B2D = Float[Array, "batch 2 dim"]
 BD = Float[Array, "batch dim"]
 B1 = Float[Array, "batch 1 "]
 B2 = Float[Array, "batch 2 "]
+
+B2TD = Float[Array, "batch 2 steps dim"]
+BTD = Float[Array, "batch steps dim"]
+BT = Float[Array, "batch steps"]
+B = Float[Array, "batch"]
 
 
 def count_params(params_dict: dict) -> int:
@@ -25,17 +31,25 @@ class RewardNet(nn.Module):
     def setup(self):
         self.layers = [nn.Dense(size) for size in self.hidden_sizes] + [nn.Dense(1)]
 
-    def __call__(self, x: B2D) -> B2:
-        r1 = self.predict_single(x[:, 0])
-        r2 = self.predict_single(x[:, 1])
-        return jnp.concatenate([r1, r2], axis=1)
+    def __call__(self, x: B2TD) -> B2:
+        r1 = self.predict_traj_return(x[:, 0])  # B
+        r2 = self.predict_traj_return(x[:, 1])  # B
+        return rearrange([r1, r2], "K B -> B K", K=2)  # B 2
 
-    def predict_single(self, x: BD) -> B1:
+    def predict_traj_rewards(self, x: BTD) -> BT:
+        B, T, D = x.shape
         for layer in self.layers:
             x = layer(x)
             if layer != self.layers[-1]:
-                x = nn.relu(x)
-        return x
+                x = nn.selu(x)
+        if T > 1:
+            # for stability...
+            x = nn.tanh(x) * 0.5
+        return rearrange(x, "B T 1 -> B T")
+
+    def predict_traj_return(self, x: BTD) -> B:
+        r = self.predict_traj_rewards(x)
+        return einops.reduce(r, "B T -> B", reduction="sum")
 
 
 class MLP(nn.Module):

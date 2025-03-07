@@ -11,13 +11,13 @@ from bnn_pref.utils.type import CAR, CARL, Q2, Q2D
 class BanditEnvironment:
     def __init__(self, key, X: Q2D, Y: Q2, opt_rewards=None):
         # Randomise dataset rows
-        self.n_obs, _, self.n_feats = X.shape
+        self.n_obs, *_, self.n_feats = X.shape
         self.n_actions = Y.shape[1]
-        new_ixs = jr.choice(key, self.n_obs, (self.n_obs,), replace=False)
-        X = jnp.asarray(X)[new_ixs]
-        Y = jnp.asarray(Y)[new_ixs]
+        perm_idx = jr.permutation(key, jnp.arange(self.n_obs))
+        X = jnp.asarray(X)[perm_idx]
+        Y = jnp.asarray(Y)[perm_idx]
         if opt_rewards is not None:
-            opt_rewards = jnp.asarray(opt_rewards)[new_ixs]
+            opt_rewards = jnp.asarray(opt_rewards)[perm_idx]
 
         self.contexts = X
         self.labels_onehot = Y
