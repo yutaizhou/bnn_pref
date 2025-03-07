@@ -35,26 +35,28 @@ class RewardNet(nn.Module):
         r1 = self.predict_traj_return(x[:, 0])  # B
         r2 = self.predict_traj_return(x[:, 1])  # B
         logits = rearrange([r1, r2], "K B -> B K", K=2)  # B 2
-        # logits = nn.tanh(logits) * 5.0  # numerical stability
-        logits = jnp.clip(logits, -5, 5)
+        # todo: stability trick
+        # logits = nn.tanh(logits) * 5.0
+        # logits = jnp.clip(logits, -5, 5)
         return logits
 
     def predict_traj_rewards(self, x: BTD) -> BT:
         B, T, D = x.shape
         for layer in self.layers:
             x = layer(x)
-            if layer != self.layers[-1]:
-                x = nn.relu(x)
-        # for stability in computing logits for Bradley-Terry
+            if layer != self.layers[-1]:  # not last layer
+                x = nn.leaky_relu(x)
+        # todo: stability trick
         # if T > 1:
-        # x = nn.tanh(x) * 0.5
+        #     x = nn.tanh(x) * 1.0
         return rearrange(x, "B T 1 -> B T")
 
     def predict_traj_return(self, x: BTD) -> B:
         B, T, D = x.shape
         rewards = self.predict_traj_rewards(x)  # (B,T,D) -> (B,T)
         traj_return = rewards.sum(axis=1)
-        traj_return /= jnp.sqrt(T)
+        # todo: stability trick
+        traj_return /= T
         return traj_return
 
 

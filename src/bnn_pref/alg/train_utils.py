@@ -60,7 +60,7 @@ def run_bandit(
     steps = jnp.arange(nwarmup, nsteps)
     keys = split(key, nsteps - nwarmup)
 
-    def step(
+    def filter_onestep(
         bel: BeliefState,
         curr: Tuple[int, Key],
     ) -> Tuple[BeliefState, CAR]:
@@ -75,7 +75,7 @@ def run_bandit(
 
         return bel, (bel, batch)
 
-    final_bel, (bel_trace, batches) = scan(step, init=bel, xs=(steps, keys))
+    final_bel, (bel_trace, batches) = scan(filter_onestep, init=bel, xs=(steps, keys))
 
     contexts = jnp.vstack([warmup_contexts, batches.contexts])
     actions = jnp.append(warmup_actions, batches.actions)
