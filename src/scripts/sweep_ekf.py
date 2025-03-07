@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 from bnn_pref.alg.bandit_env import BanditEnvironment
 from bnn_pref.alg.ekf_subspace import SubspaceNeuralBandit
 from bnn_pref.alg.train_utils import bandit_pipeline, summarize_results
-from bnn_pref.data.data import make_synthetic_data
+from bnn_pref.data.synthetic import make_synthetic_data
 from bnn_pref.utils.metrics import compute_accuracy_nn, compute_pref_ranking_acc
 from bnn_pref.utils.utils import get_random_seed
 
