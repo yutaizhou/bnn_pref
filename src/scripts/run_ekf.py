@@ -61,7 +61,6 @@ def main(cfg):
     bel = jax.tree_util.tree_map(lambda x: x[-1], bel_trace)  # final belief
     warmup_rewards, rewards_trace, _ = rewards_info
 
-    key, key1 = jr.split(key, 2)
     pref_predictor = jax.vmap(partial(bandit.apply_model, bel.mean))
     reward_predictor = jax.vmap(partial(bandit.predict_reward, bel.mean))
     train_acc = compute_accuracy_nn(pref_predictor, train_data)

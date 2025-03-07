@@ -34,7 +34,10 @@ class RewardNet(nn.Module):
     def __call__(self, x: B2TD) -> B2:
         r1 = self.predict_traj_return(x[:, 0])  # B
         r2 = self.predict_traj_return(x[:, 1])  # B
-        return rearrange([r1, r2], "K B -> B K", K=2)  # B 2
+        logits = rearrange([r1, r2], "K B -> B K", K=2)  # B 2
+        # logits = nn.tanh(logits) * 5.0  # numerical stability
+        logits = jnp.clip(logits, -5, 5)
+        return logits
 
     def predict_traj_rewards(self, x: BTD) -> BT:
         B, T, D = x.shape
@@ -43,8 +46,8 @@ class RewardNet(nn.Module):
             if layer != self.layers[-1]:
                 x = nn.relu(x)
         # for stability in computing logits for Bradley-Terry
-        if T > 1:
-            x = nn.tanh(x) * 0.5
+        # if T > 1:
+        # x = nn.tanh(x) * 0.5
         return rearrange(x, "B T 1 -> B T")
 
     def predict_traj_return(self, x: BTD) -> B:

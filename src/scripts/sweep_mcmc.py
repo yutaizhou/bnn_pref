@@ -18,6 +18,7 @@ from bnn_pref.alg.mcmc import build_hmc, build_mh, plot_samples, plot_trace, run
 from bnn_pref.data.synthetic import make_synthetic_data
 from bnn_pref.data.utils import BradleyTerry
 from bnn_pref.utils.metrics import alignment_metric, compute_accuracy2_mcmc
+from bnn_pref.utils.test_functions import test_functions_dict
 from bnn_pref.utils.utils import get_random_seed
 
 
@@ -28,18 +29,19 @@ def run_experiment(cfg, key, n_feats=None):
     mcmc_kw = cfg["mcmc"]
     dist = BradleyTerry()
     data_kw["n_feats"] = n_feats if n_feats is not None else data_kw["n_feats"]
-    n_feats = data_kw["n_feats"]
+
+    true_reward_fn = test_functions_dict[cfg["f"]]
+    learned_reward_fn = test_functions_dict[cfg["fhat"]]
 
     # * generate true params + preference data
     output = make_synthetic_data(key, cfg)
     train_data, test_data = output["train_prefs"], output["test_prefs"]
-    true_param_D, true_reward_fn = output["true_param"], output["true_reward_fn"]
-
+    true_param_D = output["true_param"]
     # * build + run sampler
     key, key1, key2 = jr.split(key, 3)
     init_sample = jnp.zeros_like(true_param_D)
     alg = build_mh(
-        partial(dist.potential, data=train_data, reward_fn=true_reward_fn),
+        partial(dist.potential, data=train_data, reward_fn=learned_reward_fn),
         sigma=mcmc_kw["sigma"],
     )
     samples_SD, states, infos = run_mcmc(
@@ -49,7 +51,7 @@ def run_experiment(cfg, key, n_feats=None):
         **{k: mcmc_kw[k] for k in ["n_samples", "burn_in", "thinning", "normalize"]},
     )
 
-    accs = compute_accuracy2_mcmc(samples_SD, test_data, true_reward_fn)
+    accs = compute_accuracy2_mcmc(samples_SD, test_data, learned_reward_fn)
     aligns = alignment_metric(true_param_D, samples_SD)
 
     results = {"accs": accs, "aligns": aligns}

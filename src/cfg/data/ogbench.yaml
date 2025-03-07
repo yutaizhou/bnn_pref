@@ -1,0 +1,7 @@
+task_name: "antmaze-medium-navigate-singletask-v0"
+# task_name: ""antmaze-medium-explore-singletask-v0""
+
+
+n_demos: 200
+train_frac: 0.8
+n_queries: 1000
