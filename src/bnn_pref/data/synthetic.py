@@ -4,7 +4,7 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 
-from bnn_pref.data.data import QueryWithResponse, demos_to_pref_data
+from bnn_pref.data.utils import QueryWithResponse, demos_to_pref_data
 from bnn_pref.utils.test_functions import test_functions_dict
 from bnn_pref.utils.type import ND, NTD, D, N
 from bnn_pref.utils.utils import get_gaussian_vector
