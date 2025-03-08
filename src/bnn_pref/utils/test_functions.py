@@ -13,7 +13,7 @@ def polynomial_reward_fn(features: TD, param_D):
 
 
 def sinusoidal_reward_fn(features: TD, param_D):
-    return jnp.sin(features @ param_D).sum(-1)
+    return jnp.sin(1.2 * jnp.pi * (features @ param_D)).sum(-1)
 
 
 test_functions_dict = {

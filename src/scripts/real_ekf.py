@@ -71,6 +71,20 @@ def main(cfg):
     print(f"Test acc:  {test_acc:.2%}")
     # print(f"{pref_acc=:.2%}")
 
+    if D == 2:
+        nrows, ncols = 2, 3
+        fig = plt.figure(figsize=(12, 5))
+
+        learn_reward_plotkw = {
+            "reward_fn": jax.vmap(reward_predictor),
+            "bounds": [-2.5, 2.5],
+        }
+        title = "Learned Reward"
+        ax = fig.add_subplot(nrows, ncols, 5)
+        plot_reward_heatmap(ax, **learn_reward_plotkw)
+
+        plt.show()
+
 
 if __name__ == "__main__":
     main()
