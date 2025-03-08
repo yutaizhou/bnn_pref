@@ -113,43 +113,41 @@ def main(cfg):
     # if cfg["save_fig"]:
     #     plt.savefig(f"{cfg['paths']['output_dir']}/trace.png")
 
-    if data_kw["n_feats"] == 2:
-        fig, axs = plt.subplots(1, 3, figsize=(12, 5))
+    if data_kw["n_feats"] == 2 and data_kw["length"] == 1:
+        nrows, ncols = 2, 3
+        fig = plt.figure(figsize=(12, 5))
 
-        ax = axs[0]
         true_utility_fn = partial(true_reward_fn, param_D=true_param_D)
         true_utility_fn = jax.vmap(jax.vmap(true_utility_fn))
-        plot_reward_heatmap(
-            ax,
-            reward_fn=true_utility_fn,
-            bounds=feature_bounds,
-            title=f"True Reward {true_param_D}",
-        )
+        title = f"True Reward {true_param_D}"
+        true_plotkw = {"reward_fn": true_utility_fn, "bounds": feature_bounds}
+        ax = fig.add_subplot(nrows, ncols, 1, projection="3d")
+        plot_reward_heatmap(ax, **true_plotkw, title=title, plot_3d=True)
+        ax = fig.add_subplot(nrows, ncols, 4)
+        plot_reward_heatmap(ax, **true_plotkw, title=title, plot_3d=False)
 
-        ax = axs[1]
         sample_param = samples_SD.mean(axis=0)
         sample_param /= jnpl.norm(sample_param)
-        posterior_utility_fn = partial(learned_reward_fn, param_D=sample_param)
-        posterior_utility_fn = jax.vmap(jax.vmap(posterior_utility_fn))
-        plot_reward_heatmap(
-            ax,
-            reward_fn=posterior_utility_fn,
-            bounds=feature_bounds,
-            title=f"Posterior Predictive Reward {sample_param}",
-        )
+        learned_utility_fn = partial(learned_reward_fn, param_D=sample_param)
+        learned_utility_fn = jax.vmap(jax.vmap(learned_utility_fn))
+        title = f"Posterior Predictive Reward {sample_param}"
+        learned_plotkw = {"reward_fn": learned_utility_fn, "bounds": feature_bounds}
+        ax = fig.add_subplot(nrows, ncols, 2, projection="3d")
+        plot_reward_heatmap(ax, **learned_plotkw, title=title, plot_3d=True)
+        ax = fig.add_subplot(nrows, ncols, 5)
+        plot_reward_heatmap(ax, **learned_plotkw, title=title, plot_3d=False)
 
-        ax = axs[2]
         potential = partial(dist.potential, data=train_data, reward_fn=true_reward_fn)
         potential = jax.vmap(jax.vmap(potential))
+        title = f"True Logpdf {true_param_D}"
+        logpdf_plotkw = {"potential_fn": potential, "bounds": (-3, 3)}
+        ax = fig.add_subplot(nrows, ncols, 3)
         plot_logpdf(
             ax,
-            potential_fn=potential,
-            # bounds=(-1.1, 1.1),
-            bounds=(-3, 3),
-            # bounds=(samples_SD.min(), samples_SD.max()),
+            **logpdf_plotkw,
+            title=title,
             true_param_D=true_param_D,
             samples_SD=samples_SD,
-            title="Logpdf",
         )
 
         ax.legend()
