@@ -10,9 +10,25 @@ from bnn_pref.data.utils import QueryWithResponse, create_pref_data_jit
 from bnn_pref.utils.utils import get_random_seed
 
 
-def normalize_trajectory(traj_NTD, mean, std):
-    traj_NTD = (traj_NTD - mean) / std
-    return traj_NTD
+def standardize_traj(train_trajs, val_trajs):
+    train_obs = train_trajs["observations"]
+    mean = jnp.mean(train_obs, axis=(0, 1), keepdims=True)
+    std = jnp.std(train_obs, axis=(0, 1), keepdims=True)
+
+    train_trajs["observations"] = (train_trajs["observations"] - mean) / std
+    val_trajs["observations"] = (val_trajs["observations"] - mean) / std
+    return train_trajs, val_trajs
+
+
+def minmax_scale_traj(train_trajs, val_trajs):
+    train_obs = train_trajs["observations"]
+    min_val = jnp.min(train_obs, axis=(0, 1), keepdims=True)
+    max_val = jnp.max(train_obs, axis=(0, 1), keepdims=True)
+    range = max_val - min_val
+
+    train_trajs["observations"] = (train_trajs["observations"] - min_val) / range
+    val_trajs["observations"] = (val_trajs["observations"] - min_val) / range
+    return train_trajs, val_trajs
 
 
 def make_ogbench_data(key, cfg):
@@ -25,25 +41,16 @@ def make_ogbench_data(key, cfg):
         task_name,
         compact_dataset=False,
     )
-    # * process data: separate trajectories, filter out low return, rank by return
-    # * return only obs, action, return
+    # * data normalization
+    # train_trajs, val_trajs = standardize_traj(train_trajs, val_trajs)
+    # train_trajs, val_trajs = minmax_scale_traj(train_trajs, val_trajs)
+
+    # * separate trajs, filter out low return, rank by return. keep only obs, action, return
     train_trajs = process_ogbench(train_trajs, ranked=True)
     val_trajs = process_ogbench(val_trajs, ranked=True)
-    print("Train trajs:")
+    print("Processed train trajs:")
     for k, v in train_trajs.items():
         print(f"{k}: {v.shape}")
-
-    # * normalize obs and actions
-    train_obs = train_trajs["observations"]
-    obs_mean = train_obs.mean(axis=(0, 1), keepdims=True)
-    obs_std = train_obs.std(axis=(0, 1), keepdims=True)
-
-    train_trajs["observations"] = normalize_trajectory(
-        train_trajs["observations"], obs_mean, obs_std
-    )
-    val_trajs["observations"] = normalize_trajectory(
-        val_trajs["observations"], obs_mean, obs_std
-    )
 
     # * create preference data
     key, key1, key2 = jr.split(key, 3)

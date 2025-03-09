@@ -15,9 +15,17 @@ def plot_reward_heatmap(
     """
     reward_fn: Callable, takes in a (100,100,1,2) feature array and returns a (100,100) reward array
         may need to be vmapped over the first two dimensions
+    bounds: has options
+        - tuple of (min, max), which generates a square grid
+        - tuple of ((min, max), (min, max)), which generates a rectangular grid
     """
-    feat_min, feat_max = bounds
-    X, Y = jnp.mgrid[feat_min:feat_max:100j, feat_min:feat_max:100j]
+    if not isinstance(bounds[0], tuple):
+        feat_min, feat_max = bounds
+        X, Y = jnp.mgrid[feat_min:feat_max:100j, feat_min:feat_max:100j]
+    else:
+        feat1_min, feat1_max = bounds[0]
+        feat2_min, feat2_max = bounds[1]
+        X, Y = jnp.mgrid[feat1_min:feat1_max:100j, feat2_min:feat2_max:100j]
     inputs = jnp.stack([X, Y], axis=-1)  # 100,100,2
     inputs = rearrange(inputs, "H W D -> H W 1 D", D=2)  # for time dim
     Z = reward_fn(inputs).squeeze()
@@ -33,7 +41,12 @@ def plot_reward_heatmap(
 
 
 def plot_logpdf(
-    ax, potential_fn, bounds, true_param_D=None, samples_SD=None, title=None
+    ax,
+    potential_fn,
+    bounds,
+    true_param_D=None,
+    samples_SD=None,
+    title=None,
 ):
     """
     potential_fn: Callable, takes in a (100,100,2) parameter array and returns a (100,100) logpdf array

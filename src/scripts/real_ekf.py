@@ -34,8 +34,6 @@ def main(cfg):
     # * generate true params + preference data
     output = make_ogbench_data(key, cfg)
     train_data, test_data = output["train_prefs"], output["val_prefs"]
-    # feature_bounds = (train_data.queries_Q2D.min(), train_data.queries_Q2D.max())
-
     Q, _, T, D = train_data.queries_Q2D.shape
 
     print(
@@ -72,12 +70,17 @@ def main(cfg):
     # print(f"{pref_acc=:.2%}")
 
     if D == 2:
+        train_demo_obs = output["train_demos"]
+        mins, maxs = (train_demo_obs.min(axis=(0, 1)), train_demo_obs.max(axis=(0, 1)))
+        feature_bounds = ((mins[0], maxs[0]), (mins[1], maxs[1]))
+        print(f"Feature bounds: {feature_bounds}")
+
         nrows, ncols = 2, 3
         fig = plt.figure(figsize=(12, 5))
 
         learn_reward_plotkw = {
             "reward_fn": jax.vmap(reward_predictor),
-            "bounds": [-2.5, 2.5],
+            "bounds": feature_bounds,
         }
         title = "Learned Reward"
         ax = fig.add_subplot(nrows, ncols, 5)
