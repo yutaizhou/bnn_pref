@@ -5,11 +5,11 @@ import jax.numpy as jnp
 import jax.random as jr
 from jaxtyping import Array, Float
 
-from bnn_pref.utils.type import CAR, CARL, Q2, Q2D
+from bnn_pref.utils.type import CAR, CARL, Q2, Q2TD
 
 
 class BanditEnvironment:
-    def __init__(self, key, X: Q2D, Y: Q2, opt_rewards=None):
+    def __init__(self, key, X: Q2TD, Y: Q2, opt_rewards=None):
         # Randomise dataset rows
         self.n_obs, *_, self.n_feats = X.shape
         self.n_actions = Y.shape[1]

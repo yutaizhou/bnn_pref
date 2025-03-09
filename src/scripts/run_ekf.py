@@ -41,13 +41,13 @@ def main(cfg):
     output = make_synthetic_data(key, cfg)
     train_data, test_data = output["train_prefs"], output["test_prefs"]
     true_param_D, true_reward_fn = output["true_param"], output["true_reward_fn"]
-    feature_bounds = (train_data.queries_Q2D.min(), train_data.queries_Q2D.max())
+    feature_bounds = (train_data.queries_Q2TD.min(), train_data.queries_Q2TD.max())
 
     # * build + run bandit alg
     key, key1, key2 = jr.split(key, 3)
     env = BanditEnvironment(
         key1,
-        X=train_data.queries_Q2D,
+        X=train_data.queries_Q2TD,
         Y=jax.nn.one_hot(train_data.responses_Q1.squeeze(), num_classes=2),
     )
 

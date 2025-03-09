@@ -1,18 +1,17 @@
 import math
 from dataclasses import dataclass
-from functools import partial
 from typing import Callable, Tuple
 
 import jax
 import jax.numpy as jnp
 import jax.random as jr
 
-from bnn_pref.utils.type import NTD, Q1, Q2, Q2D, D, N
+from bnn_pref.utils.type import NTD, Q1, Q2, Q2TD, D, N
 
 
 @dataclass
 class QueryWithResponse:
-    queries_Q2D: Q2D
+    queries_Q2TD: Q2TD
     responses_Q1: Q1
 
 
@@ -24,8 +23,8 @@ class BradleyTerry:
         reward_fn: Callable,
         beta: float = 1.0,  # rationality constant
     ) -> Q1:
-        features_Q2D, response_Q1 = data.queries_Q2D, data.responses_Q1
-        returns_Q2 = beta * reward_fn(features_Q2D, params_D)
+        features_Q2TD, response_Q1 = data.queries_Q2TD, data.responses_Q1
+        returns_Q2 = beta * reward_fn(features_Q2TD, params_D)
         returns_Q1 = jnp.take_along_axis(returns_Q2, response_Q1, axis=1)
         return returns_Q1 - jax.nn.logsumexp(returns_Q2, axis=1, keepdims=True)
 
@@ -56,8 +55,8 @@ def demos_to_pref_data(
         bt_beta=1.0,
     )
 
-    features_Q2D = demos[queries_idx_Q2]
-    return returns_N, QueryWithResponse(features_Q2D, response_Q1)
+    features_Q2TD = demos[queries_idx_Q2]
+    return returns_N, QueryWithResponse(features_Q2TD, response_Q1)
 
 
 def bt_likelihood(return_i: float, return_j: float, beta: float = 1.0) -> float:

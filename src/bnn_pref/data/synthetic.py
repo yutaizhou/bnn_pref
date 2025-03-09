@@ -6,11 +6,11 @@ import jax.random as jr
 
 from bnn_pref.data.utils import QueryWithResponse, demos_to_pref_data
 from bnn_pref.utils.test_functions import test_functions_dict
-from bnn_pref.utils.type import ND, NTD, D, N
+from bnn_pref.utils.type import NTD, N
 from bnn_pref.utils.utils import get_gaussian_vector
 
 
-def make_synthetic_data(key, cfg) -> Tuple[ND, N, QueryWithResponse]:
+def make_synthetic_data(key, cfg) -> Tuple[NTD, N, QueryWithResponse]:
     data_kw = cfg["data"]
     n_feats = data_kw["n_feats"]
     n_demos = data_kw["n_demos"]

@@ -16,7 +16,6 @@ import numpy as np
 from bnn_pref.alg.mcmc import build_hmc, build_mh, plot_samples, plot_trace, run_mcmc
 from bnn_pref.data.utils import create_pref_data
 from bnn_pref.utils.metrics import alignment_metric
-from bnn_pref.utils.type import Q1, Q2, Q2D, SD, D, Q
 from bnn_pref.utils.utils import get_gaussian_vector, get_random_seed, tile_first_dim
 from scripts.run_mcmc import BradleyTerry, QueryWithResponse, generate_pref_data
 
@@ -33,8 +32,8 @@ def main(cfg):
     key = jr.key(seed)
     key, key1, key2 = jr.split(key, 3)
     true_reward_D = get_gaussian_vector(key1, dim=data_kw["n_feats"], normalize=True)
-    features_Q2D, response_Q1 = generate_pref_data(key2, true_reward_D, **data_kw)
-    data = QueryWithResponse(features_Q2D, response_Q1)
+    features_Q2TD, response_Q1 = generate_pref_data(key2, true_reward_D, **data_kw)
+    data = QueryWithResponse(features_Q2TD, response_Q1)
     potential = partial(dist.potential, data=data)
 
     # generate a 2D pdf grid of bradley terry

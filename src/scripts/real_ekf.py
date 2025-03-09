@@ -34,7 +34,7 @@ def main(cfg):
     # * generate true params + preference data
     output = make_ogbench_data(key, cfg)
     train_data, test_data = output["train_prefs"], output["val_prefs"]
-    Q, _, T, D = train_data.queries_Q2D.shape
+    Q, _, T, D = train_data.queries_Q2TD.shape
 
     print(
         f"Seed: {seed}\n"
@@ -45,7 +45,7 @@ def main(cfg):
     key, key1, key2 = jr.split(key, 3)
     env = BanditEnvironment(
         key1,
-        X=train_data.queries_Q2D,
+        X=train_data.queries_Q2TD,
         Y=jax.nn.one_hot(train_data.responses_Q1.squeeze(), num_classes=2),
     )
 

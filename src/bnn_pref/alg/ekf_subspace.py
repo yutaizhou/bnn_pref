@@ -20,7 +20,7 @@ from bnn_pref.alg.agent_utils import (
     subspace2full_params,
 )
 from bnn_pref.utils.network import count_params
-from bnn_pref.utils.type import CAR, CARL, BeliefState, D, TwoD
+from bnn_pref.utils.type import CAR, CARL, BeliefState, D
 
 tfd = tfp.distributions
 

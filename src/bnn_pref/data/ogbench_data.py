@@ -58,7 +58,7 @@ def make_ogbench_data(key, cfg):
     queries_idx_Q2, response_Q1, num_mislabels = create_pref_data_jit(
         key1, ranked_returns=train_trajs["returns"], n_queries=n_queries
     )
-    train_ds = QueryWithResponse(
+    train_prefs = QueryWithResponse(
         train_trajs["observations"][queries_idx_Q2],
         response_Q1,
     )
@@ -66,7 +66,7 @@ def make_ogbench_data(key, cfg):
     queries_idx_Q2, response_Q1, num_mislabels = create_pref_data_jit(
         key2, ranked_returns=val_trajs["returns"], n_queries=-1
     )
-    val_ds = QueryWithResponse(
+    val_prefs = QueryWithResponse(
         val_trajs["observations"][queries_idx_Q2],
         response_Q1,
     )
@@ -75,11 +75,11 @@ def make_ogbench_data(key, cfg):
         # train data
         "train_demos": train_trajs["observations"],
         "train_returns": train_trajs["returns"],
-        "train_prefs": train_ds,
+        "train_prefs": train_prefs,
         # test data
         "val_demos": val_trajs["observations"],
         "val_returns": val_trajs["returns"],
-        "val_prefs": val_ds,
+        "val_prefs": val_prefs,
     }
 
     return output
@@ -136,8 +136,8 @@ if __name__ == "__main__":
     key = jr.key(get_random_seed())
     output = make_ogbench_data(key, cfg)
     train_data, test_data = output["train_prefs"], output["val_prefs"]
-    print(train_data.queries_Q2D.shape, train_data.responses_Q1.shape)
-    print(test_data.queries_Q2D.shape, test_data.responses_Q1.shape)
+    print(train_data.queries_Q2TD.shape, train_data.responses_Q1.shape)
+    print(test_data.queries_Q2TD.shape, test_data.responses_Q1.shape)
     print()
 
     demos_NTD = output["train_demos"]

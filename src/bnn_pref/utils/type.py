@@ -7,8 +7,6 @@ from jaxtyping import Array, Float, Int, Scalar
 # demonstrations
 N = Float[Array, "N"]
 D = Float[Array, "D"]
-TwoD = Float[Array, "2 D"]
-ND = Float[Array, "N features"]
 NTD = Float[Array, "N T D"]
 TD = Float[Array, "T D"]
 N1 = Float[Array, "N 1"]
@@ -17,7 +15,6 @@ N1 = Float[Array, "N 1"]
 Q = Float[Array, "Q"]
 Q1 = Float[Array, "Q 1"]
 Q2 = Float[Array, "Q 2"]
-Q2D = Float[Array, "Q 2 D"]
 Q2TD = Float[Array, "Q 2 T D"]
 
 # MCMC samples
