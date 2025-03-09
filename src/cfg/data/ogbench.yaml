@@ -6,3 +6,5 @@ task_name: "pointmaze-medium-navigate-singletask-v0"
 n_demos: 200
 train_frac: 0.8
 n_queries: 1000
+
+thin: 1

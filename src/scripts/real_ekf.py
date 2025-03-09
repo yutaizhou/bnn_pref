@@ -72,18 +72,21 @@ def main(cfg):
     if D == 2:
         train_demo_obs = output["train_demos"]
         mins, maxs = (train_demo_obs.min(axis=(0, 1)), train_demo_obs.max(axis=(0, 1)))
-        feature_bounds = ((mins[0], maxs[0]), (mins[1], maxs[1]))
+        feature_bounds = (
+            (mins[0].item(), maxs[0].item()),
+            (mins[1].item(), maxs[1].item()),
+        )
         print(f"Feature bounds: {feature_bounds}")
 
-        nrows, ncols = 2, 3
-        fig = plt.figure(figsize=(12, 5))
+        nrows, ncols = 1, 3
+        fig = plt.figure(figsize=(12, 4))
 
         learn_reward_plotkw = {
             "reward_fn": jax.vmap(reward_predictor),
             "bounds": feature_bounds,
         }
         title = "Learned Reward"
-        ax = fig.add_subplot(nrows, ncols, 5)
+        ax = fig.add_subplot(nrows, ncols, 2)
         plot_reward_heatmap(ax, **learn_reward_plotkw)
 
         plt.show()

@@ -34,6 +34,7 @@ def minmax_scale_traj(train_trajs, val_trajs):
 def make_ogbench_data(key, cfg):
     data_kw = cfg["data"]
     n_queries = data_kw["n_queries"]
+    thin = data_kw["thin"]
 
     # * load data
     task_name = data_kw["task_name"]
@@ -45,9 +46,9 @@ def make_ogbench_data(key, cfg):
     # train_trajs, val_trajs = standardize_traj(train_trajs, val_trajs)
     # train_trajs, val_trajs = minmax_scale_traj(train_trajs, val_trajs)
 
-    # * separate trajs, filter out low return, rank by return. keep only obs, action, return
-    train_trajs = process_ogbench(train_trajs, ranked=True)
-    val_trajs = process_ogbench(val_trajs, ranked=True)
+    # * separate trajs, filter by low return, sort by increasing return
+    train_trajs = process_ogbench(train_trajs, ranked=True, thin=thin)
+    val_trajs = process_ogbench(val_trajs, ranked=True, thin=thin)
     print("Processed train trajs:")
     for k, v in train_trajs.items():
         print(f"{k}: {v.shape}")
@@ -87,6 +88,7 @@ def make_ogbench_data(key, cfg):
 def process_ogbench(
     ds: Dict[str, np.ndarray],
     ranked: bool = False,
+    thin: int = 1,
 ) -> Dict[str, jnp.ndarray]:
     """
     observations (5000000, 29) -> (10000, 500, 29)
@@ -104,10 +106,12 @@ def process_ogbench(
     # * seperate trajectories via terminals field
     starts = jnp.where(ds["terminals"])[0]
     ends = jnp.concatenate([jnp.array([-1]), starts[:-1]])
-    ds = jax.tree.map(
-        lambda x: jnp.array([x[s + 1 : e + 1] for s, e in zip(ends, starts)]),
-        ds,
-    )
+    separator_fn = lambda x: jnp.array([x[s + 1 : e + 1] for s, e in zip(ends, starts)])
+    ds = jax.tree.map(separator_fn, ds)
+
+    # * thin out trajectories?
+    ds = jax.tree.map(lambda x: x[:, ::thin], ds)
+
     # * sum rewards to get returns, keep only obs, actions, returns
     ds["returns"] = ds["rewards"].sum(axis=-1)
     ds = {k: ds[k] for k in ["observations", "actions", "returns"]}
