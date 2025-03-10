@@ -73,12 +73,10 @@ def make_ogbench_data(key, cfg):
 
     output = {
         # train data
-        "train_demos": train_trajs["observations"],
-        "train_returns": train_trajs["returns"],
+        "train_trajs": train_trajs,
         "train_prefs": train_prefs,
         # test data
-        "val_demos": val_trajs["observations"],
-        "val_returns": val_trajs["returns"],
+        "val_trajs": val_trajs,
         "val_prefs": val_prefs,
     }
 
@@ -114,7 +112,7 @@ def process_ogbench(
 
     # * sum rewards to get returns, keep only obs, actions, returns
     ds["returns"] = ds["rewards"].sum(axis=-1)
-    ds = {k: ds[k] for k in ["observations", "actions", "returns"]}
+    # ds = {k: ds[k] for k in ["observations", "actions", "returns"]}
 
     # * filter out low return trajectories
     n_traj, traj_len, _ = ds["observations"].shape

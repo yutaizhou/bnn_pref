@@ -9,6 +9,7 @@ hidden_sizes:
 
 cls:
   # Subspace Init w/ SGD - beware of (warm_epochs - warm_burns) // thinning >= sub_dim
+  l2_reg: 0
   warm_epochs: 100 # 6
   warm_burns: 20
   thinning: 2
@@ -16,6 +17,10 @@ cls:
   rnd_proj: False
   
   # Subspace Inference w/ EKF
-  prior_noise: 0.0001 # variance
-  dynamics_noise: 0.0
-  obs_noise: 0.0
+  # prior_noise: 0.0001 # variance
+  # dynamics_noise: 0.0
+  # obs_noise: 0.0
+
+  prior_noise: 0.01  # Increased from 0.0001
+  dynamics_noise: 0.001  # Increased from 0.0
+  obs_noise: 0.01  # Increased from 0.0

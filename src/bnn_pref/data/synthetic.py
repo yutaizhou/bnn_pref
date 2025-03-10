@@ -22,12 +22,12 @@ def make_synthetic_data(key, cfg) -> Tuple[NTD, N, QueryWithResponse]:
     key, key1, key2, key3, key4 = jr.split(key, 5)
     true_param_D = get_gaussian_vector(key1, dim=n_feats, normalize=True)
     true_reward_fn = test_functions_dict[cfg["f"]]
+    demos_NTD = jr.normal(key2, (n_demos, demo_len, n_feats))
 
     # * preprocess trajectories
-    demos_NTD = jr.normal(key2, (n_demos, demo_len, n_feats))
-    demos_NTD /= jnp.linalg.norm(demos_NTD, axis=2, keepdims=True)
-    demos_NTD = demos_NTD - jnp.mean(demos_NTD, axis=(0, 1))
-    demos_NTD = demos_NTD / jnp.std(demos_NTD, axis=(0, 1))
+    # demos_NTD /= jnp.linalg.norm(demos_NTD, axis=2, keepdims=True)
+    # demos_NTD = demos_NTD - jnp.mean(demos_NTD, axis=(0, 1))
+    # demos_NTD = demos_NTD / jnp.std(demos_NTD, axis=(0, 1))
 
     # * split into train/test demos, and generate preference data for each split
     n_train_demos = int(n_demos * train_frac)

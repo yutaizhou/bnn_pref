@@ -70,16 +70,30 @@ def main(cfg):
     # print(f"{pref_acc=:.2%}")
 
     if D == 2:
-        train_demo_obs = output["train_demos"]
-        mins, maxs = (train_demo_obs.min(axis=(0, 1)), train_demo_obs.max(axis=(0, 1)))
+        train_trajs = output["train_trajs"]
+        train_traj_obs = train_trajs["observations"]
+        mins, maxs = (train_traj_obs.min(axis=(0, 1)), train_traj_obs.max(axis=(0, 1)))
         feature_bounds = (
             (mins[0].item(), maxs[0].item()),
             (mins[1].item(), maxs[1].item()),
         )
         print(f"Feature bounds: {feature_bounds}")
 
-        nrows, ncols = 1, 3
+        nrows, ncols = 1, 2
         fig = plt.figure(figsize=(12, 4))
+
+        ax = fig.add_subplot(nrows, ncols, 1)
+        all_obs = train_traj_obs.reshape(-1, 2)
+        all_starts = train_traj_obs[:, 0, :]
+        all_ends = train_traj_obs[:, -1, :]
+        xx, yy = jnp.where(train_trajs["rewards"] == 0)
+        all_goals = train_traj_obs[xx, yy, :]
+
+        ax.scatter(all_obs[:, 0], all_obs[:, 1], s=1)
+        ax.scatter(all_starts[:, 0], all_starts[:, 1], c="yellow", s=3, label="start")
+        ax.scatter(all_ends[:, 0], all_ends[:, 1], c="orange", s=3, label="end")
+        ax.scatter(all_goals[:, 0], all_goals[:, 1], c="red", s=3, label="goal")
+        ax.set_title("Train Demos")
 
         learn_reward_plotkw = {
             "reward_fn": jax.vmap(reward_predictor),
@@ -87,7 +101,7 @@ def main(cfg):
         }
         title = "Learned Reward"
         ax = fig.add_subplot(nrows, ncols, 2)
-        plot_reward_heatmap(ax, **learn_reward_plotkw)
+        plot_reward_heatmap(ax, **learn_reward_plotkw, title=title)
 
         plt.show()
 

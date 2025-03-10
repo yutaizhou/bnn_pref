@@ -29,11 +29,17 @@ def plot_reward_heatmap(
     inputs = jnp.stack([X, Y], axis=-1)  # 100,100,2
     inputs = rearrange(inputs, "H W D -> H W 1 D", D=2)  # for time dim
     Z = reward_fn(inputs).squeeze()
+
     if plot_3d:
-        ax.plot_surface(X, Y, Z, cmap="viridis")
+        surface = ax.plot_surface(X, Y, Z, cmap="viridis")
+        fig = ax.get_figure()
+        fig.colorbar(surface, ax=ax)
         ax.set_zlabel("Reward")
     else:
-        ax.contourf(X, Y, Z, levels=10)
+        contour = ax.contourf(X, Y, Z, levels=10)
+        fig = ax.get_figure()
+        fig.colorbar(contour, ax=ax)
+
     ax.set_xlabel("Feature 1")
     ax.set_ylabel("Feature 2")
     if title is not None:

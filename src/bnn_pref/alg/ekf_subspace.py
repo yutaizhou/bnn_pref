@@ -31,6 +31,7 @@ class SubspaceNeuralBandit:
         n_feats: int,
         model: nn.Module,
         opt,
+        l2_reg: float = 0.0,
         warm_epochs: int = 1000,
         warm_burns: int = 1000,
         thinning: int = 2,
@@ -77,7 +78,7 @@ class SubspaceNeuralBandit:
         self.sub_dim = sub_dim
         self.rnd_proj = rnd_proj
         self.context_dim = None
-
+        self.l2_reg = l2_reg
         assert (warm_epochs - warm_burns) // thinning >= sub_dim
 
     def init_bel(self, key, warmup_data: CARL) -> BeliefState:
@@ -101,6 +102,10 @@ class SubspaceNeuralBandit:
         def loss_fn(params):
             logits_N2 = self.model.apply({"params": params}, contexts)
             loss = optax.softmax_cross_entropy(logits_N2, labels).mean()
+
+            params_flat, _ = ravel_pytree(params)
+            l2_loss = self.l2_reg * (params_flat**2).sum()
+            loss = loss + l2_loss
             return loss, logits_N2
 
         warm_ts, warm_metrics = run_sgd(ts, loss_fn=loss_fn, n_epochs=self.warm_epochs)
