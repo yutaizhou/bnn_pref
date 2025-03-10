@@ -55,7 +55,7 @@ def make_ogbench_data(key, cfg):
 
     # * create preference data
     key, key1, key2 = jr.split(key, 3)
-    queries_idx_Q2, response_Q1, num_mislabels = create_pref_data_jit(
+    queries_idx_Q2, response_Q1, _ = create_pref_data_jit(
         key1, ranked_returns=train_trajs["returns"], n_queries=n_queries
     )
     train_prefs = QueryWithResponse(
@@ -63,7 +63,7 @@ def make_ogbench_data(key, cfg):
         response_Q1,
     )
 
-    queries_idx_Q2, response_Q1, num_mislabels = create_pref_data_jit(
+    queries_idx_Q2, response_Q1, _ = create_pref_data_jit(
         key2, ranked_returns=val_trajs["returns"], n_queries=-1
     )
     val_prefs = QueryWithResponse(
@@ -138,7 +138,7 @@ if __name__ == "__main__":
     print(test_data.queries_Q2TD.shape, test_data.responses_Q1.shape)
     print()
 
-    demos_NTD = output["train_demos"]
+    demos_NTD = output["train_trajs"]["observations"]
     demos_NTD = demos_NTD - jnp.mean(demos_NTD, axis=(0, 1))
     demos_NTD = demos_NTD / jnp.std(demos_NTD, axis=(0, 1))
     demos2 = jax.nn.standardize(demos_NTD, axis=(0, 1))

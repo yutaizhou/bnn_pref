@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import jax.random as jr
 from jaxtyping import Array, Float
 
-from bnn_pref.utils.type import CAR, CARL, Q2, Q2TD
+from bnn_pref.utils.type import CARL, Q2, Q2TD
 
 
 class BanditEnvironment:

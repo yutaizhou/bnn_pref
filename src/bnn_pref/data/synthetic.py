@@ -34,29 +34,36 @@ def make_synthetic_data(key, cfg) -> Tuple[NTD, N, QueryWithResponse]:
     train_demos_NTD = demos_NTD[:n_train_demos]
     test_demos_NTD = demos_NTD[n_train_demos:]
 
-    train_returns_N, train_pref_data = demos_to_pref_data(
+    train_returns_N, train_prefs = demos_to_pref_data(
         key3,
         demos=train_demos_NTD,
         returns_N=true_reward_fn(train_demos_NTD, true_param_D),
         n_queries=n_queries,
     )
-    test_returns_N, test_pref_data = demos_to_pref_data(
+    test_returns_N, test_prefs = demos_to_pref_data(
         key4,
         demos=test_demos_NTD,
         returns_N=true_reward_fn(test_demos_NTD, true_param_D),
         n_queries=-1,
     )
+    train_trajs = {
+        "observations": train_demos_NTD,
+        "returns": train_returns_N,
+    }
+    test_trajs = {
+        "observations": test_demos_NTD,
+        "returns": test_returns_N,
+    }
+
     output = {
         # true reward fn + params
         "true_param": true_param_D,
         "true_reward_fn": true_reward_fn,
         # train data
-        "train_demos": train_demos_NTD,
-        "train_returns": train_returns_N,
-        "train_prefs": train_pref_data,
+        "train_trajs": train_trajs,
+        "train_prefs": train_prefs,
         # test data
-        "test_demos": test_demos_NTD,
-        "test_returns": test_returns_N,
-        "test_prefs": test_pref_data,
+        "test_trajs": test_trajs,
+        "test_prefs": test_prefs,
     }
     return output

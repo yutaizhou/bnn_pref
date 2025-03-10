@@ -157,7 +157,6 @@ def create_pref_data(
     return queries_Q2, labels_Q1, num_mislabels
 
 
-# this was some cursor bullshit to get jit to work
 def create_pref_data_jit(
     key,
     ranked_returns: N,
@@ -171,7 +170,7 @@ def create_pref_data_jit(
     mistake_prob: float = 0.0,
 ) -> Tuple[Q2, Q1, int]:
     """
-    Jit-compatible version of create_pref_data.
+    Jit-compatible version of create_pref_data. (thanks Cursor)
     Instead of using Python lists and conditionals, uses jax arrays and jnp.where.
 
     Args and outputs are the same as create_pref_data.

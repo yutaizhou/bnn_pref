@@ -1,14 +1,11 @@
 import warnings
 from typing import Dict, Tuple
 
-import flax.linen as nn
 import jax.numpy as jnp
 import optax
-from jax import vmap
 from jax.lax import scan
 from jax.random import split
-from jaxtyping import Array, Float, Int, Key
-from omegaconf import OmegaConf
+from jaxtyping import Key
 
 from bnn_pref.alg.bandit_env import BanditEnvironment
 from bnn_pref.utils.network import RewardNet
