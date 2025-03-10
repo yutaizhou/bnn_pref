@@ -41,8 +41,16 @@ class BradleyTerry:
 
 
 def demos_to_pref_data(
-    key, demos: NTD, returns_N: N, n_queries: int = -1
+    key,
+    demos: NTD,
+    returns_N: N,
+    n_queries: int = -1,
 ) -> Tuple[N, QueryWithResponse]:
+    """
+    Generate preference label for trajectories based on their returns.
+    Returned trajectories are sorted by increasing reward.
+
+    """
     sorted_idx = jnp.argsort(returns_N)  # ascending
     demos = demos[sorted_idx]
     returns_N = returns_N[sorted_idx]
@@ -104,15 +112,12 @@ def create_pref_data(
 
     Note: demonstrations and/or returns must be ranked by increasing reward.
     """
+    n_demos = len(ranked_returns)
+    n_queries = n_queries if n_queries != -1 else math.comb(n_demos, 2)
+
     queries = []
     labels = []
-    n_demos = len(ranked_returns)
-
-    if not isinstance(ranked_returns, jnp.ndarray):
-        ranked_returns = jnp.asarray(ranked_returns)
-
     num_mislabels = 0
-    n_queries = n_queries if n_queries != -1 else math.comb(n_demos, 2)
 
     for ti, tj in random_query_iterator(key, n_demos, n_queries):
         if use_delta:
@@ -172,9 +177,6 @@ def create_pref_data_jit(
     Args and outputs are the same as create_pref_data.
     """
     n_demos = len(ranked_returns)
-    if not isinstance(ranked_returns, jnp.ndarray):
-        ranked_returns = jnp.asarray(ranked_returns)
-
     n_queries = n_queries if n_queries != -1 else math.comb(n_demos, 2)
 
     # Pre-allocate arrays
@@ -182,7 +184,7 @@ def create_pref_data_jit(
     labels = jnp.ones(n_queries, dtype=jnp.int32)
     num_mislabels = jnp.array(0)
 
-    def body_fun(i, state):
+    def body_fn(i, state):
         key, queries, labels, num_mislabels = state
 
         # Generate random indices
@@ -230,8 +232,71 @@ def create_pref_data_jit(
     # Run the loop
     init_state = (key, queries, labels, num_mislabels)
     key, queries_Q2, labels, num_mislabels = jax.lax.fori_loop(
-        0, n_queries, body_fun, init_state
+        0, n_queries, body_fn, init_state
     )
 
     labels_Q1 = jnp.expand_dims(labels, 1)
     return queries_Q2, labels_Q1, num_mislabels
+
+
+if __name__ == "__main__":
+    """Test that create_pref_data and create_pref_data_jit produce the same output."""
+    from bnn_pref.utils.test_functions import test_functions_dict
+    from bnn_pref.utils.utils import get_gaussian_vector, get_random_seed
+
+    # Set up random key and config
+    seed = get_random_seed()
+    key = jr.key(seed)
+
+    # Create a simple config similar to what's used in make_synthetic_data
+    cfg = {
+        "data": {
+            "n_feats": 2,
+            "n_demos": 10,
+            "length": 5,
+            "train_frac": 0.8,
+            "n_queries": 5,
+        },
+        "f": "linear",  # Using linear reward function for simplicity
+    }
+
+    n_feats = cfg["data"]["n_feats"]
+    demo_len = cfg["data"]["length"]
+    n_demos = cfg["data"]["n_demos"]
+    n_queries = cfg["data"]["n_queries"]
+
+    # Generate synthetic data using make_synthetic_data
+    key, param_key, demo_key = jr.split(key, 3)
+    true_param_D = get_gaussian_vector(param_key, dim=n_feats, normalize=True)
+    true_reward_fn = test_functions_dict[cfg["f"]]
+    demos_NTD = jr.normal(demo_key, (n_demos, demo_len, n_feats))
+    returns_N = true_reward_fn(demos_NTD, true_param_D)
+
+    # sort by increasing reward
+    sorted_idx = jnp.argsort(returns_N)
+    returns_N = returns_N[sorted_idx]
+    demos_NTD = demos_NTD[sorted_idx]
+
+    # Generate preference data using both functions
+    key, pref_key = jr.split(key, 2)
+    queries1_Q2, labels1_Q1, mislabels1 = create_pref_data(
+        pref_key,
+        ranked_returns=returns_N,
+        n_queries=n_queries,
+    )
+
+    queries2_Q2, labels2_Q1, mislabels2 = create_pref_data_jit(
+        pref_key,
+        ranked_returns=returns_N,
+        n_queries=n_queries,
+    )
+
+    # Compare outputs
+    assert queries1_Q2.shape == queries2_Q2.shape, "Query shapes should match"
+    assert labels1_Q1.shape == labels2_Q1.shape, "Label shapes should match"
+
+    queried_returns1_Q2 = returns_N[queries1_Q2]
+    queried_returns2_Q2 = returns_N[queries2_Q2]
+
+    assert jnp.all(queried_returns1_Q2[:, 0] < queried_returns1_Q2[:, 1])
+    assert jnp.all(queried_returns2_Q2[:, 0] < queried_returns2_Q2[:, 1])

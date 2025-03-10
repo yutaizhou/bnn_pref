@@ -71,6 +71,41 @@ def main(cfg):
     print(f"Test acc:  {test_acc:.2%}")
     # print(f"{pref_acc=:.2%}")
 
+    if data_kw["n_feats"] == 1 and data_kw["length"] == 1:
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 8))
+
+        # Generate x points for plotting
+        x = jnp.linspace(feature_bounds[0], feature_bounds[1], 100)
+        x_points = x.reshape(-1, 1, 1)  # reshape for single feature
+        print(x.shape, x_points.shape)
+
+        # True reward function
+        true_utility_fn = partial(true_reward_fn, param_D=true_param_D)
+        true_utility_fn = jax.vmap(true_utility_fn)  # vectorize over batch dimension
+        true_rewards = true_utility_fn(x_points)
+
+        # Learned reward function
+        learned_rewards = reward_predictor(x_points)  # already vmapped
+
+        # Plot true reward
+        ax1.plot(x, true_rewards, "b-", label="True Reward")
+        ax1.set_title(f"True Reward {true_param_D}")
+        ax1.set_xlabel("Feature Value")
+        ax1.set_ylabel("Reward")
+        ax1.grid(True)
+        ax1.legend()
+
+        # Plot learned reward
+        ax2.plot(x, learned_rewards, "r-", label="Learned Reward")
+        ax2.set_title("Learned Reward")
+        ax2.set_xlabel("Feature Value")
+        ax2.set_ylabel("Reward")
+        ax2.grid(True)
+        ax2.legend()
+
+        plt.tight_layout()
+        plt.show()
+
     if data_kw["n_feats"] == 2 and data_kw["length"] == 1:
         # fig, axs = plt.subplots(1, 3, figsize=(12, 5))
         nrows, ncols = 2, 3
