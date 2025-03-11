@@ -1,6 +1,5 @@
-from typing import Optional, Tuple, Union
+from typing import Union
 
-import einops
 import jax.numpy as jnp
 import jax.random as jr
 import optax
@@ -16,7 +15,7 @@ from tensorflow_probability.substrates import jax as tfp
 from bnn_pref.alg.agent_utils import (
     JaxPCA,
     generate_random_basis,
-    run_sgd,
+    run_gradient_descent,
     subspace2full_params,
 )
 from bnn_pref.utils.network import count_params
@@ -32,7 +31,8 @@ class SubspaceNeuralBandit:
         model: nn.Module,
         opt,
         l2_reg: float = 0.0,
-        warm_epochs: int = 1000,
+        n_iterates: int = 1000,
+        batch_size: int = -1,
         warm_burns: int = 1000,
         thinning: int = 2,
         sub_dim: Union[float, int] = 0.9999,
@@ -65,13 +65,15 @@ class SubspaceNeuralBandit:
             The dynamics noise for the EKF.
         obs_noise: float
             The observation noise for the EKF.
+        batch_size: Optional[int]
+            The batch size for mini-batch SGD.
         """
         self.n_feats = n_feats
         self.model = model
         self.opt = opt
         self.prior_noise = prior_noise
         self.warm_burns = warm_burns
-        self.warm_epochs = warm_epochs
+        self.n_iterates = n_iterates
         self.thinning = thinning
         self.system_noise = dynamics_noise
         self.observation_noise = obs_noise
@@ -79,7 +81,8 @@ class SubspaceNeuralBandit:
         self.rnd_proj = rnd_proj
         self.context_dim = None
         self.l2_reg = l2_reg
-        assert (warm_epochs - warm_burns) // thinning >= sub_dim
+        self.batch_size = batch_size
+        assert (n_iterates - warm_burns) // thinning >= sub_dim
 
     def init_bel(self, key, warmup_data: CARL) -> BeliefState:
         """
@@ -99,16 +102,23 @@ class SubspaceNeuralBandit:
             apply_fn=self.model.apply, params=initial_params, tx=self.opt
         )
 
-        def loss_fn(params):
-            logits_N2 = self.model.apply({"params": params}, contexts)
-            loss = optax.softmax_cross_entropy(logits_N2, labels).mean()
-
+        def loss_fn(params, batch_idxs: Float[Array, "n_iterates batch_size"]):
+            logits_N2 = self.model.apply({"params": params}, contexts[batch_idxs])
+            loss = optax.softmax_cross_entropy(logits_N2, labels[batch_idxs]).mean()
             params_flat, _ = ravel_pytree(params)
             l2_loss = self.l2_reg * (params_flat**2).sum()
-            loss = loss + l2_loss
-            return loss, logits_N2
+            return loss + l2_loss, logits_N2
 
-        warm_ts, warm_metrics = run_sgd(ts, loss_fn=loss_fn, n_epochs=self.warm_epochs)
+        key, key_sgd = jr.split(key, 2)
+        warm_ts, warm_metrics = run_gradient_descent(
+            key_sgd,
+            ts,
+            loss_fn,
+            n_iterates=self.n_iterates,
+            data_size=contexts.shape[0],
+            batch_size=self.batch_size,
+        )
+
         params_trace = warm_metrics["params"][self.warm_burns :: self.thinning]
 
         if self.rnd_proj:

@@ -238,6 +238,92 @@ def create_pref_data_jit(
     return queries_Q2, labels_Q1, num_mislabels
 
 
+def get_batch_idxs(key, data_size: int, batch_size: int, n_iterates: int):
+    """
+    Generate batch indices for the exact number of iterations, reshuffling when needed.
+    Simplified function version of BatchIndexManager.
+    """
+    all_idxs = []
+    curr_idxs = None
+
+    for i in range(n_iterates):
+        if curr_idxs is None or len(curr_idxs) < batch_size:
+            # Need to reshuffle
+            key, key_shuffle = jr.split(key)
+            curr_idxs = jr.permutation(key_shuffle, data_size)
+
+        # Take the next batch
+        batch = curr_idxs[:batch_size]
+        curr_idxs = curr_idxs[batch_size:]
+        all_idxs.append(batch)
+
+    return jnp.stack(all_idxs)
+
+
+class BatchIndexManager:
+    """Manages batch indices for mini-batch training, handling shuffling and epoch transitions."""
+
+    def __init__(self, key, data_size: int, batch_size: int):
+        """
+        Initialize the batch index manager.
+
+        Parameters
+        ----------
+        key : PRNGKey
+            Random key for shuffling
+        data_size : int
+            Total number of data points
+        batch_size : int
+            Size of each batch
+        """
+        self.key = key
+        self.data_size = data_size
+        self.batch_size = batch_size if batch_size != -1 else data_size
+        self.curr_idxs = None
+        self._n_batches_remaining = None  # For iterator interface
+
+    def _shuffle(self):
+        """Shuffle indices for a new epoch."""
+        self.key, key_shuffle = jr.split(self.key)
+        self.curr_idxs = jr.permutation(key_shuffle, self.data_size)
+
+    def next_batch(self):
+        """Get indices for the next batch, reshuffling if needed."""
+        if self.curr_idxs is None or len(self.curr_idxs) < self.batch_size:
+            self._shuffle()
+
+        batch = self.curr_idxs[: self.batch_size]
+        self.curr_idxs = self.curr_idxs[self.batch_size :]  # remove used indices
+        return batch
+
+    def get_n_batches(self, n: int):
+        """Get indices for n batches."""
+        batches = jnp.zeros((n, self.batch_size), dtype=jnp.int32)
+        for i in range(n):
+            batches = batches.at[i].set(self.next_batch())
+        return batches
+
+    def __iter__(self):
+        """Make the manager iterable for a specified number of batches."""
+        return self
+
+    def __next__(self):
+        """Get the next batch of indices."""
+        if self._n_batches_remaining is None:
+            raise RuntimeError("Must call take(n) before iterating")
+        if self._n_batches_remaining <= 0:
+            self._n_batches_remaining = None
+            raise StopIteration
+
+        self._n_batches_remaining -= 1
+        return self.next_batch()
+
+    def take(self, n: int):
+        """Set up the manager to iterate over n batches."""
+        self._n_batches_remaining = n
+        return self
+
+
 if __name__ == "__main__":
     """Test that create_pref_data and create_pref_data_jit produce the same output."""
     from bnn_pref.utils.test_functions import test_functions_dict

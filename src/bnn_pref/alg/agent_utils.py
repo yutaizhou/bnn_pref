@@ -8,6 +8,8 @@ from jax.flatten_util import ravel_pytree
 from jax.lax import scan
 from jaxtyping import Array, Float
 
+from bnn_pref.data.utils import BatchIndexManager
+
 
 def subspace2full_params(
     params_subspace: Float[Array, "sub_dim"],
@@ -28,23 +30,35 @@ def generate_random_basis(key, d: int, D: int):
     return P
 
 
-def run_sgd(
+def run_gradient_descent(
+    key,
     ts: TrainState,
     loss_fn: Callable,
-    n_epochs: int = 300,
+    n_iterates: int,
+    data_size: int,
+    batch_size: int = -1,
     has_aux: bool = True,
 ):
+    """
+    Run GD training for exactly n_iterates steps.
+    If batch_size == -1, run full-batch GD. Otherwise, run mini-batch SGD.
+    """
+
     @jit
-    def step(state, _):
+    def step(state, idxs):
         grad_fn = value_and_grad(loss_fn, has_aux=has_aux)
-        val, grads = grad_fn(state.params)
+        val, grads = grad_fn(state.params, idxs)
         loss = val[0] if has_aux else val
         state = state.apply_gradients(grads=grads)
         flat_params, _ = ravel_pytree(state.params)
         return state, {"loss": loss, "params": flat_params}
 
-    ts, metrics = scan(step, init=ts, xs=jnp.empty(n_epochs))
+    # Create batch manager and get all batches upfront
+    batch_manager = BatchIndexManager(key, data_size, batch_size)
+    batch_idxs = batch_manager.get_n_batches(n_iterates)  # (n_iterates, batch_size)
 
+    # Run all steps
+    ts, metrics = scan(step, init=ts, xs=batch_idxs)
     return ts, metrics
 
 

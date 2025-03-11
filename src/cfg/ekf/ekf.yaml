@@ -8,12 +8,14 @@ hidden_sizes:
   - 32
 
 cls:
-  # Subspace Init w/ SGD - beware of (warm_epochs - warm_burns) // thinning >= sub_dim
+  # Subspace Init w/ SGD
   l2_reg: 0
-  warm_epochs: 100 # 6
+  n_iterates: 100  # Total number of parameter updates
+  batch_size: -1 # -1 for full batch GD. Otherwise, mini-batch SGD
+
   warm_burns: 20
   thinning: 2
-  sub_dim: 40 # 3
+  sub_dim: 40
   rnd_proj: False
   
   # Subspace Inference w/ EKF
