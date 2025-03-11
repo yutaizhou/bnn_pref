@@ -15,8 +15,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from bnn_pref.alg.mcmc import build_hmc, build_mh, plot_samples, plot_trace, run_mcmc
+from bnn_pref.data.pref_utils import BradleyTerry
 from bnn_pref.data.synthetic import make_synthetic_data
-from bnn_pref.data.utils import BradleyTerry
 from bnn_pref.utils.metrics import alignment_metric, compute_accuracy2_mcmc
 from bnn_pref.utils.test_functions import test_functions_dict
 from bnn_pref.utils.utils import get_random_seed

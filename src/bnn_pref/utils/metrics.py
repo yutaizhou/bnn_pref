@@ -7,7 +7,7 @@ import jax.numpy.linalg as jnpl
 import jax.random as jr
 import jax.scipy as jsp
 
-from bnn_pref.data.utils import QueryWithResponse
+from bnn_pref.data.pref_utils import QueryWithResponse
 from bnn_pref.utils.type import NTD, SD, D
 
 

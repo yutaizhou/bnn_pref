@@ -1,5 +1,6 @@
 from typing import Union
 
+import jax
 import jax.numpy as jnp
 import jax.random as jr
 import optax
@@ -7,7 +8,6 @@ from dynamax.nonlinear_gaussian_ssm import ParamsNLGSSM, extended_kalman_filter
 from einops import rearrange
 from flax import linen as nn
 from flax.training.train_state import TrainState
-from jax import device_put, jit
 from jax.flatten_util import ravel_pytree
 from jaxtyping import Array, Float, Scalar
 from tensorflow_probability.substrates import jax as tfp
@@ -18,8 +18,9 @@ from bnn_pref.alg.agent_utils import (
     run_gradient_descent,
     subspace2full_params,
 )
+from bnn_pref.data.pref_utils import retrieve
 from bnn_pref.utils.network import count_params
-from bnn_pref.utils.type import CAR, CARL, BeliefState, D
+from bnn_pref.utils.type import CAR, CARL, BeliefState
 
 tfd = tfp.distributions
 
@@ -102,9 +103,13 @@ class SubspaceNeuralBandit:
             apply_fn=self.model.apply, params=initial_params, tx=self.opt
         )
 
-        def loss_fn(params, batch_idxs: Float[Array, "n_iterates batch_size"]):
-            logits_N2 = self.model.apply({"params": params}, contexts[batch_idxs])
-            loss = optax.softmax_cross_entropy(logits_N2, labels[batch_idxs]).mean()
+        def loss_fn(params, batch_idx: Float[Array, "batch_size"]):
+            # For full batch, use all data
+            bs = self.batch_size
+            contexts_batch = contexts if bs == -1 else retrieve(contexts, batch_idx)
+            labels_batch = labels if bs == -1 else retrieve(labels, batch_idx)
+            logits_N2 = self.model.apply({"params": params}, contexts_batch)
+            loss = optax.softmax_cross_entropy(logits_N2, labels_batch).mean()
             params_flat, _ = ravel_pytree(params)
             l2_loss = self.l2_reg * (params_flat**2).sum()
             return loss + l2_loss, logits_N2
@@ -135,7 +140,7 @@ class SubspaceNeuralBandit:
             if isinstance(self.sub_dim, float):
                 print(f"PCA found {sub_dim} components ({self.sub_dim=:.2%} var)")
             self.sub_dim = pca.n_components_
-            proj_matrix = device_put(pca.components_)
+            proj_matrix = pca.components_
 
         self.full_params_count = count_params(initial_params)
         self.subspace_params_count = sub_dim

@@ -1,10 +1,12 @@
 import math
 from dataclasses import dataclass
+from functools import partial
 from typing import Callable, Tuple
 
 import jax
 import jax.numpy as jnp
 import jax.random as jr
+from jaxtyping import Array, Float
 
 from bnn_pref.utils.type import NTD, Q1, Q2, Q2TD, D, N
 
@@ -322,6 +324,18 @@ class BatchIndexManager:
         """Set up the manager to iterate over n batches."""
         self._n_batches_remaining = n
         return self
+
+
+def retrieve(data, batch_idx: Float[Array, "B"]):
+    """
+    Take a (dynamic) batch of indices and return the corresponding elements from the original dataset.
+    Designed to play nicely with jax.jit and jax.vmap
+    """
+    retrieve_fn = jax.vmap(
+        partial(jax.lax.dynamic_index_in_dim, keepdims=False),
+        in_axes=(None, 0),
+    )
+    return retrieve_fn(data, batch_idx)
 
 
 if __name__ == "__main__":

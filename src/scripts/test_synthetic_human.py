@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from bnn_pref.alg.mcmc import build_hmc, build_mh, plot_samples, plot_trace, run_mcmc
-from bnn_pref.data.utils import create_pref_data
+from bnn_pref.data.pref_utils import create_pref_data
 from bnn_pref.utils.metrics import alignment_metric
 from bnn_pref.utils.utils import get_gaussian_vector, get_random_seed, tile_first_dim
 from scripts.run_mcmc import BradleyTerry, QueryWithResponse, generate_pref_data

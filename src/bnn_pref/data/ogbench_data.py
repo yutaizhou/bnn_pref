@@ -6,7 +6,7 @@ import jax.random as jr
 import numpy as np
 
 import ogbench
-from bnn_pref.data.utils import QueryWithResponse, create_pref_data_jit
+from bnn_pref.data.pref_utils import QueryWithResponse, create_pref_data_jit
 from bnn_pref.utils.utils import get_random_seed
 
 
