@@ -18,7 +18,7 @@ from bnn_pref.alg.agent_utils import (
     run_gradient_descent,
     subspace2full_params,
 )
-from bnn_pref.data.pref_utils import retrieve
+from bnn_pref.data.ekf_env import retrieve
 from bnn_pref.utils.network import count_params
 from bnn_pref.utils.type import CAR, CARL, BeliefState
 

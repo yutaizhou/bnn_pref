@@ -7,7 +7,7 @@ from jax.lax import scan
 from jax.random import split
 from jaxtyping import Key
 
-from bnn_pref.alg.bandit_env import BanditEnvironment
+from bnn_pref.data.ekf_env import EKFEnvironment
 from bnn_pref.utils.network import RewardNet
 from bnn_pref.utils.type import CAR, CARL, BeliefState
 
@@ -17,7 +17,7 @@ warnings.filterwarnings("ignore")
 def bandit_pipeline(
     key,
     bandit_cls,
-    env: BanditEnvironment,
+    env: EKFEnvironment,
     warmup_obs: int,
     bandit_kw: Dict,
 ):
@@ -47,7 +47,7 @@ def run_bandit(
     key,
     bandit,
     bel: BeliefState,
-    env: BanditEnvironment,
+    env: EKFEnvironment,
     warmup_data: CARL,
     nsteps: int,
 ) -> Tuple[BeliefState, CAR]:

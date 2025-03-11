@@ -8,7 +8,7 @@ from jax.flatten_util import ravel_pytree
 from jax.lax import scan
 from jaxtyping import Array, Float
 
-from bnn_pref.data.pref_utils import BatchIndexManager
+from bnn_pref.data.ekf_env import BatchIndexManager
 
 
 def subspace2full_params(

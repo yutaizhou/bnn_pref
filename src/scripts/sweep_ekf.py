@@ -9,9 +9,9 @@ import jax.numpy as jnp
 import jax.random as jr
 import matplotlib.pyplot as plt
 
-from bnn_pref.alg.bandit_env import BanditEnvironment
 from bnn_pref.alg.ekf_subspace import SubspaceNeuralBandit
 from bnn_pref.alg.train_utils import bandit_pipeline, summarize_results
+from bnn_pref.data.ekf_env import EKFEnvironment
 from bnn_pref.data.synthetic import make_synthetic_data
 from bnn_pref.utils.metrics import compute_accuracy_nn, compute_pref_ranking_acc
 from bnn_pref.utils.utils import get_random_seed
@@ -35,7 +35,7 @@ def run_ekf(key, cfg, n_feats=None):
 
     # * build + run bandit alg
     key, key1, key2 = jr.split(key, 3)
-    env = BanditEnvironment(
+    env = EKFEnvironment(
         key1,
         X=train_data.queries_Q2TD,
         Y=jax.nn.one_hot(train_data.responses_Q1.squeeze(), num_classes=2),
