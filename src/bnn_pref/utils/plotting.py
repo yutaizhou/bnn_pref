@@ -61,7 +61,9 @@ def plot_logpdf(
     param_min, param_max = bounds
     X, Y = jnp.mgrid[param_min:param_max:100j, param_min:param_max:100j]
     Z = potential_fn(jnp.stack([X, Y], axis=-1))
-    ax.contourf(X, Y, Z, levels=10)
+    contour = ax.contourf(X, Y, Z, levels=10)
+    fig = ax.get_figure()
+    fig.colorbar(contour, ax=ax)
     ax.set_xlabel("Param 1")
     ax.set_ylabel("Param 2")
 

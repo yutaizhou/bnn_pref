@@ -53,8 +53,11 @@ def run_experiment(cfg, key, n_feats=None):
 
     accs = compute_accuracy2_mcmc(samples_SD, test_data, learned_reward_fn)
     aligns = alignment_metric(true_param_D, samples_SD)
+    sample_D = samples_SD.mean(axis=0)
+    sample_D /= jnpl.norm(sample_D)
+    test_logpdf = dist.logpdf(sample_D, test_data, learned_reward_fn).mean()
 
-    results = {"accs": accs, "aligns": aligns}
+    results = {"accs": accs, "aligns": aligns, "logpdf": test_logpdf}
     metadata = {"true_reward": true_param_D}
 
     return results, metadata
@@ -65,8 +68,8 @@ def run_dimensinality_exp(cfg):
     seed = get_random_seed() if cfg["seed"] == -1 else cfg["seed"]
     key = jr.key(seed)
 
-    # n_feats_list = [2, 3]
-    n_feats_list = [3, 10, 30, 50, 100, 150, 300, 500, 1000]
+    n_feats_list = [2, 3]
+    # n_feats_list = [3, 10, 30, 50, 100, 150, 300, 500, 1000]
     stats = []
     for n_feats in n_feats_list:
         key, *subkeys = jr.split(key, 1 + cfg["seeds"])  # m = 1 + n_seeds
@@ -83,16 +86,20 @@ def run_dimensinality_exp(cfg):
                 "accs_std": results["accs"].std(),
                 "aligns_mean": results["aligns"].mean(),
                 "aligns_std": results["aligns"].std(),
+                "logpdf_mean": results["logpdf"].mean(),
+                "logpdf_std": results["logpdf"].std(),
             }
         )
         print(
             f"n_feats={n_feats:4}, acc = {results['accs'].mean():.2%} ± {results['accs'].std():.1%}, "
             f"align = {results['aligns'].mean():.2f} ± {results['aligns'].std():.1f}, "
+            f"avg_ll = {results['logpdf'].mean():.2f} ± {results['logpdf'].std():.1f}, "
             f"Time: {duration:.1f} seconds"
         )
 
-    fig, axs = plt.subplots(1, 1)
-    axs.errorbar(
+    fig, axs = plt.subplots(1, 2, figsize=(10, 5))
+    ax = axs[0]
+    ax.errorbar(
         [stat["n_feats"] for stat in stats],
         [stat["accs_mean"] for stat in stats],
         yerr=[stat["accs_std"] for stat in stats],
@@ -100,7 +107,7 @@ def run_dimensinality_exp(cfg):
         marker="o",
         markersize=3,
     )
-    axs.errorbar(
+    ax.errorbar(
         [stat["n_feats"] for stat in stats],
         [stat["aligns_mean"] for stat in stats],
         yerr=[stat["aligns_std"] for stat in stats],
@@ -108,10 +115,22 @@ def run_dimensinality_exp(cfg):
         marker="o",
         markersize=3,
     )
-    axs.set_title("MCMC Sweep")
-    axs.legend()
-    axs.set_xlabel("Num Dimensions")
-    axs.set_ylim(0, 1)
+    ax.legend()
+    ax.set_xlabel("Num Dimensions")
+    ax.set_ylim(0, 1)
+
+    ax = axs[1]
+    ax.errorbar(
+        [stat["n_feats"] for stat in stats],
+        [stat["logpdf_mean"] for stat in stats],
+        yerr=[stat["logpdf_std"] for stat in stats],
+        label="Log-Likelihood",
+        marker="o",
+        markersize=3,
+    )
+    ax.legend()
+    ax.set_xlabel("Num Dimensions")
+    plt.suptitle("MCMC Sweep")
     plt.show()
 
     fp = Path(cfg.paths.output_dir) / "mcmc_sweep.png"

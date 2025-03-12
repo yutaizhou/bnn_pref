@@ -37,9 +37,9 @@ def tile_first_dim(x: jnp.ndarray, reps: int):
 
 def print_mcmc_summary(
     cfg,
-    samples_SD,
     train_acc: float,
     test_acc: float,
+    test_logpdf: float,
     align: float,
     seed: int,
 ):
@@ -51,7 +51,7 @@ def print_mcmc_summary(
     print(
         f"{mcmc_kw['n_samples']} samples w/ {mcmc_kw['burn_in']} burn-in, then {mcmc_kw['thinning']} thinning"
     )
-    print(f"MCMC Samples: {samples_SD.shape}")
     print(f"Train acc: {train_acc:.2%}")
     print(f"Test acc:  {test_acc:.2%}")
+    print(f"Test logpdf: {test_logpdf:.2f}")
     print(f"Cosine Sim: {align:.2f}")

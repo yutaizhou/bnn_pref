@@ -63,8 +63,11 @@ def main(cfg):
     # * posterior check
     train_acc = compute_accuracy2_mcmc(samples_SD, train_data, learned_reward_fn)
     test_acc = compute_accuracy2_mcmc(samples_SD, test_data, learned_reward_fn)
+    sample_D = samples_SD.mean(axis=0)
+    sample_D /= jnpl.norm(sample_D)
+    test_logpdf = dist.logpdf(sample_D, test_data, learned_reward_fn).mean()
     align = alignment_metric(true_param_D, samples_SD)
-    print_mcmc_summary(cfg, samples_SD, train_acc, test_acc, align, seed)
+    print_mcmc_summary(cfg, train_acc, test_acc, test_logpdf, align, seed)
 
     # * arviz - post processing: label switch
     names = [f"weight_{i}" for i in range(n_feats)]
