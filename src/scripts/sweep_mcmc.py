@@ -97,44 +97,63 @@ def run_dimensinality_exp(cfg):
             f"Time: {duration:.1f} seconds"
         )
 
-    fig, axs = plt.subplots(1, 2, figsize=(10, 5))
-    ax = axs[0]
-    ax.errorbar(
+    # Create single plot with dual y-axes
+    fig, ax1 = plt.subplots(figsize=(8, 6))
+
+    # Plot accuracy and alignment on primary y-axis
+    color1 = "tab:blue"
+    ax1.errorbar(
         [stat["n_feats"] for stat in stats],
         [stat["accs_mean"] for stat in stats],
         yerr=[stat["accs_std"] for stat in stats],
         label="Accuracy",
         marker="o",
         markersize=3,
+        color=color1,
     )
-    ax.errorbar(
+    ax1.errorbar(
         [stat["n_feats"] for stat in stats],
         [stat["aligns_mean"] for stat in stats],
         yerr=[stat["aligns_std"] for stat in stats],
         label="Alignment",
         marker="o",
         markersize=3,
+        color="green",
     )
-    ax.legend()
-    ax.set_xlabel("Num Dimensions")
-    ax.set_ylim(0, 1)
 
-    ax = axs[1]
-    ax.errorbar(
+    # Create secondary y-axis for log-likelihood
+    ax2 = ax1.twinx()
+    color2 = "tab:orange"
+    ax2.errorbar(
         [stat["n_feats"] for stat in stats],
         [stat["logpdf_mean"] for stat in stats],
         yerr=[stat["logpdf_std"] for stat in stats],
         label="Log-Likelihood",
         marker="o",
         markersize=3,
+        color=color2,
     )
-    ax.legend()
-    ax.set_xlabel("Num Dimensions")
-    plt.suptitle("MCMC Sweep")
-    plt.show()
 
+    # Set labels and title
+    ax1.set_xlabel("Num Dimensions")
+    ax1.set_ylabel("Accuracy / Alignment")
+    ax2.set_ylabel("Log-Likelihood", color=color2)
+
+    # Set tick colors to match their respective axes
+    ax1.tick_params(axis="y")
+    ax2.tick_params(axis="y", labelcolor=color2)
+
+    # Combine legends from both axes
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    ax1.legend(lines1 + lines2, labels1 + labels2, loc="upper right")
+
+    plt.title("MCMC Sweep")
+
+    # Save the figure
     fp = Path(cfg.paths.output_dir) / "mcmc_sweep.png"
     plt.savefig(fp)
+    plt.show()
 
 
 if __name__ == "__main__":

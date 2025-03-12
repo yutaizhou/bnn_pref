@@ -13,7 +13,11 @@ from bnn_pref.alg.ekf_subspace import SubspaceNeuralBandit
 from bnn_pref.alg.ekf_trainer import bandit_pipeline, summarize_results
 from bnn_pref.data.ekf_env import EKFEnvironment
 from bnn_pref.data.synthetic import make_synthetic_data
-from bnn_pref.utils.metrics import compute_accuracy_nn, compute_pref_ranking_acc
+from bnn_pref.utils.metrics import (
+    compute_accuracy_nn,
+    compute_logpdf_nn,
+    compute_pref_ranking_acc,
+)
 from bnn_pref.utils.utils import get_random_seed
 
 logging.getLogger("jax._src.xla_bridge").setLevel(logging.ERROR)
@@ -56,12 +60,14 @@ def run_ekf(key, cfg, n_feats=None):
     reward_predictor = jax.vmap(partial(bandit.predict_reward, bel.mean))
     train_acc = compute_accuracy_nn(pref_predictor, train_data)
     test_acc = compute_accuracy_nn(pref_predictor, test_data)
+    test_logpdf = compute_logpdf_nn(pref_predictor, test_data)
     pref_acc = compute_pref_ranking_acc(reward_predictor, test_data)
 
     results = {
         "train_acc": train_acc,
         "test_acc": test_acc,
         "pref_acc": pref_acc,
+        "test_logpdf": test_logpdf,
     }
 
     results = jax.tree.map(lambda x: jnp.float32(x), results)
@@ -99,32 +105,60 @@ def main(cfg):
             "n_feats": n_feats,
             "accs_mean": results_m["test_acc"].mean(),
             "accs_std": results_m["test_acc"].std(),
+            "logpdf_mean": results_m["test_logpdf"].mean(),
+            "logpdf_std": results_m["test_logpdf"].std(),
         }
         stats.append(results)
 
         print(
             f"n_feats={n_feats:4}, acc = {results['accs_mean']:.2%} ± {results['accs_std']:.1%}, "
+            f"logpdf = {results['logpdf_mean']:.2f} ± {results['logpdf_std']:.1f}, "
             f"Param count: {metadata_m['full_param_count'][0]} -> {metadata_m['subspace_param_count'][0]}, "
             f"Time: {duration:.1f} seconds"
         )
 
-    fig, axs = plt.subplots(1, 1)
-    axs.errorbar(
+    fig, ax1 = plt.subplots(figsize=(10, 5))
+
+    # Plot accuracy on left y-axis
+    color1 = "tab:blue"
+    ax1.errorbar(
         [stat["n_feats"] for stat in stats],
         [stat["accs_mean"] for stat in stats],
         yerr=[stat["accs_std"] for stat in stats],
         label="Accuracy",
         marker="o",
         markersize=3,
+        color=color1,
     )
-    axs.set_title("EKF Sweep")
-    axs.legend()
-    axs.set_xlabel("Num Dimensions")
-    axs.set_ylim(0, 1)
-    plt.show()
+    ax1.set_xlabel("Num Dimensions")
+    ax1.set_ylabel("Accuracy", color=color1)
+    ax1.tick_params(axis="y", labelcolor=color1)
+    ax1.set_ylim(0, 1)
 
+    # Create second y-axis and plot logpdf
+    ax2 = ax1.twinx()
+    color2 = "tab:orange"
+    ax2.errorbar(
+        [stat["n_feats"] for stat in stats],
+        [stat["logpdf_mean"] for stat in stats],
+        yerr=[stat["logpdf_std"] for stat in stats],
+        label="Logpdf",
+        marker="o",
+        markersize=3,
+        color=color2,
+    )
+    ax2.set_ylabel("Logpdf", color=color2)
+    ax2.tick_params(axis="y", labelcolor=color2)
+
+    # Add combined legend
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    ax2.legend(lines1 + lines2, labels1 + labels2, loc="upper right")
+
+    plt.title("EKF Sweep")
     fp = Path(cfg.paths.output_dir) / "ekf_sweep.png"
     plt.savefig(fp)
+    plt.show()
 
 
 if __name__ == "__main__":

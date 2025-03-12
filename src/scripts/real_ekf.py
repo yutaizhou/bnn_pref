@@ -27,7 +27,6 @@ jnp.set_printoptions(precision=2)
 def main(cfg):
     seed = get_random_seed() if cfg["seed"] == -1 else cfg["seed"]
     key = jr.key(seed)
-    # check RLHF paper
     data_kw = cfg["data"]
     ekf_kw = cfg["ekf"]
 

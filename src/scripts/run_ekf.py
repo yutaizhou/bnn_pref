@@ -15,7 +15,7 @@ from bnn_pref.alg.ekf_subspace import SubspaceNeuralBandit
 from bnn_pref.alg.ekf_trainer import bandit_pipeline, summarize_results
 from bnn_pref.data.ekf_env import EKFEnvironment
 from bnn_pref.data.synthetic import make_synthetic_data
-from bnn_pref.utils.metrics import compute_accuracy_nn, compute_pref_ranking_acc
+from bnn_pref.utils.metrics import compute_accuracy_nn, compute_logpdf_nn
 from bnn_pref.utils.plotting import plot_reward_heatmap
 from bnn_pref.utils.utils import get_random_seed
 
@@ -27,10 +27,8 @@ jnp.set_printoptions(precision=2)
 def main(cfg):
     seed = get_random_seed() if cfg["seed"] == -1 else cfg["seed"]
     key = jr.key(seed)
-    # check RLHF paper
     data_kw = cfg["data"]
     ekf_kw = cfg["ekf"]
-    # combine these into one multiline print statement
     print(
         f"Seed: {seed}\n"
         f"N={data_kw['n_demos']}, Q={data_kw['n_queries']} (warm_obs={ekf_kw['warm_obs']}), T={data_kw['length']}, D={data_kw['n_feats']}\n"
@@ -66,10 +64,12 @@ def main(cfg):
     reward_predictor = jax.vmap(partial(bandit.predict_reward, bel.mean))
     train_acc = compute_accuracy_nn(pref_predictor, train_data)
     test_acc = compute_accuracy_nn(pref_predictor, test_data)
+    test_logpdf = compute_logpdf_nn(pref_predictor, test_data)
     # pref_acc = compute_pref_ranking_acc(reward_predictor, test_data)
     print(f"Param Count: {bandit.full_params_count} -> {bandit.subspace_params_count}")
     print(f"Train acc: {train_acc:.2%}")
     print(f"Test acc:  {test_acc:.2%}")
+    print(f"Test avg_ll: {test_logpdf:.2f}")
     # print(f"{pref_acc=:.2%}")
 
     if data_kw["n_feats"] == 1 and data_kw["length"] == 1:

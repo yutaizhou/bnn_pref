@@ -24,6 +24,14 @@ def compute_reward_nn(reward_predictor: Callable, demos_NTD: NTD):
     return rewards_N
 
 
+def compute_logpdf_nn(pref_predictor: Callable, data: QueryWithResponse):
+    features_Q2TD, labels_Q1 = data.queries_Q2TD, data.responses_Q1
+    logits_Q2 = pref_predictor(features_Q2TD)
+    logits_Q1 = jnp.take_along_axis(logits_Q2, labels_Q1, axis=1)
+    ll_Q = logits_Q1 - jax.nn.logsumexp(logits_Q2, axis=1, keepdims=True)
+    return ll_Q.mean()
+
+
 def compute_pref_ranking_acc(reward_predictor: Callable, data: QueryWithResponse):
     # todo why same output as compute_accuracy_nn?
     features_Q2TD, response_Q1 = data.queries_Q2TD, data.responses_Q1
