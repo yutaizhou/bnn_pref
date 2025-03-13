@@ -12,9 +12,10 @@ from bnn_pref.utils.utils import get_gaussian_vector
 
 def make_synthetic_data(key, cfg) -> Tuple[NTD, N, QueryWithResponse]:
     data_kw = cfg["data"]
-    n_feats = data_kw["n_feats"]
+    task_kw = cfg["task"]
+    n_feats = task_kw["n_feats"]
+    demo_len = task_kw["length"]
     n_demos = data_kw["n_demos"]
-    demo_len = data_kw["length"]
     train_frac = data_kw["train_frac"]
     n_queries = data_kw["n_queries"]
 

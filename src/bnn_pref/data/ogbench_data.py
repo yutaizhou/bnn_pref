@@ -4,8 +4,8 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 import numpy as np
-
 import ogbench
+
 from bnn_pref.data.pref_utils import QueryWithResponse, create_pref_data_jit
 from bnn_pref.utils.utils import get_random_seed
 
@@ -33,13 +33,12 @@ def minmax_scale_traj(train_trajs, val_trajs):
 
 def make_ogbench_data(key, cfg):
     data_kw = cfg["data"]
+    task_kw = cfg["task"]
     n_queries = data_kw["n_queries"]
-    thin = data_kw["thin"]
 
     # * load data
-    task_name = data_kw["task_name"]
-    env, train_trajs, val_trajs = ogbench.make_env_and_datasets(
-        task_name,
+    _, train_trajs, test_trajs = ogbench.make_env_and_datasets(
+        task_kw["name"],
         compact_dataset=False,
     )
     # * data normalization
@@ -47,8 +46,8 @@ def make_ogbench_data(key, cfg):
     # train_trajs, val_trajs = minmax_scale_traj(train_trajs, val_trajs)
 
     # * separate trajs, filter by low return, sort by increasing return
-    train_trajs = process_ogbench(train_trajs, ranked=True, thin=thin)
-    val_trajs = process_ogbench(val_trajs, ranked=True, thin=thin)
+    train_trajs = process_ogbench(train_trajs, ranked=True)
+    test_trajs = process_ogbench(test_trajs, ranked=True)
     print("Processed train trajs:")
     for k, v in train_trajs.items():
         print(f"{k}: {v.shape}")
@@ -64,20 +63,18 @@ def make_ogbench_data(key, cfg):
     )
 
     queries_idx_Q2, response_Q1, _ = create_pref_data_jit(
-        key2, ranked_returns=val_trajs["returns"], n_queries=-1
+        key2, ranked_returns=test_trajs["returns"], n_queries=-1
     )
-    val_prefs = QueryWithResponse(
-        val_trajs["observations"][queries_idx_Q2],
+    test_prefs = QueryWithResponse(
+        test_trajs["observations"][queries_idx_Q2],
         response_Q1,
     )
 
     output = {
-        # train data
         "train_trajs": train_trajs,
         "train_prefs": train_prefs,
-        # test data
-        "val_trajs": val_trajs,
-        "val_prefs": val_prefs,
+        "test_trajs": test_trajs,
+        "test_prefs": test_prefs,
     }
 
     return output
@@ -97,8 +94,6 @@ def process_ogbench(
     masks (5000000,) -> (10000, 500)
     returns (5000000,) -> (10000,)
 
-    Returns only obs, actions, returns
-
     Number of trajectories: 10000
     """
     # * seperate trajectories via terminals field
@@ -110,7 +105,7 @@ def process_ogbench(
     # * thin out trajectories?
     ds = jax.tree.map(lambda x: x[:, ::thin], ds)
 
-    # * sum rewards to get returns, keep only obs, actions, returns
+    # * sum rewards to get returns
     ds["returns"] = ds["rewards"].sum(axis=-1)
     # ds = {k: ds[k] for k in ["observations", "actions", "returns"]}
 
@@ -133,7 +128,7 @@ if __name__ == "__main__":
 
     key = jr.key(get_random_seed())
     output = make_ogbench_data(key, cfg)
-    train_data, test_data = output["train_prefs"], output["val_prefs"]
+    train_data, test_data = output["train_prefs"], output["test_prefs"]
     print(train_data.queries_Q2TD.shape, train_data.responses_Q1.shape)
     print(test_data.queries_Q2TD.shape, test_data.responses_Q1.shape)
     print()

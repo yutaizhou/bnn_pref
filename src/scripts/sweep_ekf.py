@@ -27,8 +27,9 @@ jnp.set_printoptions(precision=2)
 @partial(jax.jit, static_argnums=(1, 2))
 def run_ekf(key, cfg, n_feats=None):
     data_kw = cfg["data"]
+    task_kw = cfg["task"]
     ekf_kw = cfg["ekf"]
-    data_kw["n_feats"] = n_feats if n_feats is not None else data_kw["n_feats"]
+    task_kw["n_feats"] = n_feats if n_feats is not None else task_kw["n_feats"]
 
     # * generate true params + preference data
     output = make_synthetic_data(key, cfg)

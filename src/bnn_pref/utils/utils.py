@@ -8,6 +8,7 @@ import jax.numpy.linalg as jnpl
 import jax.random as jr
 import jax.scipy as jsp
 
+from bnn_pref import data
 from bnn_pref.utils.type import D
 
 
@@ -44,10 +45,11 @@ def print_mcmc_summary(
     seed: int,
 ):
     data_kw = cfg["data"]
+    task_kw = cfg["task"]
     mcmc_kw = cfg["mcmc"]
 
     print(f"Seed: {seed}")
-    print(f"N={data_kw['n_demos']}, Q={data_kw['n_queries']}, D={data_kw['n_feats']}")
+    print(f"N={data_kw['n_demos']}, Q={data_kw['n_queries']}, D={task_kw['n_feats']}")
     print(
         f"{mcmc_kw['n_samples']} samples w/ {mcmc_kw['burn_in']} burn-in, then {mcmc_kw['thinning']} thinning"
     )

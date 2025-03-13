@@ -26,9 +26,10 @@ from bnn_pref.utils.utils import get_random_seed
 def run_experiment(cfg, key, n_feats=None):
     # check RLHF paper
     data_kw = cfg["data"]
+    task_kw = cfg["task"]
     mcmc_kw = cfg["mcmc"]
     dist = BradleyTerry()
-    data_kw["n_feats"] = n_feats if n_feats is not None else data_kw["n_feats"]
+    task_kw["n_feats"] = n_feats if n_feats is not None else task_kw["n_feats"]
 
     true_reward_fn = test_functions_dict[cfg["f"]]
     learned_reward_fn = test_functions_dict[cfg["fhat"]]

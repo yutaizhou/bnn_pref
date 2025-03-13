@@ -10,12 +10,13 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 import matplotlib.pyplot as plt
+from hydra.core.hydra_config import HydraConfig
 
 from bnn_pref.alg.ekf_subspace import SubspaceNeuralBandit
 from bnn_pref.alg.ekf_trainer import bandit_pipeline, summarize_results
+from bnn_pref.data import dataset_creators
 from bnn_pref.data.ekf_env import EKFEnvironment
-from bnn_pref.data.ogbench_data import make_ogbench_data
-from bnn_pref.utils.metrics import compute_accuracy_nn, compute_pref_ranking_acc
+from bnn_pref.utils.metrics import compute_accuracy_nn, compute_logpdf_nn
 from bnn_pref.utils.plotting import plot_reward_heatmap
 from bnn_pref.utils.utils import get_random_seed
 
@@ -29,10 +30,11 @@ def main(cfg):
     key = jr.key(seed)
     data_kw = cfg["data"]
     ekf_kw = cfg["ekf"]
+    task_kw = cfg["task"]
 
     # * generate true params + preference data
-    output = make_ogbench_data(key, cfg)
-    train_data, test_data = output["train_prefs"], output["val_prefs"]
+    output = dataset_creators[task_kw["ds_type"]](key, cfg)
+    train_data, test_data = output["train_prefs"], output["test_prefs"]
     Q, _, T, D = train_data.queries_Q2TD.shape
 
     print(
@@ -62,10 +64,12 @@ def main(cfg):
     reward_predictor = jax.vmap(partial(bandit.predict_reward, bel.mean))
     train_acc = compute_accuracy_nn(pref_predictor, train_data)
     test_acc = compute_accuracy_nn(pref_predictor, test_data)
+    test_logpdf = compute_logpdf_nn(pref_predictor, test_data)
     # pref_acc = compute_pref_ranking_acc(reward_predictor, test_data)
     print(f"Param Count: {bandit.full_params_count} -> {bandit.subspace_params_count}")
     print(f"Train acc: {train_acc:.2%}")
     print(f"Test acc:  {test_acc:.2%}")
+    print(f"Test avg_ll: {test_logpdf:.2f}")
     # print(f"{pref_acc=:.2%}")
 
     if D == 2:

@@ -1,0 +1,5 @@
+# name: "antmaze-medium-navigate-singletask-v0"
+# name: "antmaze-medium-explore-singletask-v0"
+
+ds_type: ogbench
+name: "pointmaze-medium-navigate-singletask-v0"

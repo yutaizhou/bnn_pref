@@ -1,0 +1,19 @@
+# @package _global_
+
+# defaults:
+#   - override /rl: ppo
+
+task:
+  ds_type: prefcc
+  name: LunarLander-v2
+  # type: gymnasium
+  # state_dim: 8 # Box([...], (8,), float32)
+  # action_dim: 1 # Discrete(4), beware that data is stored as float in {0...3}
+
+  # train_demos_np_fdir: ${paths.data_dir}/${env.name}/raw_stateaction
+  # test_demos_np_fdir: ${paths.data_dir}/${env.name}/raw_stateaction/test60
+  tensordict_path: ${paths.pref_cc.entry_dir}/${.name}.pt
+  # gt_policy_path: ${paths.data_dir}/${env.name}/gt_policy_jax/PPO_nobs=False_nrew=False_240.30.zip
+
+  # segment_length: 100 # (480, 1000, 9)
+  # delta_reward: 15

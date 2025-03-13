@@ -31,8 +31,9 @@ def main(cfg):
     # check RLHF paper
     data_kw = cfg["data"]
     mcmc_kw = cfg["mcmc"]
+    task_kw = cfg["task"]
     dist = BradleyTerry()
-    n_feats = data_kw["n_feats"]
+    n_feats = task_kw["n_feats"]
 
     true_reward_fn = test_functions_dict[cfg["f"]]
     learned_reward_fn = test_functions_dict[cfg["fhat"]]
@@ -104,7 +105,7 @@ def main(cfg):
     # * plotting
     # all_samples = jnp.concat([init_sample[None, :], samples_SD], axis=0)
     bbox_dict = {
-        "D": data_kw["n_feats"],
+        "D": task_kw["n_feats"],
         "Q": data_kw["n_queries"],
         "Train Acc": train_acc,
         "Test Acc": test_acc,
@@ -116,7 +117,7 @@ def main(cfg):
     # if cfg["save_fig"]:
     #     plt.savefig(f"{cfg['paths']['output_dir']}/trace.png")
 
-    if data_kw["n_feats"] == 2 and data_kw["length"] == 1:
+    if task_kw["n_feats"] == 2 and task_kw["length"] == 1:
         nrows, ncols = 2, 3
         fig = plt.figure(figsize=(12, 5))
 

@@ -24,6 +24,7 @@ from scripts.run_mcmc import BradleyTerry, QueryWithResponse, generate_pref_data
 def main(cfg):
     # check RLHF paper
     data_kw = cfg["data"]
+    task_kw = cfg["task"]
     mcmc_kw = cfg["mcmc"]
     dist = BradleyTerry()
 
@@ -31,7 +32,7 @@ def main(cfg):
     seed = get_random_seed() if cfg["seed"] == -1 else cfg["seed"]
     key = jr.key(seed)
     key, key1, key2 = jr.split(key, 3)
-    true_reward_D = get_gaussian_vector(key1, dim=data_kw["n_feats"], normalize=True)
+    true_reward_D = get_gaussian_vector(key1, dim=task_kw["n_feats"], normalize=True)
     features_Q2TD, response_Q1 = generate_pref_data(key2, true_reward_D, **data_kw)
     data = QueryWithResponse(features_Q2TD, response_Q1)
     potential = partial(dist.potential, data=data)

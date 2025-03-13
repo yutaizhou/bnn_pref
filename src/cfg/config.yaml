@@ -1,8 +1,9 @@
 defaults:
 - _self_
+- task: synthetic
 - mcmc: mh
 - ekf: ekf
-- data: synthetic
+- data: base
 - optional local: default # specifies project dir & wandb login, goes after wandb
 # - optional run: debug
 - hydra: default
@@ -14,6 +15,16 @@ paths:
   results_dir: ${paths.root_dir}/results
   sweep_dir: ${paths.root_dir}/results_sweep
   output_dir: ${hydra:runtime.output_dir}
+
+  pref_cc:
+    entry_dir: /scr/shared/pref_cc/
+  tdmpc2:
+    entry_dir: /scr/shared/tdmpc2/
+    mt30_raw_dir: ${.entry_dir}/tdmpc2_mt30_raw/
+    mt30_processed_dir: ${.entry_dir}/tdmpc2_mt30_processed/
+    mt80_raw_dir: ${.entry_dir}/tdmpc2_mt80_raw/
+    mt80_processed_dir: ${.entry_dir}/tdmpc2_mt80_processed/
+
 
 seed: -1 # for jr.key()
 seeds: 1 # for jax.vmap()

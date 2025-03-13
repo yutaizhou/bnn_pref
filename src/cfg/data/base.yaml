@@ -1,0 +1,3 @@
+n_demos: 200
+train_frac: 0.8
+n_queries: 1000

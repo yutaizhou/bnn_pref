@@ -28,10 +28,11 @@ def main(cfg):
     seed = get_random_seed() if cfg["seed"] == -1 else cfg["seed"]
     key = jr.key(seed)
     data_kw = cfg["data"]
+    task_kw = cfg["task"]
     ekf_kw = cfg["ekf"]
     print(
         f"Seed: {seed}\n"
-        f"N={data_kw['n_demos']}, Q={data_kw['n_queries']} (warm_obs={ekf_kw['warm_obs']}), T={data_kw['length']}, D={data_kw['n_feats']}\n"
+        f"N={data_kw['n_demos']}, Q={data_kw['n_queries']} (warm_obs={ekf_kw['warm_obs']}), T={task_kw['length']}, D={task_kw['n_feats']}\n"
         f"EKF: rnd_proj={ekf_kw['cls']['rnd_proj']}, n_iterates={ekf_kw['cls']['n_iterates']}, warm_burns={ekf_kw['cls']['warm_burns']}"
     )
 
@@ -72,7 +73,7 @@ def main(cfg):
     print(f"Test avg_ll: {test_logpdf:.2f}")
     # print(f"{pref_acc=:.2%}")
 
-    if data_kw["n_feats"] == 1 and data_kw["length"] == 1:
+    if task_kw["n_feats"] == 1 and task_kw["length"] == 1:
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 8))
 
         # Generate x points for plotting
@@ -107,7 +108,7 @@ def main(cfg):
         plt.tight_layout()
         plt.show()
 
-    if data_kw["n_feats"] == 2 and data_kw["length"] == 1:
+    if task_kw["n_feats"] == 2 and task_kw["length"] == 1:
         # fig, axs = plt.subplots(1, 3, figsize=(12, 5))
         nrows, ncols = 2, 3
         fig = plt.figure(figsize=(12, 5))
