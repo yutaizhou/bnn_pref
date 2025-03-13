@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 from hydra.core.hydra_config import HydraConfig
 
 from bnn_pref.alg.ekf_subspace import SubspaceNeuralBandit
-from bnn_pref.alg.ekf_trainer import bandit_pipeline
+from bnn_pref.alg.ekf_trainer import bandit_pipeline, summarize_ekf_cfgs
 from bnn_pref.data import dataset_creators
 from bnn_pref.data.ekf_env import EKFEnvironment
 from bnn_pref.utils.metrics import compute_accuracy_nn, compute_logpdf_nn
@@ -35,13 +35,9 @@ def main(cfg):
     # * generate true params + preference data
     output = dataset_creators[task_kw["ds_type"]](key, cfg)
     train_data, test_data = output["train_prefs"], output["test_prefs"]
-    Q, _, T, D = train_data.queries_Q2TD.shape
+    Q, _, T, n_feats = train_data.queries_Q2TD.shape
 
-    print(
-        f"Seed: {seed}\n"
-        f"N={data_kw['n_demos']}, Q={Q} (warm_obs={ekf_kw['warm_obs']}), T={T}, D={D}\n"
-        f"EKF: rnd_proj={ekf_kw['cls']['rnd_proj']}, n_iterates={ekf_kw['cls']['n_iterates']}, warm_burns={ekf_kw['cls']['warm_burns']}"
-    )
+    summarize_ekf_cfgs(seed, cfg, n_feats=n_feats, length=T)
     # * build + run bandit alg
     key, key1, key2 = jr.split(key, 3)
     env = EKFEnvironment(
@@ -54,7 +50,6 @@ def main(cfg):
         key2,
         SubspaceNeuralBandit,
         env,
-        warmup_obs=ekf_kw["warm_obs"],
         bandit_kw=ekf_kw,
     )
     bel = jax.tree_util.tree_map(lambda x: x[-1], bel_trace)  # final belief
@@ -72,7 +67,7 @@ def main(cfg):
     print(f"Test avg_ll: {test_logpdf:.2f}")
     # print(f"{pref_acc=:.2%}")
 
-    if D == 2:
+    if n_feats == 2:
         train_trajs = output["train_trajs"]
         train_traj_obs = train_trajs["observations"]
         mins, maxs = (train_traj_obs.min(axis=(0, 1)), train_traj_obs.max(axis=(0, 1)))

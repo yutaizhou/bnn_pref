@@ -50,7 +50,6 @@ def run_ekf(key, cfg, n_feats=None):
         key2,
         SubspaceNeuralBandit,
         env,
-        warmup_obs=ekf_kw["warm_obs"],
         bandit_kw=ekf_kw,
     )
     bel = jax.tree_util.tree_map(lambda x: x[-1], bel_trace)

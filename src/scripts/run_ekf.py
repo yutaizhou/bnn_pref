@@ -12,7 +12,7 @@ import jax.random as jr
 import matplotlib.pyplot as plt
 
 from bnn_pref.alg.ekf_subspace import SubspaceNeuralBandit
-from bnn_pref.alg.ekf_trainer import bandit_pipeline, summarize_results
+from bnn_pref.alg.ekf_trainer import bandit_pipeline, summarize_ekf_cfgs
 from bnn_pref.data import make_synthetic_data
 from bnn_pref.data.ekf_env import EKFEnvironment
 from bnn_pref.utils.metrics import compute_accuracy_nn, compute_logpdf_nn
@@ -30,11 +30,8 @@ def main(cfg):
     data_kw = cfg["data"]
     task_kw = cfg["task"]
     ekf_kw = cfg["ekf"]
-    print(
-        f"Seed: {seed}\n"
-        f"N={data_kw['n_demos']}, Q={data_kw['n_queries']} (warm_obs={ekf_kw['warm_obs']}), T={task_kw['length']}, D={task_kw['n_feats']}\n"
-        f"EKF: rnd_proj={ekf_kw['cls']['rnd_proj']}, n_iterates={ekf_kw['cls']['n_iterates']}, warm_burns={ekf_kw['cls']['warm_burns']}"
-    )
+
+    summarize_ekf_cfgs(seed, cfg)
 
     # * generate true params + preference data
     output = make_synthetic_data(key, cfg)
@@ -55,7 +52,6 @@ def main(cfg):
         key2,
         SubspaceNeuralBandit,
         env,
-        warmup_obs=ekf_kw["warm_obs"],
         bandit_kw=ekf_kw,
     )
     bel = jax.tree_util.tree_map(lambda x: x[-1], bel_trace)  # final belief
