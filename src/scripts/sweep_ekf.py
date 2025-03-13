@@ -24,12 +24,10 @@ logging.getLogger("jax._src.xla_bridge").setLevel(logging.ERROR)
 jnp.set_printoptions(precision=2)
 
 
-@partial(jax.jit, static_argnums=(1, 2))
-def run_ekf(key, cfg, n_feats=None):
+def run_ekf(key, cfg):
     data_kw = cfg["data"]
     task_kw = cfg["task"]
     ekf_kw = cfg["ekf"]
-    task_kw["n_feats"] = n_feats if n_feats is not None else task_kw["n_feats"]
 
     # * generate true params + preference data
     output = make_synthetic_data(key, cfg)
@@ -91,13 +89,16 @@ def main(cfg):
 
     stats = []
     for n_feats in n_feats_list:
+        new_cfg = hydra.compose(
+            "config",
+            overrides=["task=synthetic", f"task.n_feats={n_feats}"],
+        )
         # Run multiple seeds
         key, *subkeys = jr.split(key, 1 + cfg["seeds"])  # m = 1 + n_seeds
 
         start_time = datetime.now()
-        results_m, metadata_m = jax.vmap(run_ekf, in_axes=(0, None, None))(
-            jnp.array(subkeys), cfg, n_feats
-        )
+        vmap_run_ekf = jax.vmap(run_ekf, in_axes=(0, None))
+        results_m, metadata_m = vmap_run_ekf(jnp.array(subkeys), new_cfg)
         duration = (datetime.now() - start_time).total_seconds()
 
         # Compute statistics

@@ -22,14 +22,12 @@ from bnn_pref.utils.test_functions import test_functions_dict
 from bnn_pref.utils.utils import get_random_seed
 
 
-# @partial(jax.jit, static_argnames=("cfg"))
-def run_experiment(cfg, key, n_feats=None):
+def run_experiment(key, cfg):
     # check RLHF paper
     data_kw = cfg["data"]
     task_kw = cfg["task"]
     mcmc_kw = cfg["mcmc"]
     dist = BradleyTerry()
-    task_kw["n_feats"] = n_feats if n_feats is not None else task_kw["n_feats"]
 
     # * generate true params + preference data
     output = make_synthetic_data(key, cfg)
@@ -72,12 +70,15 @@ def run_dimensinality_exp(cfg):
     n_feats_list = [3, 10, 30, 50, 100, 150, 300, 500, 1000]
     stats = []
     for n_feats in n_feats_list:
+        new_cfg = hydra.compose(
+            "config",
+            overrides=["task=synthetic", f"task.n_feats={n_feats}"],
+        )
         key, *subkeys = jr.split(key, 1 + cfg["seeds"])  # m = 1 + n_seeds
 
         start_time = datetime.now()
-        results, metadata = jax.vmap(run_experiment, in_axes=(None, 0, None))(
-            cfg, jnp.array(subkeys), n_feats
-        )
+        vmap_run_experiment = jax.vmap(run_experiment, in_axes=(0, None))
+        results, metadata = vmap_run_experiment(jnp.array(subkeys), new_cfg)
         duration = (datetime.now() - start_time).total_seconds()
         stats.append(
             {
