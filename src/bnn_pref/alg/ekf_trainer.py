@@ -31,7 +31,7 @@ def bandit_pipeline(
     """
     nsteps, *_, n_feats = env.contexts.shape
     model = RewardNet(bandit_kw["hidden_sizes"])
-    opt = optax.sgd(bandit_kw["learning_rate"])
+    opt = optax.adam(bandit_kw["learning_rate"])
     bandit = bandit_cls(n_feats, model, opt, **bandit_kw["cls"])
 
     key, key_warmup, key_belief_init = split(key, 3)

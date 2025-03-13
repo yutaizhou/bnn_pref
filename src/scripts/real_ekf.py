@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 from hydra.core.hydra_config import HydraConfig
 
 from bnn_pref.alg.ekf_subspace import SubspaceNeuralBandit
-from bnn_pref.alg.ekf_trainer import bandit_pipeline, summarize_results
+from bnn_pref.alg.ekf_trainer import bandit_pipeline
 from bnn_pref.data import dataset_creators
 from bnn_pref.data.ekf_env import EKFEnvironment
 from bnn_pref.utils.metrics import compute_accuracy_nn, compute_logpdf_nn
