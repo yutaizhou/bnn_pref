@@ -36,8 +36,8 @@ def main(cfg):
     output = dataset_creators[task_kw["ds_type"]](key, cfg)
     train_data, test_data = output["train_prefs"], output["test_prefs"]
     Q, _, T, n_feats = train_data.queries_Q2TD.shape
-
     summarize_ekf_cfgs(seed, cfg, n_feats=n_feats, length=T)
+
     # * build + run bandit alg
     key, key1, key2 = jr.split(key, 3)
     env = EKFEnvironment(
