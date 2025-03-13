@@ -31,18 +31,17 @@ def run_experiment(cfg, key, n_feats=None):
     dist = BradleyTerry()
     task_kw["n_feats"] = n_feats if n_feats is not None else task_kw["n_feats"]
 
-    true_reward_fn = test_functions_dict[task_kw["f"]]
-    learned_reward_fn = test_functions_dict[task_kw["fhat"]]
-
     # * generate true params + preference data
     output = make_synthetic_data(key, cfg)
-    train_data, test_data = output["train_prefs"], output["test_prefs"]
-    true_param_D = output["true_param"]
+    train_prefs, test_prefs = output["train_prefs"], output["test_prefs"]
+    true_param_D, true_reward_fn = output["true_param"], output["true_reward_fn"]
+    learned_reward_fn = test_functions_dict[task_kw["fhat"]]
+
     # * build + run sampler
     key, key1, key2 = jr.split(key, 3)
     init_sample = jnp.zeros_like(true_param_D)
     alg = build_mh(
-        partial(dist.potential, data=train_data, reward_fn=learned_reward_fn),
+        partial(dist.potential, data=train_prefs, reward_fn=learned_reward_fn),
         sigma=mcmc_kw["sigma"],
     )
     samples_SD, states, infos = run_mcmc(
@@ -52,13 +51,13 @@ def run_experiment(cfg, key, n_feats=None):
         **{k: mcmc_kw[k] for k in ["n_samples", "burn_in", "thinning", "normalize"]},
     )
 
-    accs = compute_accuracy2_mcmc(samples_SD, test_data, learned_reward_fn)
+    test_accs = compute_accuracy2_mcmc(samples_SD, test_prefs, learned_reward_fn)
     aligns = alignment_metric(true_param_D, samples_SD)
     sample_D = samples_SD.mean(axis=0)
     sample_D /= jnpl.norm(sample_D)
-    test_logpdf = dist.logpdf(sample_D, test_data, learned_reward_fn).mean()
+    test_logpdf = dist.logpdf(sample_D, test_prefs, learned_reward_fn).mean()
 
-    results = {"accs": accs, "aligns": aligns, "logpdf": test_logpdf}
+    results = {"accs": test_accs, "aligns": aligns, "logpdf": test_logpdf}
     metadata = {"true_reward": true_param_D}
 
     return results, metadata
@@ -69,8 +68,8 @@ def run_dimensinality_exp(cfg):
     seed = get_random_seed() if cfg["seed"] == -1 else cfg["seed"]
     key = jr.key(seed)
 
-    n_feats_list = [2, 3]
-    # n_feats_list = [3, 10, 30, 50, 100, 150, 300, 500, 1000]
+    # n_feats_list = [2, 3]
+    n_feats_list = [3, 10, 30, 50, 100, 150, 300, 500, 1000]
     stats = []
     for n_feats in n_feats_list:
         key, *subkeys = jr.split(key, 1 + cfg["seeds"])  # m = 1 + n_seeds
@@ -121,6 +120,10 @@ def run_dimensinality_exp(cfg):
         markersize=3,
         color="green",
     )
+    ax1.set_xlabel("Num Dimensions")
+    ax1.set_ylabel("Accuracy / Alignment")
+    ax1.tick_params(axis="y")
+    ax1.set_ylim(0, 1)
 
     # Create secondary y-axis for log-likelihood
     ax2 = ax1.twinx()
@@ -135,13 +138,7 @@ def run_dimensinality_exp(cfg):
         color=color2,
     )
 
-    # Set labels and title
-    ax1.set_xlabel("Num Dimensions")
-    ax1.set_ylabel("Accuracy / Alignment")
     ax2.set_ylabel("Log-Likelihood", color=color2)
-
-    # Set tick colors to match their respective axes
-    ax1.tick_params(axis="y")
     ax2.tick_params(axis="y", labelcolor=color2)
 
     # Combine legends from both axes
