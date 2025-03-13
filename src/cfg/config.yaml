@@ -8,6 +8,8 @@ defaults:
 # - optional run: debug
 - hydra: default
 
+fhat: linear
+
 paths:
   results_dir: ${paths.root_dir}/results
   sweep_dir: ${paths.root_dir}/results_sweep

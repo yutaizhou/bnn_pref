@@ -34,26 +34,3 @@ def tile_first_dim(x: jnp.ndarray, reps: int):
     expanded = x[None, ...]
     tile_seq = (reps,) + (1,) * x.ndim
     return jnp.tile(expanded, tile_seq)
-
-
-def print_mcmc_summary(
-    cfg,
-    train_acc: float,
-    test_acc: float,
-    test_logpdf: float,
-    align: float,
-    seed: int,
-):
-    data_kw = cfg["data"]
-    task_kw = cfg["task"]
-    mcmc_kw = cfg["mcmc"]
-
-    print(f"Seed: {seed}")
-    print(f"N={data_kw['n_demos']}, Q={data_kw['n_queries']}, D={task_kw['n_feats']}")
-    print(
-        f"{mcmc_kw['n_samples']} samples w/ {mcmc_kw['burn_in']} burn-in, then {mcmc_kw['thinning']} thinning"
-    )
-    print(f"Train acc: {train_acc:.2%}")
-    print(f"Test acc:  {test_acc:.2%}")
-    print(f"Test logpdf: {test_logpdf:.2f}")
-    print(f"Cosine Sim: {align:.2f}")

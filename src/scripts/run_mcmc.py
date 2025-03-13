@@ -3,7 +3,6 @@ import os
 os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
 os.environ["DISABLE_CODESIGN_WARNING"] = "1"
 import logging
-from datetime import datetime
 from functools import partial
 
 import arviz as az
@@ -15,12 +14,12 @@ import jax.random as jr
 import matplotlib.pyplot as plt
 
 from bnn_pref.alg.mcmc import build_hmc, build_mh, plot_samples, plot_trace, run_mcmc
-from bnn_pref.data import make_synthetic_data
+from bnn_pref.data import dataset_creators
 from bnn_pref.data.pref_utils import BradleyTerry
 from bnn_pref.utils.metrics import alignment_metric, compute_accuracy2_mcmc
 from bnn_pref.utils.plotting import plot_logpdf, plot_reward_heatmap
 from bnn_pref.utils.test_functions import test_functions_dict
-from bnn_pref.utils.utils import get_random_seed, print_mcmc_summary, tile_first_dim
+from bnn_pref.utils.utils import get_random_seed, tile_first_dim
 
 logging.getLogger("jax._src.xla_bridge").setLevel(logging.ERROR)
 jnp.set_printoptions(precision=2)
@@ -33,25 +32,22 @@ def main(cfg):
     mcmc_kw = cfg["mcmc"]
     task_kw = cfg["task"]
     dist = BradleyTerry()
-    n_feats = task_kw["n_feats"]
-
-    true_reward_fn = test_functions_dict[task_kw["f"]]
-    learned_reward_fn = test_functions_dict[task_kw["fhat"]]
 
     seed = get_random_seed() if cfg["seed"] == -1 else cfg["seed"]
     key = jr.key(seed)
 
     # * generate true params + preference data
-    output = make_synthetic_data(key, cfg)
-    train_data, test_data = output["train_prefs"], output["test_prefs"]
-    true_param_D, true_reward_fn = output["true_param"], output["true_reward_fn"]
-    feature_bounds = (train_data.queries_Q2TD.min(), train_data.queries_Q2TD.max())
+    output = dataset_creators[task_kw["ds_type"]](key, cfg)
+    train_prefs, test_prefs = output["train_prefs"], output["test_prefs"]
+    learned_reward_fn = test_functions_dict[cfg["fhat"]]
+    _, _, T, D = train_prefs.queries_Q2TD.shape
+    print_mcmc_cfg(seed, cfg, length=T, n_feats=D)
 
     # * build + run sampler
     key, key1, key2 = jr.split(key, 3)
-    init_sample = jnp.zeros_like(true_param_D)
+    init_sample = jnp.zeros(D)
     alg = build_mh(
-        partial(dist.potential, data=train_data, reward_fn=learned_reward_fn),
+        partial(dist.potential, data=train_prefs, reward_fn=learned_reward_fn),
         sigma=mcmc_kw["sigma"],
     )
     samples_SD, states, infos = run_mcmc(
@@ -62,23 +58,31 @@ def main(cfg):
     )
 
     # * posterior check
-    train_acc = compute_accuracy2_mcmc(samples_SD, train_data, learned_reward_fn)
-    test_acc = compute_accuracy2_mcmc(samples_SD, test_data, learned_reward_fn)
+    train_acc = compute_accuracy2_mcmc(samples_SD, train_prefs, learned_reward_fn)
+    test_acc = compute_accuracy2_mcmc(samples_SD, test_prefs, learned_reward_fn)
     sample_D = samples_SD.mean(axis=0)
     sample_D /= jnpl.norm(sample_D)
-    test_logpdf = dist.logpdf(sample_D, test_data, learned_reward_fn).mean()
-    align = alignment_metric(true_param_D, samples_SD)
-    print_mcmc_summary(cfg, train_acc, test_acc, test_logpdf, align, seed)
+    test_logpdf = dist.logpdf(sample_D, test_prefs, learned_reward_fn).mean()
+    if task_kw["ds_type"] == "synthetic":
+        true_param_D, true_reward_fn = output["true_param"], output["true_reward_fn"]
+        align = alignment_metric(true_param_D, samples_SD)
+    else:
+        align = None
+    print(f"Train acc: {train_acc:.2%}")
+    print(f"Test acc:  {test_acc:.2%}")
+    print(f"Test logpdf: {test_logpdf:.2f}")
+    if align is not None:
+        print(f"Cosine Sim: {align:.2f}")
 
     # * arviz - post processing: label switch
-    names = [f"weight_{i}" for i in range(n_feats)]
-    true_param_D = jnp.sort(true_param_D)
-    idx = jnp.argsort(samples_SD[-1, :])
-    samples_SD = samples_SD[:, idx]
+    # names = [f"weight_{i}" for i in range(n_feats)]
+    # true_param_D = jnp.sort(true_param_D)
+    # idx = jnp.argsort(samples_SD[-1, :])
+    # samples_SD = samples_SD[:, idx]
 
-    samples = [samples_SD[:, i] for i in range(n_feats)]
-    posterior_data = {k: tile_first_dim(v, reps=1) for k, v in zip(names, samples)}
-    idata = az.from_dict(posterior=posterior_data)
+    # samples = [samples_SD[:, i] for i in range(n_feats)]
+    # posterior_data = {k: tile_first_dim(v, reps=1) for k, v in zip(names, samples)}
+    # idata = az.from_dict(posterior=posterior_data)
 
     # summary_stats = az.summary(idata, hdi_prob=0.94)
     # print(f"True: {true_reward_D[:10]}")
@@ -92,34 +96,38 @@ def main(cfg):
     # plt.show()
 
     # * arviz - trace
-    if cfg["show_fig"]:
-        axs = az.plot_trace(idata)
-        for i in range(n_feats):
-            axs[i, 0].axvline(true_param_D[i], color="red", label="True", lw=0.5)
-            axs[i, 0].set_xlim(-1.1, 1.1)
-            axs[i, 1].axhline(true_param_D[i], color="red", label="True", lw=0.5)
-            axs[i, 1].set_ylim(-1.1, 1.1)
-        plt.tight_layout()
-        plt.show()
+    # if cfg["show_fig"]:
+    #     axs = az.plot_trace(idata)
+    #     for i in range(n_feats):
+    #         axs[i, 0].axvline(true_param_D[i], color="red", label="True", lw=0.5)
+    #         axs[i, 0].set_xlim(-1.1, 1.1)
+    #         axs[i, 1].axhline(true_param_D[i], color="red", label="True", lw=0.5)
+    #         axs[i, 1].set_ylim(-1.1, 1.1)
+    #     plt.tight_layout()
+    #     plt.show()
 
     # * plotting
     # all_samples = jnp.concat([init_sample[None, :], samples_SD], axis=0)
-    bbox_dict = {
-        "D": task_kw["n_feats"],
-        "Q": data_kw["n_queries"],
-        "Train Acc": train_acc,
-        "Test Acc": test_acc,
-        "m": align,
-    }
+    # bbox_dict = {
+    #     "D": task_kw["n_feats"],
+    #     "Q": data_kw["n_queries"],
+    #     "Train Acc": train_acc,
+    #     "Test Acc": test_acc,
+    #     "m": align,
+    # }
     # plot_trace(key, all_samples, true_reward_D, bbox_dict=bbox_dict)
     # if cfg["show_fig"]:
     #     plt.show()
     # if cfg["save_fig"]:
     #     plt.savefig(f"{cfg['paths']['output_dir']}/trace.png")
 
-    if task_kw["n_feats"] == 2 and task_kw["length"] == 1:
+    if D == 2 and T == 1:
         nrows, ncols = 2, 3
         fig = plt.figure(figsize=(12, 5))
+        feature_bounds = (
+            train_prefs.queries_Q2TD.min(),
+            train_prefs.queries_Q2TD.max(),
+        )
 
         true_utility_fn = partial(true_reward_fn, param_D=true_param_D)
         true_utility_fn = jax.vmap(jax.vmap(true_utility_fn))
@@ -141,7 +149,7 @@ def main(cfg):
         ax = fig.add_subplot(nrows, ncols, 5)
         plot_reward_heatmap(ax, **learned_plotkw, title=title, plot_3d=False)
 
-        potential = partial(dist.potential, data=train_data, reward_fn=true_reward_fn)
+        potential = partial(dist.potential, data=train_prefs, reward_fn=true_reward_fn)
         potential = jax.vmap(jax.vmap(potential))
         title = f"True Logpdf {true_param_D}"
         logpdf_plotkw = {"potential_fn": potential, "bounds": (-3, 3)}
@@ -178,6 +186,36 @@ def main(cfg):
         plt.subplots_adjust(top=0.80)
 
         plt.show()
+
+
+def print_mcmc_cfg(seed, cfg, length=None, n_feats=None):
+    data_kw = cfg["data"]
+    task_kw = cfg["task"]
+    mcmc_kw = cfg["mcmc"]
+
+    n_queries = data_kw["n_queries"]
+    length = length if length is not None else task_kw["length"]
+    n_feats = n_feats if n_feats is not None else task_kw["n_feats"]
+
+    n_samples = mcmc_kw["n_samples"]
+    burn_in = mcmc_kw["burn_in"]
+    thinning = mcmc_kw["thinning"]
+    normalize = mcmc_kw["normalize"]
+
+    if task_kw["ds_type"] == "synthetic":
+        # todo fix this fhat thing
+        task_str = f"{task_kw['ds_type']}: f={task_kw['f']}, fhat={task_kw['fhat']} (fhat ignored for ekf runs)"
+    else:
+        task_str = f"{task_kw['ds_type']}: {task_kw['name']}"
+
+    print(
+        f"Seed: {seed}\n"
+        f"Data:\n"
+        f"  {task_str}\n"
+        f"  N={data_kw['n_demos']}, Q={n_queries}, T={length}, D={n_feats}\n"
+        f"MCMC:\n"
+        f"  n_samples={n_samples}, burn_in={burn_in}, thinning={thinning}, normalize={normalize}"
+    )
 
 
 if __name__ == "__main__":
