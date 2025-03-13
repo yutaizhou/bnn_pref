@@ -16,8 +16,8 @@ paths:
   sweep_dir: ${paths.root_dir}/results_sweep
   output_dir: ${hydra:runtime.output_dir}
 
-  pref_cc:
-    entry_dir: /scr/shared/pref_cc/
+  prefcc:
+    entry_dir: /scr/shared/prefcc/
   tdmpc2:
     entry_dir: /scr/shared/tdmpc2/
     mt30_raw_dir: ${.entry_dir}/tdmpc2_mt30_raw/
