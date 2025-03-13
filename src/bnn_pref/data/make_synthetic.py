@@ -22,7 +22,7 @@ def make_synthetic_data(key, cfg) -> Tuple[NTD, N, QueryWithResponse]:
     # * generate true params + trajectories
     key, key1, key2, key3, key4 = jr.split(key, 5)
     true_param_D = get_gaussian_vector(key1, dim=n_feats, normalize=True)
-    true_reward_fn = test_functions_dict[cfg["f"]]
+    true_reward_fn = test_functions_dict[task_kw["f"]]
     train_trajs, test_trajs = generate_synthetic_trajs(
         key2,
         traj_shape=(n_demos, demo_len, n_feats),

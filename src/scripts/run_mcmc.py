@@ -35,8 +35,8 @@ def main(cfg):
     dist = BradleyTerry()
     n_feats = task_kw["n_feats"]
 
-    true_reward_fn = test_functions_dict[cfg["f"]]
-    learned_reward_fn = test_functions_dict[cfg["fhat"]]
+    true_reward_fn = test_functions_dict[task_kw["f"]]
+    learned_reward_fn = test_functions_dict[task_kw["fhat"]]
 
     seed = get_random_seed() if cfg["seed"] == -1 else cfg["seed"]
     key = jr.key(seed)

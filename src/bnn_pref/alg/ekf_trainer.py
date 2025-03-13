@@ -113,9 +113,16 @@ def summarize_ekf_cfgs(seed, cfg, length=None, n_feats=None):
     thinning = ekf_kw["cls"]["thinning"]
     rnd_proj = ekf_kw["cls"]["rnd_proj"]
 
+    if task_kw["ds_type"] == "synthetic":
+        # todo fix this fhat thing
+        task_str = f"{task_kw['ds_type']}: f={task_kw['f']}, fhat={task_kw['fhat']} (fhat ignored for ekf runs)"
+    else:
+        task_str = f"{task_kw['ds_type']}: {task_kw['name']}"
+
     print(
         f"Seed: {seed}\n"
         f"Data:\n"
+        f"  {task_str}\n"
         f"  N={data_kw['n_demos']}, Q={data_kw['n_queries']}, T={length}, D={n_feats} (Q is Train)\n"
         f"  warm_obs={warm_obs}, n_steps={n_steps}\n"
         f"EKF:\n"

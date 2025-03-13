@@ -31,8 +31,8 @@ def run_experiment(cfg, key, n_feats=None):
     dist = BradleyTerry()
     task_kw["n_feats"] = n_feats if n_feats is not None else task_kw["n_feats"]
 
-    true_reward_fn = test_functions_dict[cfg["f"]]
-    learned_reward_fn = test_functions_dict[cfg["fhat"]]
+    true_reward_fn = test_functions_dict[task_kw["f"]]
+    learned_reward_fn = test_functions_dict[task_kw["fhat"]]
 
     # * generate true params + preference data
     output = make_synthetic_data(key, cfg)
