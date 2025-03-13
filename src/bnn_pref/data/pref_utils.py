@@ -40,33 +40,6 @@ class BradleyTerry:
         return joint_ll
 
 
-def demos_to_pref_data(
-    key,
-    demos: NTD,
-    returns_N: N,
-    n_queries: int = -1,
-) -> Tuple[N, QueryWithResponse]:
-    """
-    Generate preference label for trajectories based on their returns.
-    Returned trajectories are sorted by increasing reward.
-
-    """
-    sorted_idx = jnp.argsort(returns_N)  # ascending
-    demos = demos[sorted_idx]
-    returns_N = returns_N[sorted_idx]
-
-    queries_idx_Q2, response_Q1, num_mislabels = create_pref_data_jit(
-        key,
-        ranked_returns=returns_N,
-        n_queries=n_queries,
-        noisy_prefs=False,
-        bt_beta=1.0,
-    )
-
-    features_Q2TD = demos[queries_idx_Q2]
-    return returns_N, QueryWithResponse(features_Q2TD, response_Q1)
-
-
 def bt_likelihood(return_i: float, return_j: float, beta: float = 1.0) -> float:
     """
     computes likelihood of preference tj > ti, given their rewards
@@ -160,6 +133,7 @@ def create_pref_data(
 def create_pref_data_jit(
     key,
     ranked_returns: N,
+    traj_obs: NTD = None,
     n_queries: int = -1,
     use_delta: bool = False,
     delta_rank: int = 1,
@@ -235,7 +209,13 @@ def create_pref_data_jit(
     )
 
     labels_Q1 = jnp.expand_dims(labels, 1)
-    return queries_Q2, labels_Q1, num_mislabels
+
+    if traj_obs is not None:
+        queries_Q2TD = traj_obs[queries_Q2]  # index into (N, T, D) using (Q, 2)
+        pref_data = QueryWithResponse(queries_Q2TD, labels_Q1)
+        return pref_data, num_mislabels
+    else:
+        return queries_Q2, labels_Q1, num_mislabels
 
 
 if __name__ == "__main__":

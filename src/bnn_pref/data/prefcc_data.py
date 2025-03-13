@@ -7,7 +7,7 @@ import numpy as np
 import torch
 from tensordict import TensorDict
 
-from bnn_pref.data.pref_utils import QueryWithResponse, create_pref_data_jit
+from bnn_pref.data.pref_utils import create_pref_data_jit
 from bnn_pref.utils.utils import get_random_seed
 
 
@@ -24,17 +24,17 @@ def make_prefcc_data(key, cfg) -> Dict:
     key, key_split, key_train, key_test = jr.split(key, 4)
     train_trajs, test_trajs = split_dataset(key_split, ds, train_frac)
 
-    queries_idx_Q2, response_Q1, _ = create_pref_data_jit(
-        key_train, ranked_returns=train_trajs["returns"], n_queries=n_queries
+    train_prefs, _ = create_pref_data_jit(
+        key_train,
+        ranked_returns=train_trajs["returns"],
+        traj_obs=train_trajs["observations"],
+        n_queries=n_queries,
     )
-    train_prefs = QueryWithResponse(
-        train_trajs["observations"][queries_idx_Q2], response_Q1
-    )
-    queries_idx_Q2, response_Q1, _ = create_pref_data_jit(
-        key_test, ranked_returns=test_trajs["returns"], n_queries=-1
-    )
-    test_prefs = QueryWithResponse(
-        test_trajs["observations"][queries_idx_Q2], response_Q1
+    test_prefs, _ = create_pref_data_jit(
+        key_test,
+        ranked_returns=test_trajs["returns"],
+        traj_obs=test_trajs["observations"],
+        n_queries=-1,
     )
 
     return {
@@ -47,7 +47,7 @@ def make_prefcc_data(key, cfg) -> Dict:
 
 def process_prefcc_data(
     td: TensorDict,
-    ranked: bool = False,
+    rank: bool = False,
 ) -> Dict[str, jnp.ndarray]:
     """
     Tensordict only contains obs, act, rew, and are already sorted by returns.
@@ -60,7 +60,7 @@ def process_prefcc_data(
     }
 
     # * sort trajectories by return (ascending)
-    if ranked:
+    if rank:
         sorted_idxes = jnp.argsort(ds["returns"])
         ds = jax.tree.map(lambda x: x[sorted_idxes], ds)
 
@@ -70,8 +70,8 @@ def process_prefcc_data(
 def split_dataset(key, ds, train_frac=0.8):
     n = len(jax.tree_util.tree_leaves(ds)[0])  # Get length from first array
     idxs = jr.permutation(key, n)
-    split_idx = int(n * train_frac)
-    train_idxs, test_idxs = idxs[:split_idx], idxs[split_idx:]
+    n_train = int(n * train_frac)
+    train_idxs, test_idxs = idxs[:n_train], idxs[n_train:]
     train_ds = jax.tree.map(lambda x: x[train_idxs], ds)
     test_ds = jax.tree.map(lambda x: x[test_idxs], ds)
 

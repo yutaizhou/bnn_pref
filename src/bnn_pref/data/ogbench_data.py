@@ -6,29 +6,8 @@ import jax.random as jr
 import numpy as np
 import ogbench
 
-from bnn_pref.data.pref_utils import QueryWithResponse, create_pref_data_jit
+from bnn_pref.data.pref_utils import create_pref_data_jit
 from bnn_pref.utils.utils import get_random_seed
-
-
-def standardize_traj(train_trajs, val_trajs):
-    train_obs = train_trajs["observations"]
-    mean = jnp.mean(train_obs, axis=(0, 1), keepdims=True)
-    std = jnp.std(train_obs, axis=(0, 1), keepdims=True)
-
-    train_trajs["observations"] = (train_trajs["observations"] - mean) / std
-    val_trajs["observations"] = (val_trajs["observations"] - mean) / std
-    return train_trajs, val_trajs
-
-
-def minmax_scale_traj(train_trajs, val_trajs):
-    train_obs = train_trajs["observations"]
-    min_val = jnp.min(train_obs, axis=(0, 1), keepdims=True)
-    max_val = jnp.max(train_obs, axis=(0, 1), keepdims=True)
-    range = max_val - min_val
-
-    train_trajs["observations"] = (train_trajs["observations"] - min_val) / range
-    val_trajs["observations"] = (val_trajs["observations"] - min_val) / range
-    return train_trajs, val_trajs
 
 
 def make_ogbench_data(key, cfg):
@@ -46,28 +25,26 @@ def make_ogbench_data(key, cfg):
     # train_trajs, val_trajs = minmax_scale_traj(train_trajs, val_trajs)
 
     # * separate trajs, filter by low return, sort by increasing return
-    train_trajs = process_ogbench(train_trajs, ranked=True)
-    test_trajs = process_ogbench(test_trajs, ranked=True)
+    train_trajs = process_ogbench(train_trajs, rank=True)
+    test_trajs = process_ogbench(test_trajs, rank=True)
     print("Processed train trajs:")
     for k, v in train_trajs.items():
         print(f"{k}: {v.shape}")
 
     # * create preference data
     key, key1, key2 = jr.split(key, 3)
-    queries_idx_Q2, response_Q1, _ = create_pref_data_jit(
-        key1, ranked_returns=train_trajs["returns"], n_queries=n_queries
-    )
-    train_prefs = QueryWithResponse(
-        train_trajs["observations"][queries_idx_Q2],
-        response_Q1,
+    train_prefs, _ = create_pref_data_jit(
+        key1,
+        ranked_returns=train_trajs["returns"],
+        traj_obs=train_trajs["observations"],
+        n_queries=n_queries,
     )
 
-    queries_idx_Q2, response_Q1, _ = create_pref_data_jit(
-        key2, ranked_returns=test_trajs["returns"], n_queries=-1
-    )
-    test_prefs = QueryWithResponse(
-        test_trajs["observations"][queries_idx_Q2],
-        response_Q1,
+    test_prefs, _ = create_pref_data_jit(
+        key2,
+        ranked_returns=test_trajs["returns"],
+        traj_obs=test_trajs["observations"],
+        n_queries=-1,
     )
 
     output = {
@@ -82,7 +59,7 @@ def make_ogbench_data(key, cfg):
 
 def process_ogbench(
     ds: Dict[str, np.ndarray],
-    ranked: bool = False,
+    rank: bool = False,
     thin: int = 1,
 ) -> Dict[str, jnp.ndarray]:
     """
@@ -114,10 +91,31 @@ def process_ogbench(
     ds = jax.tree.map(lambda x: x[ds["returns"] > -traj_len], ds)
 
     # * sort trajectories by return (ascending)
-    if ranked:
+    if rank:
         sorted_idxes = jnp.argsort(ds["returns"])
         ds = jax.tree.map(lambda x: x[sorted_idxes], ds)
     return ds
+
+
+def standardize_traj(train_trajs, val_trajs):
+    train_obs = train_trajs["observations"]
+    mean = jnp.mean(train_obs, axis=(0, 1), keepdims=True)
+    std = jnp.std(train_obs, axis=(0, 1), keepdims=True)
+
+    train_trajs["observations"] = (train_trajs["observations"] - mean) / std
+    val_trajs["observations"] = (val_trajs["observations"] - mean) / std
+    return train_trajs, val_trajs
+
+
+def minmax_scale_traj(train_trajs, val_trajs):
+    train_obs = train_trajs["observations"]
+    min_val = jnp.min(train_obs, axis=(0, 1), keepdims=True)
+    max_val = jnp.max(train_obs, axis=(0, 1), keepdims=True)
+    range = max_val - min_val
+
+    train_trajs["observations"] = (train_trajs["observations"] - min_val) / range
+    val_trajs["observations"] = (val_trajs["observations"] - min_val) / range
+    return train_trajs, val_trajs
 
 
 if __name__ == "__main__":
