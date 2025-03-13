@@ -108,13 +108,13 @@ def main(cfg):
 
     # * plotting
     # all_samples = jnp.concat([init_sample[None, :], samples_SD], axis=0)
-    # bbox_dict = {
-    #     "D": task_kw["n_feats"],
-    #     "Q": data_kw["n_queries"],
-    #     "Train Acc": train_acc,
-    #     "Test Acc": test_acc,
-    #     "m": align,
-    # }
+    bbox_dict = {
+        "D": task_kw["n_feats"],
+        "Q": data_kw["n_queries"],
+        "Train Acc": train_acc,
+        "Test Acc": test_acc,
+        "m": align,
+    }
     # plot_trace(key, all_samples, true_reward_D, bbox_dict=bbox_dict)
     # if cfg["show_fig"]:
     #     plt.show()

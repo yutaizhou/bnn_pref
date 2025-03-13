@@ -4,8 +4,8 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 import numpy as np
-import ogbench
 
+import ogbench
 from bnn_pref.data.pref_utils import create_pref_data_jit
 from bnn_pref.utils.utils import get_random_seed
 
@@ -27,9 +27,6 @@ def make_ogbench_data(key, cfg):
     # * separate trajs, filter by low return, sort by increasing return
     train_trajs = process_ogbench(train_trajs, rank=True)
     test_trajs = process_ogbench(test_trajs, rank=True)
-    print("Processed train trajs:")
-    for k, v in train_trajs.items():
-        print(f"{k}: {v.shape}")
 
     # * create preference data
     key, key1, key2 = jr.split(key, 3)
