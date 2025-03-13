@@ -19,19 +19,19 @@ def make_prefcc_data(key, cfg) -> Dict:
     train_frac = data_cfg["train_frac"]
 
     td = torch.load(path, weights_only=False)
-    ds = process_prefcc_data(td, ranked=True)
+    ds = process_prefcc_data(td)
 
-    key, key1, key2, key3 = jr.split(key, 4)
-    train_trajs, test_trajs = split_dataset(ds, key1, train_frac)
+    key, key_split, key_train, key_test = jr.split(key, 4)
+    train_trajs, test_trajs = split_dataset(key_split, ds, train_frac)
 
     queries_idx_Q2, response_Q1, _ = create_pref_data_jit(
-        key2, ranked_returns=train_trajs["returns"], n_queries=n_queries
+        key_train, ranked_returns=train_trajs["returns"], n_queries=n_queries
     )
     train_prefs = QueryWithResponse(
         train_trajs["observations"][queries_idx_Q2], response_Q1
     )
     queries_idx_Q2, response_Q1, _ = create_pref_data_jit(
-        key3, ranked_returns=test_trajs["returns"], n_queries=-1
+        key_test, ranked_returns=test_trajs["returns"], n_queries=-1
     )
     test_prefs = QueryWithResponse(
         test_trajs["observations"][queries_idx_Q2], response_Q1
@@ -50,7 +50,7 @@ def process_prefcc_data(
     ranked: bool = False,
 ) -> Dict[str, jnp.ndarray]:
     """
-    Transit dict only contains obs, act, rew, and are already sorted by returns.
+    Tensordict only contains obs, act, rew, and are already sorted by returns.
     """
     ds = {
         "observations": jnp.array(td["obs"]),
@@ -67,14 +67,21 @@ def process_prefcc_data(
     return ds
 
 
-def split_dataset(pytree, key, train_ratio=0.8):
-    n = len(jax.tree_util.tree_leaves(pytree)[0])  # Get length from first array
+def split_dataset(key, ds, train_frac=0.8):
+    n = len(jax.tree_util.tree_leaves(ds)[0])  # Get length from first array
     idxs = jr.permutation(key, n)
-    split_idx = int(n * train_ratio)
-    return (
-        jax.tree.map(lambda x: x[idxs[:split_idx]], pytree),
-        jax.tree.map(lambda x: x[idxs[split_idx:]], pytree),
-    )
+    split_idx = int(n * train_frac)
+    train_idxs, test_idxs = idxs[:split_idx], idxs[split_idx:]
+    train_ds = jax.tree.map(lambda x: x[train_idxs], ds)
+    test_ds = jax.tree.map(lambda x: x[test_idxs], ds)
+
+    # sort by return (ascending)
+    train_sorted_idxes = jnp.argsort(train_ds["returns"])
+    test_sorted_idxes = jnp.argsort(test_ds["returns"])
+    train_ds = jax.tree.map(lambda x: x[train_sorted_idxes], train_ds)
+    test_ds = jax.tree.map(lambda x: x[test_sorted_idxes], test_ds)
+
+    return train_ds, test_ds
 
 
 if __name__ == "__main__":
