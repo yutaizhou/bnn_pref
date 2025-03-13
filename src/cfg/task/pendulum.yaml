@@ -1,0 +1,3 @@
+ds_type: prefcc
+name: pendulum-swingup-v0
+tensordict_path: ${paths.prefcc.data_dir}/${.name}.pt
