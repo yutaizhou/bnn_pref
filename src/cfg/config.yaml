@@ -17,13 +17,13 @@ paths:
   output_dir: ${hydra:runtime.output_dir}
 
   prefcc:
-    entry_dir: /scr/shared/prefcc/
+    data_dir: /scr/shared/prefcc/
   tdmpc2:
-    entry_dir: /scr/shared/tdmpc2/
-    mt30_raw_dir: ${.entry_dir}/tdmpc2_mt30_raw/
-    mt30_processed_dir: ${.entry_dir}/tdmpc2_mt30_processed/
-    mt80_raw_dir: ${.entry_dir}/tdmpc2_mt80_raw/
-    mt80_processed_dir: ${.entry_dir}/tdmpc2_mt80_processed/
+    data_dir: /scr/shared/tdmpc2/
+    mt30_raw_dir: ${.data_dir}/tdmpc2_mt30_raw/
+    mt30_processed_dir: ${.data_dir}/tdmpc2_mt30_processed/
+    mt80_raw_dir: ${.data_dir}/tdmpc2_mt80_raw/
+    mt80_processed_dir: ${.data_dir}/tdmpc2_mt80_processed/
 
 
 seed: -1 # for jr.key()

@@ -12,7 +12,7 @@ task:
 
   # train_demos_np_fdir: ${paths.data_dir}/${env.name}/raw_stateaction
   # test_demos_np_fdir: ${paths.data_dir}/${env.name}/raw_stateaction/test60
-  tensordict_path: ${paths.prefcc.entry_dir}/${.name}.pt
+  tensordict_path: ${paths.prefcc.data_dir}/${.name}.pt
   # gt_policy_path: ${paths.data_dir}/${env.name}/gt_policy_jax/PPO_nobs=False_nrew=False_240.30.zip
 
   # segment_length: 100 # (480, 1000, 9)
