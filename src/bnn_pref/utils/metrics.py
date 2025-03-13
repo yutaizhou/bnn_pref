@@ -6,6 +6,7 @@ import jax.numpy as jnp
 import jax.numpy.linalg as jnpl
 import jax.random as jr
 import jax.scipy as jsp
+import optax
 
 from bnn_pref.data.pref_utils import QueryWithResponse
 from bnn_pref.utils.type import NTD, SD, D
@@ -28,8 +29,16 @@ def compute_logpdf_nn(pref_predictor: Callable, data: QueryWithResponse):
     features_Q2TD, labels_Q1 = data.queries_Q2TD, data.responses_Q1
     logits_Q2 = pref_predictor(features_Q2TD)
     logits_Q1 = jnp.take_along_axis(logits_Q2, labels_Q1, axis=1)
-    ll_Q = logits_Q1 - jax.nn.logsumexp(logits_Q2, axis=1, keepdims=True)
-    return ll_Q.mean()
+    ll_Q1 = logits_Q1 - jax.nn.logsumexp(logits_Q2, axis=1, keepdims=True)
+    avg_ll = ll_Q1.mean()
+
+    # * CE is just Negative LL, so this should be equivalent
+    # avg_ll2 = -optax.losses.softmax_cross_entropy(
+    #     logits_Q2,
+    #     jax.nn.one_hot(labels_Q1.squeeze(), 2),
+    # ).mean()
+
+    return avg_ll
 
 
 def compute_pref_ranking_acc(reward_predictor: Callable, data: QueryWithResponse):
