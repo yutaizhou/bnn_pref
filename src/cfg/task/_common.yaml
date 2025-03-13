@@ -1,0 +1,3 @@
+# not used for now...
+ds_type: prefcc
+tensordict_path: ${paths.prefcc.entry_dir}/${.name}.pt

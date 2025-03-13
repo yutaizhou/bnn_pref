@@ -1,0 +1,3 @@
+ds_type: prefcc
+name: HalfCheetah-v4
+tensordict_path: ${paths.prefcc.entry_dir}/${.name}.pt
