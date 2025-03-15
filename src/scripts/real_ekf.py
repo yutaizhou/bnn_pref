@@ -12,7 +12,6 @@ import jax.random as jr
 import matplotlib.pyplot as plt
 from hydra.core.hydra_config import HydraConfig
 
-from bnn_pref.alg.ekf_subspace import SubspaceNeuralBandit
 from bnn_pref.alg.ekf_trainer import bandit_pipeline, print_ekf_cfg
 from bnn_pref.data import dataset_creators
 from bnn_pref.data.ekf_env import EKFEnvironment
@@ -46,12 +45,7 @@ def main(cfg):
         Y=jax.nn.one_hot(train_data.responses_Q1.squeeze(), num_classes=2),
     )
 
-    rewards_info, bel_trace, bandit = bandit_pipeline(
-        key2,
-        SubspaceNeuralBandit,
-        env,
-        bandit_kw=ekf_kw,
-    )
+    rewards_info, bel_trace, bandit = bandit_pipeline(key2, env, ekf_kw)
     bel0 = jax.tree.map(lambda x: x[0], bel_trace)  # init belief, assume zero vec
     bel = jax.tree.map(lambda x: x[-1], bel_trace)  # final belief
     warmup_rewards, rewards_trace, _ = rewards_info

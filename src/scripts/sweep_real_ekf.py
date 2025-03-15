@@ -13,12 +13,10 @@ import jax.random as jr
 import matplotlib.pyplot as plt
 from hydra.core.hydra_config import HydraConfig
 
-from bnn_pref.alg.ekf_subspace import SubspaceNeuralBandit
-from bnn_pref.alg.ekf_trainer import bandit_pipeline, summarize_ekf_cfgs
+from bnn_pref.alg.ekf_trainer import bandit_pipeline
 from bnn_pref.data import dataset_creators
 from bnn_pref.data.ekf_env import EKFEnvironment
 from bnn_pref.utils.metrics import compute_accuracy_nn, compute_logpdf_nn
-from bnn_pref.utils.plotting import plot_reward_heatmap
 from bnn_pref.utils.utils import get_random_seed
 
 logging.getLogger("jax._src.xla_bridge").setLevel(logging.ERROR)
@@ -42,16 +40,10 @@ def run_ekf(key, cfg):
         Y=jax.nn.one_hot(train_data.responses_Q1.squeeze(), num_classes=2),
     )
 
-    rewards_info, bel_trace, bandit = bandit_pipeline(
-        key2,
-        SubspaceNeuralBandit,
-        env,
-        bandit_kw=ekf_kw,
-    )
+    rewards_info, bel_trace, bandit = bandit_pipeline(key2, env, ekf_kw)
     bel = jax.tree_util.tree_map(lambda x: x[-1], bel_trace)  # final belief
-    # warmup_rewards, rewards_trace, _ = rewards_info
 
-    pref_predictor = jax.vmap(partial(bandit.apply_model, bel.mean))
+    pref_predictor = jax.vmap(partial(bandit.sub2full_predict_logits, bel.mean))
     test_acc = compute_accuracy_nn(pref_predictor, test_data)
     test_logpdf = compute_logpdf_nn(pref_predictor, test_data)
 
@@ -93,12 +85,13 @@ def main(cfg):
             "config",
             overrides=[f"task={task}"],
         )
+        cfg["task"] = new_cfg["task"]
         # Run multiple seeds
         key, *subkeys = jr.split(key, 1 + cfg["seeds"])  # m = 1 + n_seeds
 
         start_time = datetime.now()
         vmap_run_ekf = jax.vmap(run_ekf, in_axes=(0, None))
-        results_m, metadata_m = vmap_run_ekf(jnp.array(subkeys), new_cfg)
+        results_m, metadata_m = vmap_run_ekf(jnp.array(subkeys), cfg)
         duration = (datetime.now() - start_time).total_seconds()
 
         # Compute statistics

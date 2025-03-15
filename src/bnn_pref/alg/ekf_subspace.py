@@ -25,7 +25,7 @@ from bnn_pref.utils.type import CAR, CARL, BeliefState
 tfd = tfp.distributions
 
 
-class SubspaceNeuralBandit:
+class SubspaceNeuralEKF:
     def __init__(
         self,
         n_feats: int,

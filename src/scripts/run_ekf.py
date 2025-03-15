@@ -11,7 +11,6 @@ import jax.numpy as jnp
 import jax.random as jr
 import matplotlib.pyplot as plt
 
-from bnn_pref.alg.ekf_subspace import SubspaceNeuralBandit
 from bnn_pref.alg.ekf_trainer import bandit_pipeline, print_ekf_cfg
 from bnn_pref.data import make_synthetic_data
 from bnn_pref.data.ekf_env import EKFEnvironment
@@ -48,17 +47,12 @@ def main(cfg):
         Y=jax.nn.one_hot(train_data.responses_Q1.squeeze(), num_classes=2),
     )
 
-    rewards_info, bel_trace, bandit = bandit_pipeline(
-        key2,
-        SubspaceNeuralBandit,
-        env,
-        bandit_kw=ekf_kw,
-    )
+    rewards_info, bel_trace, bandit = bandit_pipeline(key2, env, ekf_kw)
     bel = jax.tree_util.tree_map(lambda x: x[-1], bel_trace)  # final belief
     warmup_rewards, rewards_trace, _ = rewards_info
 
-    pref_predictor = jax.vmap(partial(bandit.apply_model, bel.mean))
-    reward_predictor = jax.vmap(partial(bandit.predict_reward, bel.mean))
+    pref_predictor = jax.vmap(partial(bandit.sub2full_predict_logits, bel.mean))
+    reward_predictor = jax.vmap(partial(bandit.sub2full_predict_return, bel.mean))
     train_acc = compute_accuracy_nn(pref_predictor, train_data)
     test_acc = compute_accuracy_nn(pref_predictor, test_data)
     test_logpdf = compute_logpdf_nn(pref_predictor, test_data)

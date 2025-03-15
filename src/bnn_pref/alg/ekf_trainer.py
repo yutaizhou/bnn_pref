@@ -8,6 +8,7 @@ from jax.lax import scan
 from jax.random import split
 from jaxtyping import Key
 
+from bnn_pref.alg.ekf_subspace import SubspaceNeuralEKF
 from bnn_pref.data.ekf_env import EKFEnvironment
 from bnn_pref.utils.network import RewardNet
 from bnn_pref.utils.type import CAR, CARL, BeliefState
@@ -17,7 +18,6 @@ warnings.filterwarnings("ignore")
 
 def bandit_pipeline(
     key,
-    bandit_cls,
     env: EKFEnvironment,
     bandit_kw: Dict,
 ):
@@ -34,7 +34,7 @@ def bandit_pipeline(
     nsteps = n_samples if bandit_kw["n_steps"] == -1 else bandit_kw["n_steps"]
     model = RewardNet(bandit_kw["hidden_sizes"])
     opt = optax.adam(bandit_kw["learning_rate"])
-    bandit = bandit_cls(n_feats, model, opt, **bandit_kw["cls"])
+    bandit = SubspaceNeuralEKF(n_feats, model, opt, **bandit_kw["cls"])
 
     key, key_warmup, key_belief_init = split(key, 3)
     warmup_data = env.warmup(key_warmup, warmup_obs)
@@ -54,7 +54,7 @@ def bandit_pipeline(
 
 def run_bandit(
     key,
-    bandit,
+    bandit: SubspaceNeuralEKF,
     bel: BeliefState,
     env: EKFEnvironment,
     warmup_data: CARL,
