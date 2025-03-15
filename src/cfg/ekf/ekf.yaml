@@ -7,22 +7,30 @@ hidden_sizes:
   - 32
   - 32
 
+# * Subspace Init w/ SGD
+n_iterates: 100  # Total number of GD steps on warmup data
+batch_size: 32 # -1 for full batch GD. Otherwise, mini-batch SGD
+l2_reg: 0
+
+warm_burns: 20
+thinning: 2
+sub_dim: 40
+rnd_proj: False
+
+# * Subspace Inference w/ EKF
+prior_noise: 0.01  # Increased from 0.0001
+dynamics_noise: 0.001  # Increased from 0.0
+obs_noise: 0.01  # Increased from 0.0
+
+# following is just for convenience in hydra CLI overrides
 cls:
-  # Subspace Init w/ SGD
-  n_iterates: 100  # Total number of GD steps on warmup data
-  batch_size: -1 # -1 for full batch GD. Otherwise, mini-batch SGD
-  l2_reg: 0
-
-  warm_burns: 20
-  thinning: 2
-  sub_dim: 40
-  rnd_proj: False
-  
-  # Subspace Inference w/ EKF
-  # prior_noise: 0.0001 # variance
-  # dynamics_noise: 0.0
-  # obs_noise: 0.0
-
-  prior_noise: 0.01  # Increased from 0.0001
-  dynamics_noise: 0.001  # Increased from 0.0
-  obs_noise: 0.01  # Increased from 0.0
+  n_iterates: ${..n_iterates}
+  batch_size: ${..batch_size}
+  l2_reg: ${..l2_reg}
+  warm_burns: ${..warm_burns}
+  thinning: ${..thinning}
+  sub_dim: ${..sub_dim}
+  rnd_proj: ${..rnd_proj}
+  prior_noise: ${..prior_noise}
+  dynamics_noise: ${..dynamics_noise}
+  obs_noise: ${..obs_noise}

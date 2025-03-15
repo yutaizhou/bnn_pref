@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 from hydra.core.hydra_config import HydraConfig
 
 from bnn_pref.alg.ekf_subspace import SubspaceNeuralBandit
-from bnn_pref.alg.ekf_trainer import bandit_pipeline, summarize_ekf_cfgs
+from bnn_pref.alg.ekf_trainer import bandit_pipeline, print_ekf_cfg
 from bnn_pref.data import dataset_creators
 from bnn_pref.data.ekf_env import EKFEnvironment
 from bnn_pref.utils.metrics import compute_accuracy_nn, compute_logpdf_nn
@@ -36,7 +36,7 @@ def main(cfg):
     output = dataset_creators[task_kw["ds_type"]](key, cfg)
     train_data, test_data = output["train_prefs"], output["test_prefs"]
     Q, _, T, n_feats = train_data.queries_Q2TD.shape
-    summarize_ekf_cfgs(seed, cfg, n_feats=n_feats, length=T)
+    print_ekf_cfg(seed, cfg, n_feats=n_feats, length=T)
 
     # * build + run bandit alg
     key, key1, key2 = jr.split(key, 3)
@@ -59,10 +59,15 @@ def main(cfg):
     reward_predictor = jax.vmap(partial(bandit.predict_reward, bel.mean))
     train_acc = compute_accuracy_nn(pref_predictor, train_data)
     test_acc = compute_accuracy_nn(pref_predictor, test_data)
+    warm_test_acc = compute_accuracy_nn(
+        partial(bandit.apply_model_full, bandit.warmed_params),
+        test_data,
+    )
     test_logpdf = compute_logpdf_nn(pref_predictor, test_data)
     # pref_acc = compute_pref_ranking_acc(reward_predictor, test_data)
     print(f"Param Count: {bandit.full_params_count} -> {bandit.subspace_params_count}")
     print(f"Train acc: {train_acc:.2%}")
+    print(f"Warm acc:  {warm_test_acc:.2%}")
     print(f"Test acc:  {test_acc:.2%}")
     print(f"Test avg_ll: {test_logpdf:.2f}")
     # print(f"{pref_acc=:.2%}")

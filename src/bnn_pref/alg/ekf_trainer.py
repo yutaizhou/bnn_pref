@@ -96,22 +96,27 @@ def summarize_results(warmup_rewards, rewards):
     return r_total, r_std
 
 
-def summarize_ekf_cfgs(seed, cfg, length=None, n_feats=None):
+def print_ekf_cfg(seed, cfg, length=None, n_feats=None):
     data_kw = cfg["data"]
     task_kw = cfg["task"]  # only synthetic task has T and D in task_kw
     ekf_kw = cfg["ekf"]
+    ekf_cls_cfg = ekf_kw["cls"]
 
+    n_demos, n_queries = data_kw["n_demos"], data_kw["n_queries"]
     n_feats = n_feats if n_feats is not None else task_kw["n_feats"]
     length = length if length is not None else task_kw["length"]
 
     warm_obs = ekf_kw["warm_obs"]
     n_steps = ekf_kw["n_steps"]
+    n_updates = (n_queries - warm_obs) if n_steps == -1 else n_steps
 
-    n_iterates = ekf_kw["cls"]["n_iterates"]
-    batch_size = ekf_kw["cls"]["batch_size"]
-    warm_burns = ekf_kw["cls"]["warm_burns"]
-    thinning = ekf_kw["cls"]["thinning"]
-    rnd_proj = ekf_kw["cls"]["rnd_proj"]
+    n_iterates = ekf_cls_cfg["n_iterates"]
+    batch_size = ekf_cls_cfg["batch_size"]
+    warm_burns = ekf_cls_cfg["warm_burns"]
+    thinning = ekf_cls_cfg["thinning"]
+    sub_dim = ekf_cls_cfg["sub_dim"]
+    rnd_proj = ekf_cls_cfg["rnd_proj"]
+    n_eff_iterates = (n_iterates - warm_burns) // thinning
 
     if task_kw["ds_type"] == "synthetic":
         # todo fix this fhat thing
@@ -123,8 +128,8 @@ def summarize_ekf_cfgs(seed, cfg, length=None, n_feats=None):
         f"Seed: {seed}\n"
         f"Data:\n"
         f"  {task_str}\n"
-        f"  N={data_kw['n_demos']}, Q={data_kw['n_queries']}, T={length}, D={n_feats} (Q is Train)\n"
-        f"  warm_obs={warm_obs}, n_steps={n_steps}\n"
+        f"  N={n_demos}, Q={n_queries}, T={length}, D={n_feats} (Q is Train)\n"
+        f"  Samples for init/update = {warm_obs}/{n_updates}\n"
         f"EKF:\n"
-        f"  init: n_iterates={n_iterates}, batch_size={batch_size}, trace=[{warm_burns}::{thinning}], rnd_proj={rnd_proj}\n"
+        f"  init: bs={batch_size}, n_iterates={n_iterates}[{warm_burns}::{thinning}] ({n_eff_iterates} eff), {sub_dim=}, {rnd_proj=}\n"
     )

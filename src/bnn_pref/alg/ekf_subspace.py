@@ -83,7 +83,9 @@ class SubspaceNeuralBandit:
         self.context_dim = None
         self.l2_reg = l2_reg
         self.batch_size = batch_size
-        assert (n_iterates - warm_burns) // thinning >= sub_dim
+
+        n_eff_iterates = (n_iterates - warm_burns) // thinning
+        assert n_eff_iterates >= sub_dim, f"{n_eff_iterates=} < {sub_dim=}"
 
     def init_bel(self, key, warmup_data: CARL) -> BeliefState:
         """
@@ -140,12 +142,13 @@ class SubspaceNeuralBandit:
             if isinstance(self.sub_dim, float):
                 print(f"PCA found {sub_dim} components ({self.sub_dim=:.2%} var)")
             self.sub_dim = pca.n_components_
-            proj_matrix = pca.components_
+            proj_matrix = pca.components_  # (sub_dim, full_dim)
 
         self.full_params_count = count_params(initial_params)
         self.subspace_params_count = sub_dim
 
         params_full_init, reconstruct_tree_params = ravel_pytree(warm_ts.params)
+        self.warmed_params = warm_ts.params
 
         def sub2full_predict_reward(
             params_subspace,
@@ -180,8 +183,15 @@ class SubspaceNeuralBandit:
             outputs = rearrange(outputs, "1 K -> K", K=2)
             return outputs
 
+        def apply_model(params_full, context):
+            """
+            Apply model to full params
+            """
+            return self.model.apply({"params": params_full}, context)
+
         self.predict_reward = sub2full_predict_reward
         self.apply_model = sub2full_apply_model
+        self.apply_model_full = apply_model
 
         def dynamics_fn(params, inputs):
             """
@@ -197,6 +207,8 @@ class SubspaceNeuralBandit:
             action = inputs[..., -1].astype(int)
             return sub2full_apply_model(params, context)[action, None]
 
+        # (sub_dim, full_dim) @ (full_dim,)
+        # params_subspace_init = proj_matrix @ params_full_init
         params_subspace_init = jnp.zeros(sub_dim)
         Sigma = jnp.eye(sub_dim) * self.prior_noise
         Q = jnp.eye(sub_dim) * self.system_noise

@@ -12,7 +12,7 @@ import jax.random as jr
 import matplotlib.pyplot as plt
 
 from bnn_pref.alg.ekf_subspace import SubspaceNeuralBandit
-from bnn_pref.alg.ekf_trainer import bandit_pipeline, summarize_ekf_cfgs
+from bnn_pref.alg.ekf_trainer import bandit_pipeline, print_ekf_cfg
 from bnn_pref.data import make_synthetic_data
 from bnn_pref.data.ekf_env import EKFEnvironment
 from bnn_pref.utils.metrics import compute_accuracy_nn, compute_logpdf_nn
@@ -31,7 +31,7 @@ def main(cfg):
     task_kw = cfg["task"]
     ekf_kw = cfg["ekf"]
 
-    summarize_ekf_cfgs(seed, cfg)
+    print_ekf_cfg(seed, cfg)
 
     # * generate true params + preference data
     output = make_synthetic_data(key, cfg)
