@@ -1,6 +1,7 @@
 import warnings
 from typing import Dict, Tuple
 
+import jax
 import jax.numpy as jnp
 import optax
 from jax.lax import scan
@@ -37,8 +38,15 @@ def bandit_pipeline(
 
     key, key_warmup, key_belief_init = split(key, 3)
     warmup_data = env.warmup(key_warmup, warmup_obs)
-    bel = bandit.init_bel(key_belief_init, warmup_data)
-    bel_trace, batches = run_bandit(key, bandit, bel, env, warmup_data, nsteps=nsteps)
+    bel_init = bandit.init_bel(key_belief_init, warmup_data)
+    bel_trace, batches = run_bandit(key, bandit, bel_init, env, warmup_data, nsteps)
+
+    # prepend initial belief (zero vector) to bel_trace
+    bel_trace = jax.tree.map(
+        lambda a, b: jnp.concat([a, b]),
+        jax.tree.map(lambda x: jnp.expand_dims(x, axis=0), bel_init),
+        bel_trace,
+    )
 
     rewards_info = (warmup_data.rewards, batches.rewards, env.opt_rewards)  # all 1D
     return rewards_info, bel_trace, bandit

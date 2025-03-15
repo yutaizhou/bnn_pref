@@ -84,8 +84,9 @@ class SubspaceNeuralBandit:
         self.l2_reg = l2_reg
         self.batch_size = batch_size
 
-        n_eff_iterates = (n_iterates - warm_burns) // thinning
-        assert n_eff_iterates >= sub_dim, f"{n_eff_iterates=} < {sub_dim=}"
+        if not rnd_proj:
+            n_eff_iterates = (n_iterates - warm_burns) // thinning
+            assert n_eff_iterates >= sub_dim, f"{n_eff_iterates=} < {sub_dim=}"
 
     def init_bel(self, key, warmup_data: CARL) -> BeliefState:
         """
@@ -150,7 +151,7 @@ class SubspaceNeuralBandit:
         params_full_init, reconstruct_tree_params = ravel_pytree(warm_ts.params)
         self.warmed_params = warm_ts.params
 
-        def sub2full_predict_reward(
+        def sub2full_predict_return(
             params_subspace,
             traj: Float[Array, "T D"],
         ) -> Scalar:
@@ -165,7 +166,7 @@ class SubspaceNeuralBandit:
             )
             return outputs
 
-        def sub2full_apply_model(
+        def sub2full_predict_logits(
             params_subspace,
             context: Float[Array, "2 T D"],
         ) -> Float[Array, "2"]:
@@ -183,15 +184,8 @@ class SubspaceNeuralBandit:
             outputs = rearrange(outputs, "1 K -> K", K=2)
             return outputs
 
-        def apply_model(params_full, context):
-            """
-            Apply model to full params
-            """
-            return self.model.apply({"params": params_full}, context)
-
-        self.predict_reward = sub2full_predict_reward
-        self.apply_model = sub2full_apply_model
-        self.apply_model_full = apply_model
+        self.sub2full_predict_return = sub2full_predict_return
+        self.sub2full_predict_logits = sub2full_predict_logits
 
         def dynamics_fn(params, inputs):
             """
@@ -205,10 +199,8 @@ class SubspaceNeuralBandit:
             """
             context = inputs[..., :-1].reshape(2, -1, self.n_feats)
             action = inputs[..., -1].astype(int)
-            return sub2full_apply_model(params, context)[action, None]
+            return sub2full_predict_logits(params, context)[action, None]
 
-        # (sub_dim, full_dim) @ (full_dim,)
-        # params_subspace_init = proj_matrix @ params_full_init
         params_subspace_init = jnp.zeros(sub_dim)
         Sigma = jnp.eye(sub_dim) * self.prior_noise
         Q = jnp.eye(sub_dim) * self.system_noise
@@ -262,7 +254,7 @@ class SubspaceNeuralBandit:
         # Thompson sampling strategy
         # Could also use epsilon greedy or UCB
         w = self.sample_params(key, bel)
-        logits_2 = self.apply_model(w, context)
+        logits_2 = self.sub2full_predict_logits(w, context)
         action = logits_2.argmax()
         return action
 

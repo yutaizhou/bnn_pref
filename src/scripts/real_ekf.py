@@ -52,25 +52,30 @@ def main(cfg):
         env,
         bandit_kw=ekf_kw,
     )
-    bel = jax.tree_util.tree_map(lambda x: x[-1], bel_trace)  # final belief
+    bel0 = jax.tree.map(lambda x: x[0], bel_trace)  # init belief, assume zero vec
+    bel = jax.tree.map(lambda x: x[-1], bel_trace)  # final belief
     warmup_rewards, rewards_trace, _ = rewards_info
 
-    pref_predictor = jax.vmap(partial(bandit.apply_model, bel.mean))
-    reward_predictor = jax.vmap(partial(bandit.predict_reward, bel.mean))
-    train_acc = compute_accuracy_nn(pref_predictor, train_data)
-    test_acc = compute_accuracy_nn(pref_predictor, test_data)
-    warm_test_acc = compute_accuracy_nn(
-        partial(bandit.apply_model_full, bandit.warmed_params),
-        test_data,
+    # * compute metrics
+    logits_predictor = jax.vmap(partial(bandit.sub2full_predict_logits, bel.mean))
+    init_logit_predictor = jax.vmap(partial(bandit.sub2full_predict_logits, bel0.mean))
+
+    train_acc_warm = compute_accuracy_nn(init_logit_predictor, train_data)
+    train_acc = compute_accuracy_nn(logits_predictor, train_data)
+    train_logpdf_warm = compute_logpdf_nn(init_logit_predictor, train_data)
+    train_logpdf = compute_logpdf_nn(logits_predictor, train_data)
+    test_acc_warm = compute_accuracy_nn(init_logit_predictor, test_data)
+    test_acc = compute_accuracy_nn(logits_predictor, test_data)
+    test_logpdf_warm = compute_logpdf_nn(init_logit_predictor, test_data)
+    test_logpdf = compute_logpdf_nn(logits_predictor, test_data)
+
+    print(
+        f"Param Count:  {bandit.full_params_count} -> {bandit.subspace_params_count}\n"
+        f"Train acc:    {train_acc_warm:.2%} -> {train_acc:.2%}\n"
+        f"Test acc:     {test_acc_warm:.2%} -> {test_acc:.2%}\n"
+        f"Train avg_ll: {train_logpdf_warm:.2f} -> {train_logpdf:.2f}\n"
+        f"Test avg_ll:  {test_logpdf_warm:.2f} -> {test_logpdf:.2f}\n"
     )
-    test_logpdf = compute_logpdf_nn(pref_predictor, test_data)
-    # pref_acc = compute_pref_ranking_acc(reward_predictor, test_data)
-    print(f"Param Count: {bandit.full_params_count} -> {bandit.subspace_params_count}")
-    print(f"Train acc: {train_acc:.2%}")
-    print(f"Warm acc:  {warm_test_acc:.2%}")
-    print(f"Test acc:  {test_acc:.2%}")
-    print(f"Test avg_ll: {test_logpdf:.2f}")
-    # print(f"{pref_acc=:.2%}")
 
     if n_feats == 2:
         train_trajs = output["train_trajs"]
@@ -98,6 +103,7 @@ def main(cfg):
         ax.scatter(all_goals[:, 0], all_goals[:, 1], c="red", s=3, label="goal")
         ax.set_title("Train Demos")
 
+        reward_predictor = jax.vmap(partial(bandit.sub2full_predict_return, bel.mean))
         learn_reward_plotkw = {
             "reward_fn": jax.vmap(reward_predictor),
             "bounds": feature_bounds,

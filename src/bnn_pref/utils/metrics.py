@@ -4,8 +4,6 @@ from typing import Callable
 import jax
 import jax.numpy as jnp
 import jax.numpy.linalg as jnpl
-import jax.random as jr
-import jax.scipy as jsp
 import optax
 
 from bnn_pref.data.pref_utils import QueryWithResponse
