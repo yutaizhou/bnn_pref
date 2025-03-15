@@ -108,6 +108,70 @@ def main(cfg):
 
         plt.show()
 
+    if task_kw["ds_type"] == "synthetic":
+        true_param_D, true_reward_fn = output["true_param"], output["true_reward_fn"]
+
+    if task_kw["n_feats"] == 1 and task_kw["length"] == 1:  # 1D reward plot
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 8))
+
+        # Generate x points for plotting
+        x = jnp.linspace(feature_bounds[0], feature_bounds[1], 100)
+        x_points = x.reshape(-1, 1, 1)  # reshape for single feature
+        print(x.shape, x_points.shape)
+
+        # True reward function
+        true_utility_fn = partial(true_reward_fn, param_D=true_param_D)
+        true_utility_fn = jax.vmap(true_utility_fn)  # vectorize over batch dimension
+        true_rewards = true_utility_fn(x_points)
+
+        # Learned reward function
+        learned_rewards = reward_predictor(x_points)  # already vmapped
+
+        # Plot true reward
+        ax1.plot(x, true_rewards, "b-", label="True Reward")
+        ax1.set_title(f"True Reward {true_param_D}")
+        ax1.set_xlabel("Feature Value")
+        ax1.set_ylabel("Reward")
+        ax1.grid(True)
+        ax1.legend()
+
+        # Plot learned reward
+        ax2.plot(x, learned_rewards, "r-", label="Learned Reward")
+        ax2.set_title("Learned Reward")
+        ax2.set_xlabel("Feature Value")
+        ax2.set_ylabel("Reward")
+        ax2.grid(True)
+        ax2.legend()
+
+        plt.tight_layout()
+        plt.show()
+
+    if task_kw["n_feats"] == 2 and task_kw["length"] == 1:  # 2D reward plot
+        # fig, axs = plt.subplots(1, 3, figsize=(12, 5))
+        nrows, ncols = 2, 3
+        fig = plt.figure(figsize=(12, 5))
+
+        true_utility_fn = partial(true_reward_fn, param_D=true_param_D)
+        true_utility_fn = jax.vmap(jax.vmap(true_utility_fn))
+        title = f"True Reward {true_param_D}"
+        true_reward_plotkw = {"reward_fn": true_utility_fn, "bounds": feature_bounds}
+        ax = fig.add_subplot(nrows, ncols, 1, projection="3d", title=title)
+        plot_reward_heatmap(ax, **true_reward_plotkw, plot_3d=True)
+        ax = fig.add_subplot(nrows, ncols, 4)
+        plot_reward_heatmap(ax, **true_reward_plotkw, plot_3d=False)
+
+        learn_reward_plotkw = {
+            "reward_fn": jax.vmap(reward_predictor),
+            "bounds": feature_bounds,
+        }
+        title = "Learned Reward"
+        ax = fig.add_subplot(nrows, ncols, 2, projection="3d", title=title)
+        plot_reward_heatmap(ax, **learn_reward_plotkw, plot_3d=True)
+        ax = fig.add_subplot(nrows, ncols, 5)
+        plot_reward_heatmap(ax, **learn_reward_plotkw, plot_3d=False)
+
+        plt.show()
+
 
 if __name__ == "__main__":
     main()
