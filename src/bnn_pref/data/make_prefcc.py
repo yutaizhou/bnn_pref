@@ -16,25 +16,27 @@ def make_prefcc_data(key, cfg) -> Dict:
     data_cfg = cfg["data"]
     path = task_cfg["tensordict_path"]
     n_queries = data_cfg["n_queries"]
-    train_frac = data_cfg["train_frac"]
+    demo_train_frac = data_cfg["demo_train_frac"]
+    n_train_queries = int(n_queries * data_cfg["train_frac"])
+    n_test_queries = n_queries - n_train_queries
 
     td = torch.load(path, weights_only=False)
     ds = process_prefcc_data(td)
 
     key, key_split, key_train, key_test = jr.split(key, 4)
-    train_trajs, test_trajs = split_dataset(key_split, ds, train_frac)
+    train_trajs, test_trajs = split_dataset(key_split, ds, demo_train_frac)
 
     train_prefs, _ = create_pref_data_jit(
         key_train,
         ranked_returns=train_trajs["returns"],
         traj_obs=train_trajs["observations"],
-        n_queries=n_queries,
+        n_queries=n_train_queries,
     )
     test_prefs, _ = create_pref_data_jit(
         key_test,
         ranked_returns=test_trajs["returns"],
         traj_obs=test_trajs["observations"],
-        n_queries=-1,
+        n_queries=n_test_queries,
     )
 
     return {

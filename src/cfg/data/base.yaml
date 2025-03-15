@@ -1,3 +1,10 @@
+# * demonstrations
+# for splitting demo into train/test traj. Each split is independetly turned into pref queries
+# ogbench doesn't need this.
 n_demos: 200
-train_frac: 0.8
+demo_train_frac: 0.8 
+
+# * preference queries
+# split n_queries into n_train (from train trajs) and n_test (from test trajs)
 n_queries: 1000
+train_frac: 0.8

@@ -16,8 +16,10 @@ def make_synthetic_data(key, cfg) -> Tuple[NTD, N, QueryWithResponse]:
     n_feats = task_kw["n_feats"]
     demo_len = task_kw["length"]
     n_demos = data_kw["n_demos"]
-    train_frac = data_kw["train_frac"]
+    demo_train_frac = data_kw["demo_train_frac"]
     n_queries = data_kw["n_queries"]
+    n_train_queries = int(n_queries * data_kw["train_frac"])
+    n_test_queries = n_queries - n_train_queries
 
     # * generate true params + trajectories
     key, key1, key2, key3, key4 = jr.split(key, 5)
@@ -28,21 +30,21 @@ def make_synthetic_data(key, cfg) -> Tuple[NTD, N, QueryWithResponse]:
         traj_shape=(n_demos, demo_len, n_feats),
         true_param=true_param_D,
         true_reward_fn=true_reward_fn,
-        train_frac=train_frac,
+        train_frac=demo_train_frac,
     )
 
     train_prefs, _ = create_pref_data_jit(
         key3,
         ranked_returns=train_trajs["returns"],
         traj_obs=train_trajs["observations"],
-        n_queries=n_queries,
+        n_queries=n_train_queries,
     )
 
     test_prefs, _ = create_pref_data_jit(
         key4,
         ranked_returns=test_trajs["returns"],
         traj_obs=test_trajs["observations"],
-        n_queries=-1,
+        n_queries=n_test_queries,
     )
 
     output = {
