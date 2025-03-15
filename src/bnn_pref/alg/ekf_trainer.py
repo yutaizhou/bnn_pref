@@ -31,7 +31,9 @@ def bandit_pipeline(
     """
     n_samples, *_, n_feats = env.contexts.shape
     warmup_obs = bandit_kw["warm_obs"]
-    nsteps = n_samples if bandit_kw["n_steps"] == -1 else bandit_kw["n_steps"]
+    n_steps = bandit_kw["n_steps"]
+    end_idx = n_samples if n_steps == -1 else n_samples - n_steps
+
     model = RewardNet(bandit_kw["hidden_sizes"])
     opt = optax.adam(bandit_kw["learning_rate"])
     bandit = SubspaceNeuralEKF(n_feats, model, opt, **bandit_kw["cls"])
@@ -39,7 +41,7 @@ def bandit_pipeline(
     key, key_warmup, key_belief_init = split(key, 3)
     warmup_data = env.warmup(key_warmup, warmup_obs)
     bel_init = bandit.init_bel(key_belief_init, warmup_data)
-    bel_trace, batches = run_bandit(key, bandit, bel_init, env, warmup_data, nsteps)
+    bel_trace, batches = run_bandit(key, bandit, bel_init, env, warmup_data, end_idx)
 
     # prepend initial belief (zero vector) to bel_trace
     bel_trace = jax.tree.map(
@@ -58,13 +60,14 @@ def run_bandit(
     bel: BeliefState,
     env: EKFEnvironment,
     warmup_data: CARL,
-    nsteps: int,
+    end_idx: int,
 ) -> Tuple[BeliefState, CAR]:
     warmup_contexts, warmup_actions, warmup_rewards, _ = warmup_data
     nwarmup = len(warmup_rewards)
 
-    steps = jnp.arange(nwarmup, nsteps)
-    keys = split(key, nsteps - nwarmup)
+    # index into the dataset, get what's remaining after warmup
+    steps = jnp.arange(nwarmup, end_idx)
+    keys = split(key, end_idx - nwarmup)
 
     def filter_onestep(
         bel: BeliefState,

@@ -47,7 +47,8 @@ class EKFEnvironment:
 
     def warmup(self, key, n_warmups: int) -> CARL:
         """
-        collect random samples from the dataset
+        Collect samples from the (already randomly permuted) dataset.
+        Randomly sample actions so rewards are not all the same.
 
         Outputs:
             contexts: jnp.ndarray
@@ -66,10 +67,10 @@ class EKFEnvironment:
         actions = jr.randint(key, shape=(n_warmups,), minval=0, maxval=self.n_actions)
 
         @partial(jax.vmap, in_axes=(0, 0))
-        def get_contexts_and_rewards(i: int, a: int):
-            context = self.get_context(i)
-            label = self.get_label(i)
-            reward = self.get_reward(i, a)
+        def get_contexts_and_rewards(idx: int, action: int):
+            context = self.get_context(idx)
+            label = self.get_label(idx)
+            reward = self.get_reward(idx, action)
             return context, label, reward
 
         contexts, labels, rewards = get_contexts_and_rewards(idxes, actions)
