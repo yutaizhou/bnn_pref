@@ -71,7 +71,9 @@ def main(cfg):
         f"Test avg_ll:  {test_logpdf_warm:.2f} -> {test_logpdf:.2f}\n"
     )
 
-    if n_feats == 2:
+    # * visualization
+    if (task_kw["ds_type"] == "ogbench") and (n_feats == 2):
+        # ogbench "pointmaze-medium-navigate-singletask-v0": train traj + reward plot
         train_trajs = output["train_trajs"]
         train_traj_obs = train_trajs["observations"]
         mins, maxs = (train_traj_obs.min(axis=(0, 1)), train_traj_obs.max(axis=(0, 1)))
@@ -108,10 +110,8 @@ def main(cfg):
 
         plt.show()
 
-    if task_kw["ds_type"] == "synthetic":
+    if (task_kw["ds_type"] == "synthetic") and (n_feats == 1) and (T == 1):
         true_param_D, true_reward_fn = output["true_param"], output["true_reward_fn"]
-
-    if task_kw["n_feats"] == 1 and task_kw["length"] == 1:  # 1D reward plot
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 8))
 
         # Generate x points for plotting
@@ -146,8 +146,8 @@ def main(cfg):
         plt.tight_layout()
         plt.show()
 
-    if task_kw["n_feats"] == 2 and task_kw["length"] == 1:  # 2D reward plot
-        # fig, axs = plt.subplots(1, 3, figsize=(12, 5))
+    if (task_kw["ds_type"] == "synthetic") and (n_feats == 2) and (T == 1):
+        true_param_D, true_reward_fn = output["true_param"], output["true_reward_fn"]
         nrows, ncols = 2, 3
         fig = plt.figure(figsize=(12, 5))
 

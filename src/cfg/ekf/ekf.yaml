@@ -23,7 +23,7 @@ prior_noise: 0.01  # Increased from 0.0001
 dynamics_noise: 0.001  # Increased from 0.0
 obs_noise: 0.01  # Increased from 0.0
 
-# following is just for convenience in hydra CLI overrides
+# * following is just for convenience in hydra CLI overrides
 cls:
   n_iterates: ${..n_iterates}
   batch_size: ${..batch_size}

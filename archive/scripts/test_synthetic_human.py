@@ -7,17 +7,12 @@ import arviz as az
 import hydra
 import jax
 import jax.numpy as jnp
-import jax.numpy.linalg as jnpl
 import jax.random as jr
-import jax.scipy as jsp
 import matplotlib.pyplot as plt
-import numpy as np
 
-from bnn_pref.alg.mcmc import build_hmc, build_mh, plot_samples, plot_trace, run_mcmc
-from bnn_pref.data.pref_utils import create_pref_data
-from bnn_pref.utils.metrics import alignment_metric
-from bnn_pref.utils.utils import get_gaussian_vector, get_random_seed, tile_first_dim
-from scripts.run_mcmc import BradleyTerry, QueryWithResponse, generate_pref_data
+from bnn_pref.data.make_synthetic import generate_synthetic_trajs, make_synthetic_data
+from bnn_pref.data.pref_utils import BradleyTerry, QueryWithResponse
+from bnn_pref.utils.utils import get_gaussian_vector, get_random_seed
 
 
 @hydra.main(version_base=None, config_name="config", config_path="../cfg")
@@ -31,11 +26,11 @@ def main(cfg):
     # * generate true params + preference data
     seed = get_random_seed() if cfg["seed"] == -1 else cfg["seed"]
     key = jr.key(seed)
-    key, key1, key2 = jr.split(key, 3)
-    true_reward_D = get_gaussian_vector(key1, dim=task_kw["n_feats"], normalize=True)
-    features_Q2TD, response_Q1 = generate_pref_data(key2, true_reward_D, **data_kw)
-    data = QueryWithResponse(features_Q2TD, response_Q1)
-    potential = partial(dist.potential, data=data)
+    key, key_data = jr.split(key)
+    data = make_synthetic_data(key_data, cfg)
+    train_prefs, test_prefs = data["train_prefs"], data["test_prefs"]
+    true_param_D, true_reward_fn = data["true_param"], data["true_reward_fn"]
+    potential = partial(dist.potential, data=train_prefs)
 
     # generate a 2D pdf grid of bradley terry
     lim = 3
@@ -48,7 +43,7 @@ def main(cfg):
     plt.figure(figsize=(10, 8))
     plt.contourf(X_RR, Y_RR, Z_RR)
     plt.colorbar()
-    plt.scatter(true_reward_D[0], true_reward_D[1], color="red", label="True Reward")
+    plt.scatter(true_param_D[0], true_param_D[1], color="red", label="True Reward")
 
     plt.xlabel("Param 1")
     plt.ylabel("Param 2")

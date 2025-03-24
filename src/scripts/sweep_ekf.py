@@ -31,9 +31,6 @@ def run_ekf(key, cfg):
     # * generate true params + preference data
     output = make_synthetic_data(key, cfg)
     train_data, test_data = output["train_prefs"], output["test_prefs"]
-    true_param_D, true_reward_fn = output["true_param"], output["true_reward_fn"]
-    train_traj_obs = output["train_trajs"]["observations"]
-    feature_bounds = (train_traj_obs.min(), train_traj_obs.max())
 
     # * build + run bandit alg
     key, key1, key2 = jr.split(key, 3)
@@ -45,7 +42,6 @@ def run_ekf(key, cfg):
 
     rewards_info, bel_trace, bandit = bandit_pipeline(key2, env, ekf_kw)
     bel = jax.tree_util.tree_map(lambda x: x[-1], bel_trace)
-    warmup_rewards, rewards_trace, _ = rewards_info
 
     key, key1 = jr.split(key, 2)
     pref_predictor = jax.vmap(partial(bandit.sub2full_predict_logits, bel.mean))
@@ -61,8 +57,6 @@ def run_ekf(key, cfg):
         "pref_acc": pref_acc,
         "test_logpdf": test_logpdf,
     }
-
-    results = jax.tree.map(lambda x: jnp.float32(x), results)
 
     metadata = {
         "full_param_count": bandit.full_params_count,
