@@ -18,6 +18,7 @@ from bnn_pref.data import dataset_creators
 from bnn_pref.data.ekf_env import retrieve
 from bnn_pref.utils.metrics import compute_accuracy_nn, compute_logpdf_nn
 from bnn_pref.utils.network import RewardNet
+from bnn_pref.utils.print_utils import print_sgd_cfg
 from bnn_pref.utils.utils import get_random_seed
 
 logging.getLogger("jax._src.xla_bridge").setLevel(logging.ERROR)
@@ -92,35 +93,6 @@ def main(cfg):
     test_logpdf = compute_logpdf_nn(pref_predictor, test_prefs)
     print(f"Test Accuracy: {test_acc:.2%}")
     print(f"Test avg_ll: {test_logpdf:.2f}")
-
-
-def print_sgd_cfg(seed, cfg, length=None, n_feats=None):
-    data_kw = cfg["data"]
-    task_kw = cfg["task"]
-    ekf_kw = cfg["ekf"]
-
-    n_queries = data_kw["n_queries"]
-    length = length if length is not None else task_kw["length"]
-    n_feats = n_feats if n_feats is not None else task_kw["n_feats"]
-
-    n_iterates = ekf_kw["cls"]["n_iterates"]
-    batch_size = ekf_kw["cls"]["batch_size"]
-    lr = ekf_kw["learning_rate"]
-
-    if task_kw["ds_type"] == "synthetic":
-        # todo fix this fhat thing
-        task_str = f"{task_kw['ds_type']}: f={task_kw['f']}, fhat={task_kw['fhat']} (fhat ignored for ekf runs)"
-    else:
-        task_str = f"{task_kw['ds_type']}: {task_kw['name']}"
-
-    print(
-        f"Seed: {seed}\n"
-        f"Data:\n"
-        f"  {task_str}\n"
-        f"  N={data_kw['n_demos']}, Q={n_queries}, T={length}, D={n_feats}\n"
-        f"SGD:\n"
-        f"  n_iterates={n_iterates}, batch_size={batch_size}, lr={lr}"
-    )
 
 
 if __name__ == "__main__":

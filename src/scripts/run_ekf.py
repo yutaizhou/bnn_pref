@@ -12,11 +12,12 @@ import jax.random as jr
 import matplotlib.pyplot as plt
 from hydra.core.hydra_config import HydraConfig
 
-from bnn_pref.alg.ekf_trainer import bandit_pipeline, print_ekf_cfg
+from bnn_pref.alg.ekf_trainer import bandit_pipeline
 from bnn_pref.data import dataset_creators
 from bnn_pref.data.ekf_env import EKFEnvironment
 from bnn_pref.utils.metrics import compute_accuracy_nn, compute_logpdf_nn
 from bnn_pref.utils.plotting import plot_reward_heatmap
+from bnn_pref.utils.print_utils import print_ekf_cfg
 from bnn_pref.utils.utils import get_random_seed
 
 logging.getLogger("jax._src.xla_bridge").setLevel(logging.ERROR)

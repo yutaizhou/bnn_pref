@@ -18,6 +18,7 @@ from bnn_pref.data import dataset_creators
 from bnn_pref.data.pref_utils import BradleyTerry
 from bnn_pref.utils.metrics import alignment_metric, compute_accuracy2_mcmc
 from bnn_pref.utils.plotting import plot_logpdf, plot_reward_heatmap
+from bnn_pref.utils.print_utils import print_mcmc_cfg
 from bnn_pref.utils.test_functions import test_functions_dict
 from bnn_pref.utils.utils import get_random_seed, tile_first_dim
 
@@ -186,36 +187,6 @@ def main(cfg):
         plt.subplots_adjust(top=0.80)
 
         plt.show()
-
-
-def print_mcmc_cfg(seed, cfg, length=None, n_feats=None):
-    data_kw = cfg["data"]
-    task_kw = cfg["task"]
-    mcmc_kw = cfg["mcmc"]
-
-    n_queries = data_kw["n_queries"]
-    length = length if length is not None else task_kw["length"]
-    n_feats = n_feats if n_feats is not None else task_kw["n_feats"]
-
-    n_samples = mcmc_kw["n_samples"]
-    burn_in = mcmc_kw["burn_in"]
-    thinning = mcmc_kw["thinning"]
-    normalize = mcmc_kw["normalize"]
-
-    if task_kw["ds_type"] == "synthetic":
-        # todo fix this fhat thing
-        task_str = f"{task_kw['ds_type']}: f={task_kw['f']}, fhat={task_kw['fhat']} (fhat ignored for ekf runs)"
-    else:
-        task_str = f"{task_kw['ds_type']}: {task_kw['name']}"
-
-    print(
-        f"Seed: {seed}\n"
-        f"Data:\n"
-        f"  {task_str}\n"
-        f"  N={data_kw['n_demos']}, Q={n_queries}, T={length}, D={n_feats}\n"
-        f"MCMC:\n"
-        f"  n_samples={n_samples}, burn_in={burn_in}, thinning={thinning}, normalize={normalize}"
-    )
 
 
 if __name__ == "__main__":

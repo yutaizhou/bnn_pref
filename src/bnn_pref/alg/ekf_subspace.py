@@ -33,7 +33,7 @@ class SubspaceNeuralEKF:
         opt,
         l2_reg: float = 0.0,
         n_iterates: int = 1000,
-        batch_size: int = -1,
+        batch_size: int = 32,
         warm_burns: int = 1000,
         thinning: int = 2,
         sub_dim: Union[float, int] = 0.9999,
@@ -46,14 +46,12 @@ class SubspaceNeuralEKF:
         Subspace Neural Bandit implementation.
         Parameters
         ----------
-        num_features : int
+        n_feats : int
             The number of input features of the model.
         model : flax.nn.Module
             The flax model to be used for the bandits.
         opt: flax.optim.Optimizer
             The optimizer to be used for training the model.
-        warm_epochs : int
-            The number of SGD epochs to be used for the warmup phase.
         warm_burns : int
             The number of SGD iterates to be thrown away for the warmup phase.
         sub_dim: Union[float, int]
@@ -80,7 +78,6 @@ class SubspaceNeuralEKF:
         self.observation_noise = obs_noise
         self.sub_dim = sub_dim
         self.rnd_proj = rnd_proj
-        self.context_dim = None
         self.l2_reg = l2_reg
         self.batch_size = batch_size
 
@@ -202,6 +199,8 @@ class SubspaceNeuralEKF:
             return sub2full_predict_logits(params, context)[action, None]
 
         params_subspace_init = jnp.zeros(sub_dim)
+        # key, key_ekf_init = jr.split(key, 2)
+        # params_subspace_init = jr.normal(key_ekf_init, (sub_dim,))
         Sigma = jnp.eye(sub_dim) * self.prior_noise
         Q = jnp.eye(sub_dim) * self.system_noise
         R = jnp.eye(1) * self.observation_noise
