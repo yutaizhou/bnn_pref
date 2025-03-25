@@ -112,7 +112,7 @@ def main(cfg):
     # all_samples = jnp.concat([init_sample[None, :], samples_SD], axis=0)
     # bbox_dict = {
     #     "D": task_kw["n_feats"],
-    #     "Q": data_kw["n_queries"],
+    #     "Q": data_kw["nq_train"],
     #     "Train Acc": train_acc,
     #     "Test Acc": test_acc,
     #     "m": align,

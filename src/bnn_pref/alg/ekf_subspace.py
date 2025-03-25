@@ -74,8 +74,8 @@ class SubspaceNeuralEKF:
         self.warm_burns = warm_burns
         self.n_iterates = n_iterates
         self.thinning = thinning
-        self.system_noise = dynamics_noise
-        self.observation_noise = obs_noise
+        self.dynamics_noise = dynamics_noise
+        self.obs_noise = obs_noise
         self.sub_dim = sub_dim
         self.rnd_proj = rnd_proj
         self.l2_reg = l2_reg
@@ -184,12 +184,6 @@ class SubspaceNeuralEKF:
         self.sub2full_predict_return = sub2full_predict_return
         self.sub2full_predict_logits = sub2full_predict_logits
 
-        def dynamics_fn(params, inputs):
-            """
-            dynamics model constant dynamics
-            """
-            return params
-
         def emission_fn(params, inputs):
             """
             emission model where inputs is (N, D + 1)
@@ -198,23 +192,22 @@ class SubspaceNeuralEKF:
             action = inputs[..., -1].astype(int)
             return sub2full_predict_logits(params, context)[action, None]
 
-        params_subspace_init = jnp.zeros(sub_dim)
+        init_mean = jnp.zeros(sub_dim)
         # key, key_ekf_init = jr.split(key, 2)
         # params_subspace_init = jr.normal(key_ekf_init, (sub_dim,))
-        Sigma = jnp.eye(sub_dim) * self.prior_noise
-        Q = jnp.eye(sub_dim) * self.system_noise
-        R = jnp.eye(1) * self.observation_noise
-        ekf = ParamsNLGSSM(
-            initial_mean=params_subspace_init,
-            initial_covariance=Sigma,
-            dynamics_function=dynamics_fn,
+        S = jnp.eye(sub_dim) * self.prior_noise
+        Q = jnp.eye(sub_dim) * self.dynamics_noise
+        R = jnp.eye(1) * self.obs_noise  # emission is (1,) for scalar one-hot reward
+        self.ekf_params = ParamsNLGSSM(
+            initial_mean=init_mean,
+            initial_covariance=S,
+            dynamics_function=lambda z, u: z,  # constant dynamics
             dynamics_covariance=Q,
             emission_function=emission_fn,
             emission_covariance=R,
         )
-        self.ekf_params = ekf
 
-        bel = BeliefState(params_subspace_init, Sigma, 0)
+        bel = BeliefState(mean=init_mean, cov=S, t=0)
         return bel
 
     def update_bel(
@@ -236,12 +229,14 @@ class SubspaceNeuralEKF:
             initial_covariance=prior_cov,
         )
         ekf_posterior = extended_kalman_filter(
-            self.ekf_params, emissions=emission, inputs=inputs
+            self.ekf_params,
+            emissions=emission,  # reward
+            inputs=inputs,  # context + action
         )
 
         posterior_mean = ekf_posterior.filtered_means[-1]
         posterior_cov = ekf_posterior.filtered_covariances[-1]
-        bel = BeliefState(posterior_mean, posterior_cov, t + 1)
+        bel = BeliefState(mean=posterior_mean, cov=posterior_cov, t=t + 1)
         return bel
 
     def choose_action(

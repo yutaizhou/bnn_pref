@@ -13,10 +13,7 @@ from bnn_pref.utils.utils import get_random_seed
 def make_ogbench_data(key, cfg):
     data_kw = cfg["data"]
     task_kw = cfg["task"]
-    n_queries = data_kw["n_queries"]
-    train_frac = data_kw["train_frac"]
-    n_train_queries = int(n_queries * train_frac)
-    n_test_queries = n_queries - n_train_queries
+    nq_train, nq_test = data_kw["nq_train"], data_kw["nq_test"]
 
     # * load data
     _, train_trajs, test_trajs = ogbench.make_env_and_datasets(
@@ -37,14 +34,14 @@ def make_ogbench_data(key, cfg):
         key1,
         ranked_returns=train_trajs["returns"],
         traj_obs=train_trajs["observations"],
-        n_queries=n_train_queries,
+        n_queries=nq_train,
     )
 
     test_prefs, _ = create_pref_data_jit(
         key2,
         ranked_returns=test_trajs["returns"],
         traj_obs=test_trajs["observations"],
-        n_queries=n_test_queries,
+        n_queries=nq_test,
     )
 
     output = {

@@ -10,7 +10,7 @@ n_steps: -1 # num samples to do EKF filtering (if -1, use all remaining afer war
 
 # * Subspace Init w/ SGD
 n_iterates: 100  # Total number of GD steps on warmup data
-batch_size: 32 # -1 for full batch GD. Otherwise, mini-batch SGD
+bs: 32 # -1 for full batch GD. Otherwise, mini-batch SGD
 l2_reg: 0
 
 warm_burns: 20
@@ -19,14 +19,14 @@ sub_dim: 40
 rnd_proj: False
 
 # * Subspace Inference w/ EKF
-prior_noise: 0.01  # Increased from 0.0001
-dynamics_noise: 0.001  # Increased from 0.0
-obs_noise: 0.01  # Increased from 0.0
+prior_noise: 0.1
+dynamics_noise: 0.0001 # small Gaussian drift on NN params, where we assume constant dynamics
+obs_noise: 0.1  # noise on emissions, which for pref learning is always +1 for traj2 > traj 1 # 1 rly affects bma 
 
 # * following is just for convenience in hydra CLI overrides
 cls:
   n_iterates: ${..n_iterates}
-  batch_size: ${..batch_size}
+  batch_size: ${..bs}
   l2_reg: ${..l2_reg}
   warm_burns: ${..warm_burns}
   thinning: ${..thinning}

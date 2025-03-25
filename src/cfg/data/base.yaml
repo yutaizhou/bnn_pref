@@ -5,8 +5,6 @@ n_demos: 200
 demo_train_frac: 0.8 
 
 # * preference queries
-# split n_queries into n_train (from train trajs) and n_test (from test trajs)
-n_queries: 1000
-train_frac: 0.8
-n_queries_train: ${multiply:${.n_queries}, ${.train_frac}}
-n_queries_test: ${subtract:${.n_queries}, ${.n_queries_train}}
+# take nq_train / nq_test from the already split train/test trajs
+nq_train: 800
+nq_test: 200

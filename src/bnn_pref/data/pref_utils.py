@@ -233,8 +233,8 @@ if __name__ == "__main__":
             "n_feats": 2,
             "n_demos": 10,
             "length": 5,
-            "train_frac": 0.8,
-            "n_queries": 5,
+            "nq_train": 5,
+            "nq_test": 5,
         },
         "f": "linear",  # Using linear reward function for simplicity
     }
@@ -242,7 +242,8 @@ if __name__ == "__main__":
     n_feats = cfg["data"]["n_feats"]
     demo_len = cfg["data"]["length"]
     n_demos = cfg["data"]["n_demos"]
-    n_queries = cfg["data"]["n_queries"]
+    nq_train = cfg["data"]["nq_train"]
+    nq_test = cfg["data"]["nq_test"]
 
     # Generate synthetic data using make_synthetic_data
     key, param_key, demo_key = jr.split(key, 3)
@@ -261,13 +262,13 @@ if __name__ == "__main__":
     queries1_Q2, labels1_Q1, mislabels1 = create_pref_data(
         pref_key,
         ranked_returns=returns_N,
-        n_queries=n_queries,
+        n_queries=nq_train,
     )
 
     queries2_Q2, labels2_Q1, mislabels2 = create_pref_data_jit(
         pref_key,
         ranked_returns=returns_N,
-        n_queries=n_queries,
+        n_queries=nq_train,
     )
 
     # Compare outputs

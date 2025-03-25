@@ -32,10 +32,10 @@ def run_ekf(key, cfg, data_dict):
     ekf_kw = cfg["ekf"]
     data_kw = cfg["data"]
 
-    Q_train = data_kw["n_queries_train"]
+    nq_train, nq_test = data_kw["nq_train"], data_kw["nq_test"]
     warm_obs = ekf_kw["warm_obs"]
     n_steps = ekf_kw["n_steps"]
-    n_updates = (Q_train - warm_obs) if n_steps == -1 else n_steps
+    n_updates = (nq_train - warm_obs) if n_steps == -1 else n_steps
 
     train_prefs, test_prefs = data_dict["train_prefs"], data_dict["test_prefs"]
 
@@ -79,8 +79,8 @@ def run_ekf(key, cfg, data_dict):
         "test_logpdf": test_logpdf,
     }
     metadata = {
-        "n_train_queries": train_prefs.queries_Q2TD.shape[0],
-        "n_test_queries": test_prefs.queries_Q2TD.shape[0],
+        "nq_train": nq_train,
+        "nq_test": nq_test,
         "n_warm_queries": warm_obs,
         "n_updates": n_updates,
         "full_param_count": bandit.full_params_count,
@@ -149,7 +149,7 @@ def main(cfg):
 
         print(
             f"{task}: \n"
-            f"  N train: {metadata_m['n_train_queries'][0]} ({metadata_m['n_warm_queries'][0]} / {metadata_m['n_updates'][0]}), N test: {metadata_m['n_test_queries'][0]}\n"
+            f"  N train: {metadata_m['nq_train'][0]} ({metadata_m['n_warm_queries'][0]} / {metadata_m['n_updates'][0]}), N test: {metadata_m['nq_test'][0]}\n"
             f"  Param count: {metadata_m['full_param_count'][0]} -> {metadata_m['subspace_param_count'][0]}\n"
             f"  Train acc:   {results['train_acc_warm']:.2%} ± {results['train_acc_warm_std']:.2%} -> {results['train_acc']:.2%} ± {results['train_acc_std']:.2%}\n"
             f"  Test acc:    {results['test_acc_warm']:.2%} ± {results['test_acc_warm_std']:.2%} -> {results['test_acc']:.2%} ± {results['test_acc_std']:.2%}\n"

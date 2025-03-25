@@ -4,17 +4,14 @@ def print_ekf_cfg(seed, cfg, length=None, n_feats=None):
     ekf_kw = cfg["ekf"]
     ekf_cls_cfg = ekf_kw["cls"]
 
-    n_demos, n_queries = data_kw["n_demos"], data_kw["n_queries"]
+    n_demos = data_kw["n_demos"]
     n_feats = n_feats if n_feats is not None else task_kw["n_feats"]
     length = length if length is not None else task_kw["length"]
 
+    nq_train, nq_test = data_kw["nq_train"], data_kw["nq_test"]
     warm_obs = ekf_kw["warm_obs"]
     n_steps = ekf_kw["n_steps"]
-    Q_train = data_kw["n_queries_train"]
-    Q_test = data_kw["n_queries_test"]
-    # Q_train = int(n_queries * data_kw["train_frac"])
-    # Q_test = n_queries - Q_train
-    n_updates = (Q_train - warm_obs) if n_steps == -1 else n_steps
+    n_updates = (nq_train - warm_obs) if n_steps == -1 else n_steps
 
     n_iterates = ekf_cls_cfg["n_iterates"]
     batch_size = ekf_cls_cfg["batch_size"]
@@ -34,7 +31,7 @@ def print_ekf_cfg(seed, cfg, length=None, n_feats=None):
         f"Seed: {seed}\n"
         f"Data:\n"
         f"  {task_str}\n"
-        f"  N={n_demos}, Q={n_queries}, T={length}, D={n_feats} (Q Train/Test = {Q_train}/{Q_test})\n"
+        f"  N={n_demos}, Q={nq_train}, T={length}, D={n_feats} (Q Test = {nq_test})\n"
         f"  Samples for init/update = {warm_obs}/{n_updates}\n"
         f"EKF:\n"
         f"  init: bs={batch_size}, n_iterates={n_iterates}[{warm_burns}::{thinning}] ({n_eff_iterates} eff), {sub_dim=}, {rnd_proj=}\n"
@@ -46,9 +43,9 @@ def print_mcmc_cfg(seed, cfg, length=None, n_feats=None):
     task_kw = cfg["task"]
     mcmc_kw = cfg["mcmc"]
 
-    n_queries = data_kw["n_queries"]
     length = length if length is not None else task_kw["length"]
     n_feats = n_feats if n_feats is not None else task_kw["n_feats"]
+    nq_train, nq_test = data_kw["nq_train"], data_kw["nq_test"]
 
     n_samples = mcmc_kw["n_samples"]
     burn_in = mcmc_kw["burn_in"]
@@ -65,7 +62,7 @@ def print_mcmc_cfg(seed, cfg, length=None, n_feats=None):
         f"Seed: {seed}\n"
         f"Data:\n"
         f"  {task_str}\n"
-        f"  N={data_kw['n_demos']}, Q={n_queries}, T={length}, D={n_feats}\n"
+        f"  N={data_kw['n_demos']}, Q={nq_train}, T={length}, D={n_feats} (Q Test = {nq_test})\n"
         f"MCMC:\n"
         f"  n_samples={n_samples}, burn_in={burn_in}, thinning={thinning}, normalize={normalize}"
     )
@@ -76,7 +73,7 @@ def print_sgd_cfg(seed, cfg, length=None, n_feats=None):
     task_kw = cfg["task"]
     ekf_kw = cfg["ekf"]
 
-    n_queries = data_kw["n_queries"]
+    nq_train, nq_test = data_kw["nq_train"], data_kw["nq_test"]
     length = length if length is not None else task_kw["length"]
     n_feats = n_feats if n_feats is not None else task_kw["n_feats"]
 
@@ -94,7 +91,7 @@ def print_sgd_cfg(seed, cfg, length=None, n_feats=None):
         f"Seed: {seed}\n"
         f"Data:\n"
         f"  {task_str}\n"
-        f"  N={data_kw['n_demos']}, Q={n_queries}, T={length}, D={n_feats}\n"
+        f"  N={data_kw['n_demos']}, Q={nq_train}, T={length}, D={n_feats} (Q Test = {nq_test})\n"
         f"SGD:\n"
         f"  n_iterates={n_iterates}, batch_size={batch_size}, lr={lr}"
     )
