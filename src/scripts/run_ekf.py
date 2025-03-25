@@ -15,7 +15,11 @@ from hydra.core.hydra_config import HydraConfig
 from bnn_pref.alg.ekf_trainer import bandit_pipeline
 from bnn_pref.data import dataset_creators
 from bnn_pref.data.ekf_env import EKFEnvironment
-from bnn_pref.utils.metrics import compute_accuracy_nn, compute_logpdf_nn
+from bnn_pref.utils.metrics import (
+    compute_accuracy_nn,
+    compute_accuracy_nn_bel,
+    compute_logpdf_nn,
+)
 from bnn_pref.utils.plotting import plot_reward_heatmap
 from bnn_pref.utils.print_utils import print_ekf_cfg
 from bnn_pref.utils.utils import get_random_seed
@@ -34,16 +38,16 @@ def main(cfg):
 
     # * generate true params + preference data
     output = dataset_creators[task_kw["ds_type"]](key, cfg)
-    train_data, test_data = output["train_prefs"], output["test_prefs"]
-    Q, _, T, n_feats = train_data.queries_Q2TD.shape
+    train_prefs, test_prefs = output["train_prefs"], output["test_prefs"]
+    Q, _, T, n_feats = train_prefs.queries_Q2TD.shape
     print_ekf_cfg(seed, cfg, n_feats=n_feats, length=T)
 
     # * build + run bandit alg
     key, key1, key2 = jr.split(key, 3)
     env = EKFEnvironment(
         key1,
-        X=train_data.queries_Q2TD,
-        Y=jax.nn.one_hot(train_data.responses_Q1.squeeze(), num_classes=2),
+        X=train_prefs.queries_Q2TD,
+        Y=jax.nn.one_hot(train_prefs.responses_Q1.squeeze(), num_classes=2),
     )
 
     rewards_info, bel_trace, bandit = bandit_pipeline(key2, env, ekf_kw)
@@ -52,22 +56,28 @@ def main(cfg):
     warmup_rewards, rewards_trace, _ = rewards_info
 
     # * compute metrics
+    key, key_bma = jr.split(key)
     logits_predictor = jax.vmap(partial(bandit.sub2full_predict_logits, bel.mean))
     init_logit_predictor = jax.vmap(partial(bandit.sub2full_predict_logits, bel0.mean))
 
-    train_acc_warm = compute_accuracy_nn(init_logit_predictor, train_data)
-    train_acc = compute_accuracy_nn(logits_predictor, train_data)
-    train_logpdf_warm = compute_logpdf_nn(init_logit_predictor, train_data)
-    train_logpdf = compute_logpdf_nn(logits_predictor, train_data)
-    test_acc_warm = compute_accuracy_nn(init_logit_predictor, test_data)
-    test_acc = compute_accuracy_nn(logits_predictor, test_data)
-    test_logpdf_warm = compute_logpdf_nn(init_logit_predictor, test_data)
-    test_logpdf = compute_logpdf_nn(logits_predictor, test_data)
+    train_acc_warm = compute_accuracy_nn(init_logit_predictor, train_prefs)
+    train_acc = compute_accuracy_nn(logits_predictor, train_prefs)
+    train_logpdf_warm = compute_logpdf_nn(init_logit_predictor, train_prefs)
+    train_logpdf = compute_logpdf_nn(logits_predictor, train_prefs)
+
+    test_acc_warm = compute_accuracy_nn(init_logit_predictor, test_prefs)
+    test_acc = compute_accuracy_nn(logits_predictor, test_prefs)
+    test_acc_bma = compute_accuracy_nn_bel(
+        key_bma, bandit.sub2full_predict_logits, bel, test_prefs
+    )
+    test_logpdf_warm = compute_logpdf_nn(init_logit_predictor, test_prefs)
+    test_logpdf = compute_logpdf_nn(logits_predictor, test_prefs)
 
     print(
         f"Param Count:  {bandit.full_params_count} -> {bandit.subspace_params_count}\n"
         f"Train acc:    {train_acc_warm:.2%} -> {train_acc:.2%}\n"
         f"Test acc:     {test_acc_warm:.2%} -> {test_acc:.2%}\n"
+        f"Test acc BMA: {test_acc_bma:.2%}\n"
         f"Train avg_ll: {train_logpdf_warm:.2f} -> {train_logpdf:.2f}\n"
         f"Test avg_ll:  {test_logpdf_warm:.2f} -> {test_logpdf:.2f}\n"
     )

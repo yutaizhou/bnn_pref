@@ -1,11 +1,13 @@
 from functools import partial
 from typing import Callable
 
+import distrax
 import jax
 import jax.numpy as jnp
 import jax.numpy.linalg as jnpl
 import optax
 
+from bnn_pref.alg.ekf_subspace import BeliefState
 from bnn_pref.data.pref_utils import QueryWithResponse
 from bnn_pref.utils.type import NTD, SD, D
 
@@ -15,6 +17,25 @@ def compute_accuracy_nn(pref_predictor: Callable, data: QueryWithResponse):
     logits_Q2 = pref_predictor(features_Q2TD)
     pred_response_Q = logits_Q2.argmax(axis=1)
     acc = jnp.mean(pred_response_Q == response_Q1.squeeze())
+    return acc
+
+
+def compute_accuracy_nn_bel(
+    key, sub2full_predict_logits: Callable, bel: BeliefState, data: QueryWithResponse
+):
+    n_models = 10
+    mean, cov = bel.mean, bel.cov
+    dist = distrax.MultivariateNormalFullCovariance(mean, cov)
+
+    ss_params = dist.sample(seed=key, sample_shape=(n_models,))
+    blah = jax.vmap(sub2full_predict_logits, in_axes=(None, 0))  # input: param, context
+    blah = jax.vmap(blah, in_axes=(0, None))
+    logits_MQ2 = blah(ss_params, data.queries_Q2TD)
+    probs_MQ2 = jax.nn.softmax(logits_MQ2, axis=2)
+    probs_Q2 = probs_MQ2.mean(0)
+
+    pred_response_Q = probs_Q2.argmax(axis=1)
+    acc = jnp.mean(pred_response_Q == data.responses_Q1.squeeze())
     return acc
 
 
@@ -36,6 +57,28 @@ def compute_logpdf_nn(pref_predictor: Callable, data: QueryWithResponse):
     #     jax.nn.one_hot(labels_Q1.squeeze(), 2),
     # ).mean()
 
+    return avg_ll
+
+
+def compute_logpdf_nn_bel(
+    key, sub2full_predict_logits: Callable, bel: BeliefState, data: QueryWithResponse
+):
+    # todo: this is not used anywhere. need to debug
+    n_models = 10
+    mean, cov = bel.mean, bel.cov
+    dist = distrax.MultivariateNormalFullCovariance(mean, cov)
+    ss_params = dist.sample(seed=key, sample_shape=(n_models,))
+    blah = jax.vmap(sub2full_predict_logits, in_axes=(None, 0))  # input: param, context
+    blah = jax.vmap(blah, in_axes=(0, None))
+    logits_MQ2 = blah(ss_params, data.queries_Q2TD)
+
+    def compute_ll(logits_Q2):
+        return -optax.losses.softmax_cross_entropy(
+            logits_Q2,
+            jax.nn.one_hot(data.responses_Q1.squeeze(), 2),
+        ).mean()
+
+    avg_ll = jax.vmap(compute_ll)(logits_MQ2).mean()
     return avg_ll
 
 

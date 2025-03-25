@@ -141,7 +141,7 @@ def run_dimensinality_exp(cfg):
         )
 
         print(
-            f"{task:10}: "
+            f"{task:14}: "
             f"acc = {results['test_acc'].mean():.2%} ± {results['test_acc'].std():.1%}, "
             f"logpdf = {results['test_logpdf'].mean():.2f} ± {results['test_logpdf'].std():.1f}, "
             f"param_count = {metadata['param_count'][0]}, "

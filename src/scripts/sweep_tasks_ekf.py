@@ -16,7 +16,11 @@ from hydra.core.hydra_config import HydraConfig
 from bnn_pref.alg.ekf_trainer import bandit_pipeline
 from bnn_pref.data import dataset_creators
 from bnn_pref.data.ekf_env import EKFEnvironment
-from bnn_pref.utils.metrics import compute_accuracy_nn, compute_logpdf_nn
+from bnn_pref.utils.metrics import (
+    compute_accuracy_nn,
+    compute_accuracy_nn_bel,
+    compute_logpdf_nn,
+)
 from bnn_pref.utils.utils import get_random_seed
 
 logging.getLogger("jax._src.xla_bridge").setLevel(logging.ERROR)
@@ -27,15 +31,17 @@ def run_ekf(key, cfg, data_dict):
     ekf_kw = cfg["ekf"]
     task_kw = cfg["task"]
 
-    train_data, test_data = data_dict["train_prefs"], data_dict["test_prefs"]
+    train_prefs, test_prefs = data_dict["train_prefs"], data_dict["test_prefs"]
 
     # * build + run bandit alg
     key, key1, key2 = jr.split(key, 3)
     env = EKFEnvironment(
         key1,
-        X=train_data.queries_Q2TD,
-        Y=jax.nn.one_hot(train_data.responses_Q1.squeeze(), num_classes=2),
+        X=train_prefs.queries_Q2TD,
+        Y=jax.nn.one_hot(train_prefs.responses_Q1.squeeze(), num_classes=2),
     )
+
+    key, key_bma = jr.split(key)
 
     rewards_info, bel_trace, bandit = bandit_pipeline(key2, env, ekf_kw)
     bel0 = jax.tree.map(lambda x: x[0], bel_trace)  # init belief, assume zero vec
@@ -43,14 +49,17 @@ def run_ekf(key, cfg, data_dict):
     pref_predictor = jax.vmap(partial(bandit.sub2full_predict_logits, bel.mean))
     init_logit_predictor = jax.vmap(partial(bandit.sub2full_predict_logits, bel0.mean))
 
-    train_acc_warm = compute_accuracy_nn(init_logit_predictor, train_data)
-    train_acc = compute_accuracy_nn(pref_predictor, train_data)
-    train_logpdf_warm = compute_logpdf_nn(init_logit_predictor, train_data)
-    train_logpdf = compute_logpdf_nn(pref_predictor, train_data)
-    test_acc_warm = compute_accuracy_nn(init_logit_predictor, test_data)
-    test_acc = compute_accuracy_nn(pref_predictor, test_data)
-    test_logpdf_warm = compute_logpdf_nn(init_logit_predictor, test_data)
-    test_logpdf = compute_logpdf_nn(pref_predictor, test_data)
+    train_acc_warm = compute_accuracy_nn(init_logit_predictor, train_prefs)
+    train_acc = compute_accuracy_nn(pref_predictor, train_prefs)
+    train_logpdf_warm = compute_logpdf_nn(init_logit_predictor, train_prefs)
+    train_logpdf = compute_logpdf_nn(pref_predictor, train_prefs)
+    test_acc_warm = compute_accuracy_nn(init_logit_predictor, test_prefs)
+    test_acc = compute_accuracy_nn(pref_predictor, test_prefs)
+    test_acc_bma = compute_accuracy_nn_bel(
+        key_bma, bandit.sub2full_predict_logits, bel, test_prefs
+    )
+    test_logpdf_warm = compute_logpdf_nn(init_logit_predictor, test_prefs)
+    test_logpdf = compute_logpdf_nn(pref_predictor, test_prefs)
 
     results = {
         "train_acc_warm": train_acc_warm,
@@ -59,12 +68,13 @@ def run_ekf(key, cfg, data_dict):
         "train_logpdf": train_logpdf,
         "test_acc_warm": test_acc_warm,
         "test_acc": test_acc,
+        "test_acc_bma": test_acc_bma,
         "test_logpdf_warm": test_logpdf_warm,
         "test_logpdf": test_logpdf,
     }
     metadata = {
-        "n_train_queries": train_data.queries_Q2TD.shape[0],
-        "n_test_queries": test_data.queries_Q2TD.shape[0],
+        "n_train_queries": train_prefs.queries_Q2TD.shape[0],
+        "n_test_queries": test_prefs.queries_Q2TD.shape[0],
         "full_param_count": bandit.full_params_count,
         "subspace_param_count": bandit.subspace_params_count,
     }
@@ -115,6 +125,8 @@ def main(cfg):
             "test_acc_warm_std": results_m["test_acc_warm"].std().item(),
             "test_acc": results_m["test_acc"].mean().item(),
             "test_acc_std": results_m["test_acc"].std().item(),
+            "test_acc_bma": results_m["test_acc_bma"].mean().item(),
+            "test_acc_bma_std": results_m["test_acc_bma"].std().item(),
             "train_logpdf_warm": results_m["train_logpdf_warm"].mean().item(),
             "train_logpdf_warm_std": results_m["train_logpdf_warm"].std().item(),
             "train_logpdf": results_m["train_logpdf"].mean().item(),
@@ -133,6 +145,7 @@ def main(cfg):
             f"  Param count: {metadata_m['full_param_count'][0]} -> {metadata_m['subspace_param_count'][0]}\n"
             f"  Train acc:   {results['train_acc_warm']:.2%} ± {results['train_acc_warm_std']:.2%} -> {results['train_acc']:.2%} ± {results['train_acc_std']:.2%}\n"
             f"  Test acc:    {results['test_acc_warm']:.2%} ± {results['test_acc_warm_std']:.2%} -> {results['test_acc']:.2%} ± {results['test_acc_std']:.2%}\n"
+            f"  Test acc BMA: {results['test_acc_bma']:.2%} ± {results['test_acc_bma_std']:.2%}\n"
             f"  Train logpdf: {results['train_logpdf_warm']:.2f} ± {results['train_logpdf_warm_std']:.2f} -> {results['train_logpdf']:.2f} ± {results['train_logpdf_std']:.2f}\n"
             f"  Test logpdf:  {results['test_logpdf_warm']:.2f} ± {results['test_logpdf_warm_std']:.2f} -> {results['test_logpdf']:.2f} ± {results['test_logpdf_std']:.2f}\n"
             f"  Time: {duration:.1f} seconds\n"
