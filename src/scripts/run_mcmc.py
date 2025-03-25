@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 from bnn_pref.alg.mcmc import build_hmc, build_mh, plot_samples, plot_trace, run_mcmc
 from bnn_pref.data import dataset_creators
 from bnn_pref.data.pref_utils import BradleyTerry
+from bnn_pref.utils.hydra_resolvers import *
 from bnn_pref.utils.metrics import alignment_metric, compute_accuracy2_mcmc
 from bnn_pref.utils.plotting import plot_logpdf, plot_reward_heatmap
 from bnn_pref.utils.print_utils import print_mcmc_cfg

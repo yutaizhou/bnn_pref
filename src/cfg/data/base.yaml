@@ -8,3 +8,5 @@ demo_train_frac: 0.8
 # split n_queries into n_train (from train trajs) and n_test (from test trajs)
 n_queries: 1000
 train_frac: 0.8
+n_queries_train: ${multiply:${.n_queries}, ${.train_frac}}
+n_queries_test: ${subtract:${.n_queries}, ${.n_queries_train}}

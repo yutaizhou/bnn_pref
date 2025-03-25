@@ -19,6 +19,7 @@ from flax.training.train_state import TrainState
 from bnn_pref.alg.agent_utils import run_gradient_descent
 from bnn_pref.data import dataset_creators
 from bnn_pref.data.ekf_env import retrieve
+from bnn_pref.utils.hydra_resolvers import *
 from bnn_pref.utils.metrics import compute_accuracy_nn, compute_logpdf_nn
 from bnn_pref.utils.network import RewardNet, count_params
 from bnn_pref.utils.utils import get_random_seed

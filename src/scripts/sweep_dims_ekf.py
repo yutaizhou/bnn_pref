@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 from bnn_pref.alg.ekf_trainer import bandit_pipeline
 from bnn_pref.data import make_synthetic_data
 from bnn_pref.data.ekf_env import EKFEnvironment
+from bnn_pref.utils.hydra_resolvers import *
 from bnn_pref.utils.metrics import (
     compute_accuracy_nn,
     compute_logpdf_nn,
