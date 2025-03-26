@@ -9,7 +9,7 @@ nq_init: 200 # num samples to use for SGD belief initalization
 nq_updates: -1 # num samples to do EKF filtering (if -1, use all remaining afer nq_init)
 
 # * Subspace Init w/ SGD 
-n_iterates: 100  # Total number of GD steps on warmup data
+niters: 100  # Total number of GD steps on warmup data
 bs: 32 # -1 for full batch GD. Otherwise, mini-batch SGD
 l2_reg: 0
 
@@ -25,7 +25,7 @@ obs_noise: 0.3  # noise on emissions, which for pref learning is always +1 for t
 
 # * following is just for convenience in hydra CLI overrides
 cls:
-  n_iterates: ${..n_iterates}
+  niters: ${..niters}
   batch_size: ${..bs}
   l2_reg: ${..l2_reg}
   warm_burns: ${..warm_burns}

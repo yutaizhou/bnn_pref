@@ -32,7 +32,7 @@ class SubspaceNeuralEKF:
         model: nn.Module,
         opt,
         l2_reg: float = 0.0,
-        n_iterates: int = 1000,
+        niters: int = 1000,
         batch_size: int = 32,
         warm_burns: int = 1000,
         thinning: int = 2,
@@ -72,7 +72,7 @@ class SubspaceNeuralEKF:
         self.opt = opt
         self.prior_noise = prior_noise
         self.warm_burns = warm_burns
-        self.n_iterates = n_iterates
+        self.niters = niters
         self.thinning = thinning
         self.dynamics_noise = dynamics_noise
         self.obs_noise = obs_noise
@@ -82,7 +82,7 @@ class SubspaceNeuralEKF:
         self.batch_size = batch_size
 
         if not rnd_proj:
-            n_eff_iterates = (n_iterates - warm_burns) // thinning
+            n_eff_iterates = (niters - warm_burns) // thinning
             assert n_eff_iterates >= sub_dim, f"{n_eff_iterates=} < {sub_dim=}"
 
     def init_bel(self, key, warmup_data: CARL) -> BeliefState:
@@ -119,7 +119,7 @@ class SubspaceNeuralEKF:
             key_sgd,
             ts,
             loss_fn,
-            n_iterates=self.n_iterates,
+            niters=self.niters,
             data_size=contexts.shape[0],
             batch_size=self.batch_size,
         )

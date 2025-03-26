@@ -78,7 +78,7 @@ class EKFEnvironment:
         return CARL(contexts, actions, rewards, labels)
 
 
-def get_batch_idxs(key, data_size: int, batch_size: int, n_iterates: int):
+def get_batch_idxs(key, data_size: int, batch_size: int, n: int):
     """
     Simplified function version of BatchIndexManager.
     Generate batch indices for the exact number of iterations, reshuffling when needed.
@@ -86,7 +86,7 @@ def get_batch_idxs(key, data_size: int, batch_size: int, n_iterates: int):
     all_idxs = []
     curr_idxs = None
 
-    for i in range(n_iterates):
+    for i in range(n):
         if curr_idxs is None or len(curr_idxs) < batch_size:
             # Need to reshuffle
             key, key_shuffle = jr.split(key)

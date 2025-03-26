@@ -34,13 +34,13 @@ def run_gradient_descent(
     key,
     ts: TrainState,
     loss_fn: Callable,
-    n_iterates: int,
+    niters: int,
     data_size: int,
     batch_size: int = -1,
     has_aux: bool = True,
 ):
     """
-    Run GD training for exactly n_iterates steps.
+    Run GD training for exactly niters steps.
     If batch_size == -1, run full-batch GD. Otherwise, run mini-batch SGD.
     """
 
@@ -55,7 +55,7 @@ def run_gradient_descent(
 
     # Create batch manager and get all batches upfront
     batch_manager = BatchIndexManager(key, data_size, batch_size)
-    batch_idxs = batch_manager.get_n_batches(n_iterates)  # (n_iterates, batch_size)
+    batch_idxs = batch_manager.get_n_batches(niters)  # (niters, batch_size)
 
     # Run all steps
     ts, metrics = scan(step, init=ts, xs=batch_idxs)

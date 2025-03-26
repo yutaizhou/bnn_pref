@@ -119,12 +119,12 @@ def main(cfg):
     nq_updates = ekf_cfg["nq_updates"]
     n_updates = (nq_train - nq_init) if nq_updates == -1 else nq_updates
     batch_size = ekf_cfg["bs"]
-    n_iterates = ekf_cfg["n_iterates"]
+    niters = ekf_cfg["niters"]
     warm_burns = ekf_cfg["warm_burns"]
     thinning = ekf_cfg["thinning"]
     sub_dim = ekf_cfg["sub_dim"]
     rnd_proj = ekf_cfg["rnd_proj"]
-    n_eff_iterates = (n_iterates - warm_burns) // thinning
+    n_eff_iterates = (niters - warm_burns) // thinning
     print(
         f"Seed: {seed} x {cfg['seeds']}\n"
         f"Data:\n"
@@ -132,7 +132,7 @@ def main(cfg):
         f"  Init/Update: {nq_init}/{n_updates}\n"
         f"EKF:\n"
         f"  sub_dim={ekf_cfg['sub_dim']}, rnd_proj={ekf_cfg['rnd_proj']}\n"
-        f"  init: bs={batch_size}, n_iterates={n_iterates}[{warm_burns}::{thinning}] ({n_eff_iterates} eff), {sub_dim=}, {rnd_proj=}\n"
+        f"  init: bs={batch_size}, niters={niters}[{warm_burns}::{thinning}] ({n_eff_iterates} eff), {sub_dim=}, {rnd_proj=}\n"
     )
 
     for task in tasks:
@@ -182,14 +182,13 @@ def main(cfg):
     print("Printing extra stats")
     for results in stats:
         print(
-            f"{results['task']}:\n"
+            f"{results['task']} ({duration:.1f}s):\n"
             f"  ({metadata_m['full_param_count'][0]:,d} -> {metadata_m['subspace_param_count'][0]:,d})\n"
             f"  Train acc:    {results['train_acc_warm']:.2%} ± {results['train_acc_warm_std']:.2%} -> {results['train_acc']:.2%} ± {results['train_acc_std']:.2%}\n"
             f"  Acc:          {results['test_acc_warm']:.2%} ± {results['test_acc_warm_std']:.2%} -> {results['test_acc']:.2%} ± {results['test_acc_std']:.2%}\n"
             f"  Acc BMA:      {results['test_acc_bma']:.2%} ± {results['test_acc_bma_std']:.2%}\n"
             f"  Train logpdf: {results['train_logpdf_warm']:.2f} ± {results['train_logpdf_warm_std']:.2f} -> {results['train_logpdf']:.2f} ± {results['train_logpdf_std']:.2f}\n"
             f"  logpdf:       {results['test_logpdf_warm']:.2f} ± {results['test_logpdf_warm_std']:.2f} -> {results['test_logpdf']:.2f} ± {results['test_logpdf_std']:.2f}\n"
-            f"  ({duration:.1f}s)"
         )
 
 

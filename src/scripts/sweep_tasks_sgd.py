@@ -32,7 +32,7 @@ def run_experiment(key, cfg):
     task_kw = cfg["task"]
 
     hidden_sizes = ekf_kw["hidden_sizes"]
-    n_iterates = ekf_kw["cls"]["n_iterates"]
+    niters = ekf_kw["cls"]["niters"]
     batch_size = ekf_kw["cls"]["batch_size"]
     lr = ekf_kw["learning_rate"]
 
@@ -74,7 +74,7 @@ def run_experiment(key, cfg):
         train_key,
         ts,
         loss_fn,
-        n_iterates=n_iterates,
+        niters=niters,
         data_size=Q,
         batch_size=batch_size,
         has_aux=True,

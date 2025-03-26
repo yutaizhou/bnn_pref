@@ -13,13 +13,13 @@ def print_ekf_cfg(seed, cfg, length=None, n_feats=None):
     nq_updates = ekf_kw["nq_updates"]
     n_updates = (nq_train - nq_init) if nq_updates == -1 else nq_updates
 
-    n_iterates = ekf_cls_cfg["n_iterates"]
+    niters = ekf_cls_cfg["niters"]
     batch_size = ekf_cls_cfg["batch_size"]
     warm_burns = ekf_cls_cfg["warm_burns"]
     thinning = ekf_cls_cfg["thinning"]
     sub_dim = ekf_cls_cfg["sub_dim"]
     rnd_proj = ekf_cls_cfg["rnd_proj"]
-    n_eff_iterates = (n_iterates - warm_burns) // thinning
+    n_eff_iterates = (niters - warm_burns) // thinning
 
     if task_kw["ds_type"] == "synthetic":
         # todo fix this fhat thing
@@ -34,7 +34,7 @@ def print_ekf_cfg(seed, cfg, length=None, n_feats=None):
         f"  N={n_demos}, Q={nq_train}, T={length}, D={n_feats} (Q Test = {nq_test})\n"
         f"  Samples for init/update = {nq_init}/{n_updates}\n"
         f"EKF:\n"
-        f"  init: bs={batch_size}, n_iterates={n_iterates}[{warm_burns}::{thinning}] ({n_eff_iterates} eff), {sub_dim=}, {rnd_proj=}\n"
+        f"  init: bs={batch_size}, niters={niters}[{warm_burns}::{thinning}] ({n_eff_iterates} eff), {sub_dim=}, {rnd_proj=}\n"
     )
 
 
@@ -77,7 +77,7 @@ def print_sgd_cfg(seed, cfg, length=None, n_feats=None):
     length = length if length is not None else task_kw["length"]
     n_feats = n_feats if n_feats is not None else task_kw["n_feats"]
 
-    n_iterates = ekf_kw["cls"]["n_iterates"]
+    niters = ekf_kw["cls"]["niters"]
     batch_size = ekf_kw["cls"]["batch_size"]
     lr = ekf_kw["learning_rate"]
 
@@ -93,5 +93,5 @@ def print_sgd_cfg(seed, cfg, length=None, n_feats=None):
         f"  {task_str}\n"
         f"  N={data_kw['n_demos']}, Q={nq_train}, T={length}, D={n_feats} (Q Test = {nq_test})\n"
         f"SGD:\n"
-        f"  n_iterates={n_iterates}, batch_size={batch_size}, lr={lr}"
+        f"  niters={niters}, batch_size={batch_size}, lr={lr}"
     )
