@@ -21,7 +21,7 @@ rnd_proj: False
 # * Subspace Inference w/ EKF
 prior_noise: 0.1
 dynamics_noise: 0.0001 # small Gaussian drift on NN params, where we assume constant dynamics
-obs_noise: 0.1  # noise on emissions, which for pref learning is always +1 for traj2 > traj 1 # 1 rly affects bma 
+obs_noise: 0.3  # noise on emissions, which for pref learning is always +1 for traj2 > traj 1 # 1 rly affects bma 
 
 # * following is just for convenience in hydra CLI overrides
 cls:

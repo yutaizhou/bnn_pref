@@ -111,6 +111,30 @@ def main(cfg):
         "walkerWalk",
     ]
     stats = []
+
+    data_cfg = cfg["data"]
+    ekf_cfg = cfg["ekf"]
+    nq_train, nq_test = data_cfg["nq_train"], data_cfg["nq_test"]
+    warm_obs = ekf_cfg["warm_obs"]
+    n_steps = ekf_cfg["n_steps"]
+    n_updates = (nq_train - warm_obs) if n_steps == -1 else n_steps
+    batch_size = ekf_cfg["bs"]
+    n_iterates = ekf_cfg["n_iterates"]
+    warm_burns = ekf_cfg["warm_burns"]
+    thinning = ekf_cfg["thinning"]
+    sub_dim = ekf_cfg["sub_dim"]
+    rnd_proj = ekf_cfg["rnd_proj"]
+    n_eff_iterates = (n_iterates - warm_burns) // thinning
+    print(
+        f"Seed: {seed} x {cfg['seeds']}\n"
+        f"Data:\n"
+        f"  Train/Test: {nq_train}/{nq_test}\n"
+        f"  Init/Update: {warm_obs}/{n_updates}\n"
+        f"EKF:\n"
+        f"  sub_dim={ekf_cfg['sub_dim']}, rnd_proj={ekf_cfg['rnd_proj']}\n"
+        f"  init: bs={batch_size}, n_iterates={n_iterates}[{warm_burns}::{thinning}] ({n_eff_iterates} eff), {sub_dim=}, {rnd_proj=}\n"
+    )
+
     for task in tasks:
         new_cfg = hydra.compose("config", overrides=[f"task={task}"])
         cfg["task"] = new_cfg["task"]
@@ -148,15 +172,23 @@ def main(cfg):
         stats.append(results)
 
         print(
-            f"{task}: \n"
-            f"  N train: {metadata_m['nq_train'][0]} ({metadata_m['n_warm_queries'][0]} / {metadata_m['n_updates'][0]}), N test: {metadata_m['nq_test'][0]}\n"
-            f"  Param count: {metadata_m['full_param_count'][0]} -> {metadata_m['subspace_param_count'][0]}\n"
-            f"  Train acc:   {results['train_acc_warm']:.2%} ± {results['train_acc_warm_std']:.2%} -> {results['train_acc']:.2%} ± {results['train_acc_std']:.2%}\n"
-            f"  Test acc:    {results['test_acc_warm']:.2%} ± {results['test_acc_warm_std']:.2%} -> {results['test_acc']:.2%} ± {results['test_acc_std']:.2%}\n"
-            f"  Test acc BMA: {results['test_acc_bma']:.2%} ± {results['test_acc_bma_std']:.2%}\n"
+            f"{task:14}: "
+            f"acc: {results['test_acc']:.2%} ± {results['test_acc_std']:.2%}, "
+            f"logpdf: {results['test_logpdf']:.2f} ± {results['test_logpdf_std']:.2f}, "
+            f"({metadata_m['full_param_count'][0]:,d} -> {metadata_m['subspace_param_count'][0]:,d}) "
+            f"({duration:.1f}s)"
+        )
+
+    for results in stats:
+        print(
+            f"{results['task']}:\n"
+            f"  ({metadata_m['full_param_count'][0]:,d} -> {metadata_m['subspace_param_count'][0]:,d})\n"
+            f"  Train acc:    {results['train_acc_warm']:.2%} ± {results['train_acc_warm_std']:.2%} -> {results['train_acc']:.2%} ± {results['train_acc_std']:.2%}\n"
+            f"  Acc:          {results['test_acc_warm']:.2%} ± {results['test_acc_warm_std']:.2%} -> {results['test_acc']:.2%} ± {results['test_acc_std']:.2%}\n"
+            f"  Acc BMA:      {results['test_acc_bma']:.2%} ± {results['test_acc_bma_std']:.2%}\n"
             f"  Train logpdf: {results['train_logpdf_warm']:.2f} ± {results['train_logpdf_warm_std']:.2f} -> {results['train_logpdf']:.2f} ± {results['train_logpdf_std']:.2f}\n"
-            f"  Test logpdf:  {results['test_logpdf_warm']:.2f} ± {results['test_logpdf_warm_std']:.2f} -> {results['test_logpdf']:.2f} ± {results['test_logpdf_std']:.2f}\n"
-            f"  Time: {duration:.1f} seconds\n"
+            f"  logpdf:       {results['test_logpdf_warm']:.2f} ± {results['test_logpdf_warm_std']:.2f} -> {results['test_logpdf']:.2f} ± {results['test_logpdf_std']:.2f}\n"
+            f"  ({duration:.1f}s)"
         )
 
 
