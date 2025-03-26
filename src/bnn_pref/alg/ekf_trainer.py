@@ -27,7 +27,7 @@ def bandit_pipeline(
     2. Run warmups in the env to collect data (round-robin actions)
     3. Init belief on warmup data: sgd + PCA/random projection + EKF init
     4. Run trials: interact with the env and run EKF filtering
-    5. Return rewards from: warmup, trials, and opt_rewards
+    5. Return rewards from: warmup, trials, and (optionally) opt_rewards
     """
     n_samples, *_, n_feats = env.contexts.shape
     nq_init = bandit_kw["nq_init"]
@@ -50,7 +50,7 @@ def bandit_pipeline(
         bel_trace,
     )
 
-    rewards_info = (warmup_data.rewards, batches.rewards, env.opt_rewards)  # all 1D
+    rewards_info = (warmup_data.rewards, batches.rewards)  # all 1D
     return rewards_info, bel_trace, bandit
 
 
