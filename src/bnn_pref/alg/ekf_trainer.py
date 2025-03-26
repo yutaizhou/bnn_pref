@@ -30,16 +30,16 @@ def bandit_pipeline(
     5. Return rewards from: warmup, trials, and opt_rewards
     """
     n_samples, *_, n_feats = env.contexts.shape
-    warmup_obs = bandit_kw["warm_obs"]
-    n_steps = bandit_kw["n_steps"]
-    end_idx = n_samples if n_steps == -1 else n_samples - n_steps
+    nq_init = bandit_kw["nq_init"]
+    nq_updates = bandit_kw["nq_updates"]
+    end_idx = n_samples if nq_updates == -1 else n_samples - nq_updates
 
     model = RewardNet(bandit_kw["hidden_sizes"])
     opt = optax.adam(bandit_kw["learning_rate"])
     bandit = SubspaceNeuralEKF(n_feats, model, opt, **bandit_kw["cls"])
 
     key, key_warmup, key_belief_init = split(key, 3)
-    warmup_data = env.warmup(key_warmup, warmup_obs)
+    warmup_data = env.warmup(key_warmup, nq_init)
     bel_init = bandit.init_bel(key_belief_init, warmup_data)
     bel_trace, batches = run_bandit(key, bandit, bel_init, env, warmup_data, end_idx)
 

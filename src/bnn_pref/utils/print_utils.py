@@ -9,9 +9,9 @@ def print_ekf_cfg(seed, cfg, length=None, n_feats=None):
     length = length if length is not None else task_kw["length"]
 
     nq_train, nq_test = data_kw["nq_train"], data_kw["nq_test"]
-    warm_obs = ekf_kw["warm_obs"]
-    n_steps = ekf_kw["n_steps"]
-    n_updates = (nq_train - warm_obs) if n_steps == -1 else n_steps
+    nq_init = ekf_kw["nq_init"]
+    nq_updates = ekf_kw["nq_updates"]
+    n_updates = (nq_train - nq_init) if nq_updates == -1 else nq_updates
 
     n_iterates = ekf_cls_cfg["n_iterates"]
     batch_size = ekf_cls_cfg["batch_size"]
@@ -32,7 +32,7 @@ def print_ekf_cfg(seed, cfg, length=None, n_feats=None):
         f"Data:\n"
         f"  {task_str}\n"
         f"  N={n_demos}, Q={nq_train}, T={length}, D={n_feats} (Q Test = {nq_test})\n"
-        f"  Samples for init/update = {warm_obs}/{n_updates}\n"
+        f"  Samples for init/update = {nq_init}/{n_updates}\n"
         f"EKF:\n"
         f"  init: bs={batch_size}, n_iterates={n_iterates}[{warm_burns}::{thinning}] ({n_eff_iterates} eff), {sub_dim=}, {rnd_proj=}\n"
     )

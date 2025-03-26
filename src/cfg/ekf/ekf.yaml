@@ -4,11 +4,11 @@ hidden_sizes:
   - 32
   - 32
 
-# * Data partitioning
-warm_obs: 200 # num samples to use for SGD belief initalization
-n_steps: -1 # num samples to do EKF filtering (if -1, use all remaining afer warm_obs)
+# * Data partitioning for EKF Trainer (bandit_pipeline)
+nq_init: 200 # num samples to use for SGD belief initalization
+nq_updates: -1 # num samples to do EKF filtering (if -1, use all remaining afer nq_init)
 
-# * Subspace Init w/ SGD
+# * Subspace Init w/ SGD 
 n_iterates: 100  # Total number of GD steps on warmup data
 bs: 32 # -1 for full batch GD. Otherwise, mini-batch SGD
 l2_reg: 0

@@ -33,9 +33,9 @@ def run_ekf(key, cfg, data_dict):
     data_kw = cfg["data"]
 
     nq_train, nq_test = data_kw["nq_train"], data_kw["nq_test"]
-    warm_obs = ekf_kw["warm_obs"]
-    n_steps = ekf_kw["n_steps"]
-    n_updates = (nq_train - warm_obs) if n_steps == -1 else n_steps
+    nq_init = ekf_kw["nq_init"]
+    nq_updates = ekf_kw["nq_updates"]
+    n_updates = (nq_train - nq_init) if nq_updates == -1 else nq_updates
 
     train_prefs, test_prefs = data_dict["train_prefs"], data_dict["test_prefs"]
 
@@ -81,8 +81,8 @@ def run_ekf(key, cfg, data_dict):
     metadata = {
         "nq_train": nq_train,
         "nq_test": nq_test,
-        "n_warm_queries": warm_obs,
-        "n_updates": n_updates,
+        "nq_init": nq_init,
+        "nq_updates": n_updates,
         "full_param_count": bandit.full_params_count,
         "subspace_param_count": bandit.subspace_params_count,
     }
@@ -115,9 +115,9 @@ def main(cfg):
     data_cfg = cfg["data"]
     ekf_cfg = cfg["ekf"]
     nq_train, nq_test = data_cfg["nq_train"], data_cfg["nq_test"]
-    warm_obs = ekf_cfg["warm_obs"]
-    n_steps = ekf_cfg["n_steps"]
-    n_updates = (nq_train - warm_obs) if n_steps == -1 else n_steps
+    nq_init = ekf_cfg["nq_init"]
+    nq_updates = ekf_cfg["nq_updates"]
+    n_updates = (nq_train - nq_init) if nq_updates == -1 else nq_updates
     batch_size = ekf_cfg["bs"]
     n_iterates = ekf_cfg["n_iterates"]
     warm_burns = ekf_cfg["warm_burns"]
@@ -129,7 +129,7 @@ def main(cfg):
         f"Seed: {seed} x {cfg['seeds']}\n"
         f"Data:\n"
         f"  Train/Test: {nq_train}/{nq_test}\n"
-        f"  Init/Update: {warm_obs}/{n_updates}\n"
+        f"  Init/Update: {nq_init}/{n_updates}\n"
         f"EKF:\n"
         f"  sub_dim={ekf_cfg['sub_dim']}, rnd_proj={ekf_cfg['rnd_proj']}\n"
         f"  init: bs={batch_size}, n_iterates={n_iterates}[{warm_burns}::{thinning}] ({n_eff_iterates} eff), {sub_dim=}, {rnd_proj=}\n"
@@ -179,6 +179,7 @@ def main(cfg):
             f"({duration:.1f}s)"
         )
 
+    print("Printing extra stats")
     for results in stats:
         print(
             f"{results['task']}:\n"
