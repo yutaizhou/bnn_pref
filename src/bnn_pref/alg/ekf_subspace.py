@@ -22,7 +22,7 @@ from bnn_pref.alg.agent_utils import (
 )
 from bnn_pref.data.ekf_env import retrieve
 from bnn_pref.utils.network import count_params
-from bnn_pref.utils.type import CAR, CARL, BeliefState
+from bnn_pref.utils.type import CARL, BeliefState
 from bnn_pref.utils.utils import vmap_chunked
 
 tfd = tfp.distributions
@@ -191,25 +191,22 @@ class SubspaceNeuralEKF:
 
         def emission_fn(params, inputs):
             """
-            emission model where inputs is (N, D + 1), output is logit of taken action (N, 1)
+            emission model where
+                inputs: (2 * T * D,) query features -> (2,) traj rewards as logits
+                predicted measurement: (2,) # probabilities of traj 2 > traj 1
+                gt measurement: (2,) # one hot labels
             """
-            context = inputs[..., :-1].reshape(2, -1, self.n_feats)
-            action = inputs[..., -1].astype(int)
+            context = inputs.reshape(2, -1, self.n_feats)
             logits = sub2full_predict_logits(params, context)  # (2,)
-
-            # old: wrong! need to match one-hot label with probs
-            # return logits[action, None]
-
-            # new: match one-hot label with probs
             probs = jax.nn.softmax(logits, axis=0)
-            return probs[action, None]
+            return probs
+
+        # def emission_cov_fn(params, inputs)
 
         init_mean = jnp.zeros(sub_dim)
-        # key, key_ekf_init = jr.split(key, 2)
-        # params_subspace_init = jr.normal(key_ekf_init, (sub_dim,))
         S = jnp.eye(sub_dim) * self.prior_noise
         Q = jnp.eye(sub_dim) * self.dynamics_noise
-        R = jnp.eye(1) * self.obs_noise  # emission is (1,) for scalar one-hot reward
+        R = jnp.eye(2) * self.obs_noise
         self.ekf_params = ParamsNLGSSM(
             initial_mean=init_mean,
             initial_covariance=S,
@@ -228,14 +225,10 @@ class SubspaceNeuralEKF:
         batch: CARL,
     ) -> BeliefState:
         prior_mean, prior_cov, t = bel
-        context, action, reward, label = batch
+        context, *_, label = batch
 
-        # context = rearrange(context_2D, "Two D -> (Two D)")
-        context = rearrange(context, "K T D -> (K T D)", K=2)
-        action = rearrange(action, " -> 1")
-        inputs = rearrange(jnp.concat((context, action)), "d -> 1 d")
-        # emissions = rearrange(reward, " -> 1 1")
-        emissions = jnp.ones((1, 1))
+        inputs = rearrange(context, "K T D -> 1 (K T D)", K=2)
+        emissions = rearrange(label, "K -> 1 K", K=2)  # (1,2)
 
         self.ekf_params = self.ekf_params._replace(
             initial_mean=prior_mean,
@@ -244,7 +237,7 @@ class SubspaceNeuralEKF:
         ekf_posterior = extended_kalman_filter(
             self.ekf_params,
             emissions=emissions,
-            inputs=inputs,  # context + action
+            inputs=inputs,
             num_iter=self.iekf,
         )
 
@@ -288,8 +281,6 @@ class SubspaceNeuralEKF:
         chunk_size = 32
         fn = self.sub2full_predict_logits  # (param, context_N2TD) -> logits_N2
         fn = jax.vmap(fn, in_axes=(0, None))  # over params
-        # fn = jax.vmap(fn, in_axes=(None, 0))  # over contexts
-        # logits_NM2_old = jax.vmap(fn, in_axes=(None, 0))(ss_params, contexts_N2TD)
         logits_NM2 = vmap_chunked(
             jax.vmap(partial(fn, ss_params)),
             contexts_N2TD,

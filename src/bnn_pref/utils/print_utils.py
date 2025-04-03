@@ -10,8 +10,8 @@ def print_ekf_cfg(seed, cfg, length=None, n_feats=None):
 
     nq_train, nq_test = data_kw["nq_train"], data_kw["nq_test"]
     nq_init = ekf_kw["nq_init"]
-    nq_updates = ekf_kw["nq_updates"]
-    n_updates = (nq_train - nq_init) if nq_updates == -1 else nq_updates
+    nq_update = ekf_kw["nq_update"]
+    n_updates = (nq_train - nq_init) if nq_update == -1 else nq_update
 
     niters = ekf_cls_cfg["niters"]
     batch_size = ekf_cls_cfg["batch_size"]

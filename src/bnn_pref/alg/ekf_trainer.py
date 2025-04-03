@@ -30,15 +30,14 @@ def bandit_pipeline(
     4. Run trials: interact with the env and run EKF filtering
     5. Return rewards from: warmup, trials, and (optionally) opt_rewards
     """
-    n_samples, *_, n_feats = env.contexts.shape
+    *_, n_feats = env.contexts.shape
     nq_init = bandit_kw["nq_init"]
     bs = bandit_kw["cls"]["batch_size"]
     if nq_init < bs:
         bandit_kw["cls"]["batch_size"] = 1
         print(f"WARNING: {nq_init=} < {bs=}, setting ekf.cls.batch_size = 1")
-    nq_updates = bandit_kw["nq_updates"]
-    # end_idx = n_samples if nq_updates == -1 else nq_init + nq_updates
-    nsteps = len(env) - nq_init if nq_updates == -1 else nq_updates
+    nq_update = bandit_kw["nq_update"]
+    nsteps = len(env) - nq_init if nq_update == -1 else nq_update
 
     model = RewardNet(bandit_kw["hidden_sizes"])
     opt = optax.adam(bandit_kw["learning_rate"])
@@ -47,7 +46,7 @@ def bandit_pipeline(
     key, key_warmup, key_belief_init = split(key, 3)
     warmup_data = env.warmup(key_warmup, nq_init)
     bel_init = bandit.init_bel(key_belief_init, warmup_data)
-    bel_trace, batches = run_bandit(
+    bel_trace = run_bandit(
         key, bandit, bel_init, env, warmup_data, nsteps, active=bandit_kw["active"]
     )
 
@@ -58,8 +57,7 @@ def bandit_pipeline(
         bel_trace,
     )
 
-    rewards_info = (warmup_data.rewards, batches.rewards)  # all 1D
-    return rewards_info, bel_trace, bandit
+    return bel_trace, bandit
 
 
 def run_bandit(
@@ -68,17 +66,16 @@ def run_bandit(
     bel: BeliefState,
     env: EKFEnvironment,
     warmup_data: CARL,
-    nsteps: int,  # either nq_train or nq_init + nq_updates
+    nsteps: int,  # either len(env) - nq_init or nq_update
     active: bool = False,
 ) -> Tuple[BeliefState, CAR]:
     """
     Run the bandit algorithm on the environment.
     Given `nq_train` queries, warmup sgd took `nq_init` queries
-    Run EKF filtering on the remaining `nq_updates = nq_train - nq_init` queries
+    Run EKF filtering on the remaining `nq_update = nq_train - nq_init` queries
     """
     # index into the dataset, get what's remaining after warmup
     nq_init = len(warmup_data.rewards)
-    # nq_updates = end_idx - nq_init  # not cfg.ekf.nq_updates! based on end_idx
     pool_size = len(env) - nq_init  # active learning
     active_contexts, _ = env.get_n(jnp.arange(nq_init, len(env)))
     assert pool_size == len(active_contexts)
@@ -91,11 +88,8 @@ def run_bandit(
         t_offset = t + nq_init  # offset by nq_init
 
         context = env.get_context(t_offset)
-        # action = bandit.choose_action(key, bel, context)
-        action = jnp.array(1)
-        reward = env.get_reward(t_offset, action)
-        label = env.get_label(t_offset)  # always [0,1]
-        batch = CARL(context, action, reward, label)
+        label = env.get_label(t_offset)  # one-hot pref, always [0,1] cuz traj 2 > 1
+        batch = CARL(context, None, None, label)
         bel = bandit.update_bel(bel, batch)
 
         key, subkey = split(key)
@@ -105,18 +99,13 @@ def run_bandit(
         else:  # get a query that maximizes acquisition fn
             t_next = bandit.acquire_next_query(subkey, bel, active_contexts)
 
-        return (bel, t_next), (bel, batch, t)
+        return (bel, t_next), (bel, t, batch)
 
     keys = split(key, nsteps)
-    *_, (bel_trace, batches, ts) = scan(filter_onestep, init=(bel, 0), xs=keys)
-
-    warmup_contexts, warmup_actions, warmup_rewards, _ = warmup_data
-    contexts = jnp.vstack([warmup_contexts, batches.contexts])
-    actions = jnp.append(warmup_actions, batches.actions)
-    rewards = jnp.append(warmup_rewards, batches.rewards)
+    *_, (bel_trace, ts, _) = scan(filter_onestep, init=(bel, 0), xs=keys)
 
     # print(ts)
-    return bel_trace, CAR(contexts, actions, rewards)
+    return bel_trace
 
 
 def summarize_results(warmup_rewards, rewards):

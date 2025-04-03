@@ -51,7 +51,7 @@ def main(cfg):
         Y=jax.nn.one_hot(train_prefs.responses_Q1.squeeze(), num_classes=2),
     )
 
-    rewards_info, bel_trace, bandit = bandit_pipeline(key2, env, ekf_kw)
+    bel_trace, bandit = bandit_pipeline(key2, env, ekf_kw)
     bel0 = jax.tree.map(lambda x: x[0], bel_trace)  # init belief, assume zero vec
     bel = jax.tree.map(lambda x: x[-1], bel_trace)  # final belief
 

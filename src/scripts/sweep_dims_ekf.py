@@ -41,7 +41,7 @@ def run_ekf(key, cfg):
         Y=jax.nn.one_hot(train_data.responses_Q1.squeeze(), num_classes=2),
     )
 
-    rewards_info, bel_trace, bandit = bandit_pipeline(key2, env, ekf_kw)
+    bel_trace, bandit = bandit_pipeline(key2, env, ekf_kw)
     bel = jax.tree_util.tree_map(lambda x: x[-1], bel_trace)
 
     key, key1 = jr.split(key, 2)

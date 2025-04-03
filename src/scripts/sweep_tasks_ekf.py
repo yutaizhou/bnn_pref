@@ -34,8 +34,8 @@ def run_ekf(key, cfg, data_dict):
 
     nq_train, nq_test = data_kw["nq_train"], data_kw["nq_test"]
     nq_init = ekf_kw["nq_init"]
-    nq_updates = ekf_kw["nq_updates"]
-    n_updates = (nq_train - nq_init) if nq_updates == -1 else nq_updates
+    nq_update = ekf_kw["nq_update"]
+    n_updates = (nq_train - nq_init) if nq_update == -1 else nq_update
 
     train_prefs, test_prefs = data_dict["train_prefs"], data_dict["test_prefs"]
 
@@ -49,7 +49,7 @@ def run_ekf(key, cfg, data_dict):
 
     key, key_bma = jr.split(key)
 
-    rewards_info, bel_trace, bandit = bandit_pipeline(key2, env, ekf_kw)
+    bel_trace, bandit = bandit_pipeline(key2, env, ekf_kw)
     bel0 = jax.tree.map(lambda x: x[0], bel_trace)  # init belief, assume zero vec
     bel = jax.tree.map(lambda x: x[-1], bel_trace)  # final belief
     pref_predictor = jax.vmap(partial(bandit.sub2full_predict_logits, bel.mean))
@@ -82,7 +82,7 @@ def run_ekf(key, cfg, data_dict):
         "nq_train": nq_train,
         "nq_test": nq_test,
         "nq_init": nq_init,
-        "nq_updates": n_updates,
+        "nq_update": n_updates,
         "full_param_count": bandit.full_params_count,
         "subspace_param_count": bandit.subspace_params_count,
     }
@@ -116,8 +116,8 @@ def main(cfg):
     ekf_cfg = cfg["ekf"]
     nq_train, nq_test = data_cfg["nq_train"], data_cfg["nq_test"]
     nq_init = ekf_cfg["nq_init"]
-    nq_updates = ekf_cfg["nq_updates"]
-    n_updates = (nq_train - nq_init) if nq_updates == -1 else nq_updates
+    nq_update = ekf_cfg["nq_update"]
+    n_updates = (nq_train - nq_init) if nq_update == -1 else nq_update
     batch_size = ekf_cfg["bs"]
     niters = ekf_cfg["niters"]
     warm_burns = ekf_cfg["warm_burns"]
@@ -172,11 +172,11 @@ def main(cfg):
         stats.append(results)
 
         print(
-            f"{task:14}: "
+            f"{task:13}: "
             f"acc: {results['test_acc']:.2%} ± {results['test_acc_std']:.2%}, "
             # f"acc: {results['test_acc_warm']:.2%} ± {results['test_acc_warm_std']:.2%} -> {results['test_acc']:.2%} ± {results['test_acc_std']:.2%}, "
             f"logpdf: {results['test_logpdf']:.2f} ± {results['test_logpdf_std']:.2f}, "
-            f"({metadata_m['full_param_count'][0]:,d} -> {metadata_m['subspace_param_count'][0]:,d}) "
+            # f"({metadata_m['full_param_count'][0]:,d} -> {metadata_m['subspace_param_count'][0]:,d}) "
             f"({duration:.1f}s)"
             f", bma_acc: {results['test_acc_bma']:.2%} ± {results['test_acc_bma_std']:.2%}, "
         )
