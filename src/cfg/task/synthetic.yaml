@@ -2,5 +2,5 @@ ds_type: synthetic
 length: 1
 n_feats: 4
 
-f: linear
-fhat: ${.f}
+f: linear # linear, poly, sin
+fhat: ${.f} # only used by mcmc

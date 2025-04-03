@@ -79,10 +79,9 @@ def run_bandit(
     # index into the dataset, get what's remaining after warmup
     nq_init = len(warmup_data.rewards)
     # nq_updates = end_idx - nq_init  # not cfg.ekf.nq_updates! based on end_idx
-    keys = split(key, nsteps)
     pool_size = len(env) - nq_init  # active learning
-    query_idxs = jnp.arange(nq_init, len(env))
-    active_contexts, _ = env.get_n(query_idxs)
+    active_contexts, _ = env.get_n(jnp.arange(nq_init, len(env)))
+    assert pool_size == len(active_contexts)
 
     def filter_onestep(
         curr: Tuple[BeliefState, int],
@@ -92,11 +91,11 @@ def run_bandit(
         t_offset = t + nq_init  # offset by nq_init
 
         context = env.get_context(t_offset)
-        action = bandit.choose_action(key, bel, context)
+        # action = bandit.choose_action(key, bel, context)
+        action = jnp.array(1)
         reward = env.get_reward(t_offset, action)
-        label = env.get_label(t_offset)
-        batch = CAR(context, action, reward)
-
+        label = env.get_label(t_offset)  # always [0,1]
+        batch = CARL(context, action, reward, label)
         bel = bandit.update_bel(bel, batch)
 
         key, subkey = split(key)
@@ -108,16 +107,15 @@ def run_bandit(
 
         return (bel, t_next), (bel, batch, t)
 
-    (final_bel, _), (bel_trace, batches, ts) = scan(
-        filter_onestep, init=(bel, 0), xs=keys
-    )
+    keys = split(key, nsteps)
+    *_, (bel_trace, batches, ts) = scan(filter_onestep, init=(bel, 0), xs=keys)
 
     warmup_contexts, warmup_actions, warmup_rewards, _ = warmup_data
     contexts = jnp.vstack([warmup_contexts, batches.contexts])
     actions = jnp.append(warmup_actions, batches.actions)
     rewards = jnp.append(warmup_rewards, batches.rewards)
 
-    print(ts)
+    # print(ts)
     return bel_trace, CAR(contexts, actions, rewards)
 
 

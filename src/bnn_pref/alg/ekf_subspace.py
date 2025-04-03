@@ -195,7 +195,14 @@ class SubspaceNeuralEKF:
             """
             context = inputs[..., :-1].reshape(2, -1, self.n_feats)
             action = inputs[..., -1].astype(int)
-            return sub2full_predict_logits(params, context)[action, None]
+            logits = sub2full_predict_logits(params, context)  # (2,)
+
+            # old: wrong! need to match one-hot label with probs
+            # return logits[action, None]
+
+            # new: match one-hot label with probs
+            probs = jax.nn.softmax(logits, axis=0)
+            return probs[action, None]
 
         init_mean = jnp.zeros(sub_dim)
         # key, key_ekf_init = jr.split(key, 2)
@@ -218,16 +225,17 @@ class SubspaceNeuralEKF:
     def update_bel(
         self,
         bel: BeliefState,
-        batch: CAR,
+        batch: CARL,
     ) -> BeliefState:
         prior_mean, prior_cov, t = bel
-        context, action, reward = batch
+        context, action, reward, label = batch
 
         # context = rearrange(context_2D, "Two D -> (Two D)")
         context = rearrange(context, "K T D -> (K T D)", K=2)
         action = rearrange(action, " -> 1")
         inputs = rearrange(jnp.concat((context, action)), "d -> 1 d")
-        emissions = rearrange(reward, " -> 1 1")
+        # emissions = rearrange(reward, " -> 1 1")
+        emissions = jnp.ones((1, 1))
 
         self.ekf_params = self.ekf_params._replace(
             initial_mean=prior_mean,
@@ -265,20 +273,29 @@ class SubspaceNeuralEKF:
         params = distr.sample(seed=key)
         return params
 
-    def acquire_next_query(self, key, bel: BeliefState, contexts_n2TD) -> int:
+    def acquire_next_query(self, key, bel: BeliefState, contexts_N2TD) -> int:
         """
         active learning: greedily compute query that maximizes InfoGain acquisition fn
         """
-        M = 100  # number of models to sample
+        # * sample M (subspace) models from posterior
+        M = 20  # number of models to sample
         mean, cov = bel.mean, bel.cov
         distr = tfd.MultivariateNormalFullCovariance(mean, cov)
         key, key_sample = jr.split(key, 2)
         ss_params = distr.sample(seed=key_sample, sample_shape=(M,))
 
-        # def mi_acquisition_fn(context: Float[Array, "2 T D"]):
-        fn = jax.vmap(self.sub2full_predict_logits, in_axes=(0, None))  # over params
-        fn = jax.vmap(fn, in_axes=(None, 0))  # over contexts
-        logits_NM2 = fn(ss_params, contexts_n2TD)
+        # * compute logits for all contexts
+        chunk_size = 32
+        fn = self.sub2full_predict_logits  # (param, context_N2TD) -> logits_N2
+        fn = jax.vmap(fn, in_axes=(0, None))  # over params
+        # fn = jax.vmap(fn, in_axes=(None, 0))  # over contexts
+        # logits_NM2_old = jax.vmap(fn, in_axes=(None, 0))(ss_params, contexts_N2TD)
+        logits_NM2 = vmap_chunked(
+            jax.vmap(partial(fn, ss_params)),
+            contexts_N2TD,
+            size=chunk_size,
+            fout_shape=(M, 2),
+        )
         probs_NM2 = jax.nn.softmax(logits_NM2, axis=2)
 
         @partial(jax.vmap, in_axes=(0,))
@@ -290,7 +307,7 @@ class SubspaceNeuralEKF:
         values_N = vmap_chunked(
             compute_info_gain,
             probs_NM2,
-            size=32,
+            size=chunk_size,
             fout_shape=(),
         )
         query_idx = jnp.argmax(values_N)
