@@ -22,8 +22,8 @@ def retrieve(data, batch_idx: Float[Array, "B"]):
 
 class EKFEnvironment:
     def __init__(self, key, X: Q2TD, Y: Q2):
-        # Randomise dataset rows
-        self.n_obs, *_, self.n_feats = X.shape
+        # * Randomise dataset rows
+        self.n_obs, *_, self.n_feats = X.shape  # n_feats not rly used?
         self.n_actions = Y.shape[1]
         perm_idx = jr.permutation(key, jnp.arange(self.n_obs))
         X = jnp.asarray(X)[perm_idx]
@@ -31,6 +31,9 @@ class EKFEnvironment:
 
         self.contexts = X
         self.labels_onehot = Y
+
+    def __len__(self):
+        return self.n_obs
 
     def get_context(self, t) -> Float[Array, "2 D"]:
         return self.contexts[t]
@@ -64,15 +67,25 @@ class EKFEnvironment:
         actions = jr.randint(key, shape=(n_warmups,), minval=0, maxval=self.n_actions)
 
         @partial(jax.vmap, in_axes=(0, 0))
-        def get_contexts_and_rewards(idx: int, action: int):
+        def get(idx: int, action: int):
             context = self.get_context(idx)
             label = self.get_label(idx)
             reward = self.get_reward(idx, action)
             return context, label, reward
 
-        contexts, labels, rewards = get_contexts_and_rewards(idxes, actions)
+        contexts, labels, rewards = get(idxes, actions)
 
         return CARL(contexts, actions, rewards, labels)
+
+    def get_n(self, idxs: Float[Array, "n"]):
+        @partial(jax.vmap, in_axes=(0,))
+        def get(idx: int):
+            context = self.get_context(idx)
+            label = self.get_label(idx)
+            return context, label
+
+        contexts, labels = get(idxs)
+        return contexts, labels
 
 
 def get_batch_idxs(key, data_size: int, batch_size: int, n: int):

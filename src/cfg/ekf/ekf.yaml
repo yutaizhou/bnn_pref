@@ -7,6 +7,7 @@ hidden_sizes:
 # * Data partitioning for EKF Trainer (bandit_pipeline)
 nq_init: 200 # num samples to use for SGD belief initalization
 nq_updates: -1 # num samples to do EKF filtering (if -1, use all remaining afer nq_init)
+active: False
 
 # * Subspace Init w/ SGD 
 niters: 100  # Total number of GD steps on warmup data
@@ -22,6 +23,7 @@ rnd_proj: False
 prior_noise: 0.1
 dynamics_noise: 0.0001 # small Gaussian drift on NN params, where we assume constant dynamics
 obs_noise: 0.3  # noise on emissions, which for pref learning is always +1 for traj2 > traj 1 # 1 rly affects bma 
+iekf: 1 # iterated EKF: multiple linearization around the posterior
 
 # * following is just for convenience in hydra CLI overrides
 cls:
@@ -35,3 +37,4 @@ cls:
   prior_noise: ${..prior_noise}
   dynamics_noise: ${..dynamics_noise}
   obs_noise: ${..obs_noise}
+  iekf: ${..iekf}

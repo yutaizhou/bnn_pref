@@ -174,12 +174,14 @@ def main(cfg):
         print(
             f"{task:14}: "
             f"acc: {results['test_acc']:.2%} ± {results['test_acc_std']:.2%}, "
+            # f"acc: {results['test_acc_warm']:.2%} ± {results['test_acc_warm_std']:.2%} -> {results['test_acc']:.2%} ± {results['test_acc_std']:.2%}, "
             f"logpdf: {results['test_logpdf']:.2f} ± {results['test_logpdf_std']:.2f}, "
             f"({metadata_m['full_param_count'][0]:,d} -> {metadata_m['subspace_param_count'][0]:,d}) "
             f"({duration:.1f}s)"
+            f", bma_acc: {results['test_acc_bma']:.2%} ± {results['test_acc_bma_std']:.2%}, "
         )
 
-    print("Printing extra stats")
+    print("\n === Printing extra stats ===")
     for results in stats:
         print(
             f"{results['task']} ({duration:.1f}s):\n"

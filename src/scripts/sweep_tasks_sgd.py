@@ -120,6 +120,20 @@ def run_dimensinality_exp(cfg):
         "walkerWalk",
     ]
     stats = []
+
+    data_cfg = cfg["data"]
+    ekf_cfg = cfg["ekf"]
+    nq_train, nq_test = data_cfg["nq_train"], data_cfg["nq_test"]
+    batch_size = ekf_cfg["bs"]
+    niters = ekf_cfg["niters"]
+    print(
+        f"Seed: {seed} x {cfg['seeds']}\n"
+        f"Data:\n"
+        f"  Train/Test: {nq_train}/{nq_test}\n"
+        f"SGD:\n"
+        f"  init: bs={batch_size}, niters={niters}\n"
+    )
+
     for task in tasks:
         new_cfg = hydra.compose(
             "config",

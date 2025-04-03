@@ -1,14 +1,9 @@
 from datetime import datetime
-from functools import partial
-from typing import Callable
 
-import jax
 import jax.numpy as jnp
-import jax.numpy.linalg as jnpl
 import jax.random as jr
-import jax.scipy as jsp
+from jaxtyping import Array, Num
 
-from bnn_pref import data
 from bnn_pref.utils.type import D
 
 
@@ -34,3 +29,17 @@ def tile_first_dim(x: jnp.ndarray, reps: int):
     expanded = x[None, ...]
     tile_seq = (reps,) + (1,) * x.ndim
     return jnp.tile(expanded, tile_seq)
+
+
+def vmap_chunked(fn, arr: Num[Array, "N *"], size: int, fout_shape: tuple):
+    N = arr.shape[0]
+    if N <= size:
+        values = fn(arr)
+    else:
+        values = jnp.empty((N, *fout_shape))
+        for i in range(0, N, size):
+            arr_chunk = arr[i : i + size]
+            values_chunk = fn(arr_chunk)
+            values = values.at[i : i + size].set(values_chunk)
+
+    return values

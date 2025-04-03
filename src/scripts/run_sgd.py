@@ -62,10 +62,10 @@ def main(cfg):
     # Define loss function for preference learning
     def loss_fn(params, batch_idx):
         # Retrieve batch data using the retrieve function
-        contexts_batch = retrieve(train_prefs.queries_Q2TD, batch_idx)
-        labels_batch = retrieve(train_prefs.responses_Q1, batch_idx)
-        logits_B2 = reward_net.apply({"params": params}, contexts_batch)
-        labels_B2 = jax.nn.one_hot(labels_batch, num_classes=2)
+        contexts_B2TD = retrieve(train_prefs.queries_Q2TD, batch_idx)
+        labels_B1 = retrieve(train_prefs.responses_Q1, batch_idx)
+        logits_B2 = reward_net.apply({"params": params}, contexts_B2TD)
+        labels_B2 = jax.nn.one_hot(labels_B1, num_classes=2)
         loss = optax.softmax_cross_entropy(logits_B2, labels_B2).mean()
         return loss, logits_B2
 

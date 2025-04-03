@@ -85,6 +85,16 @@ class JaxPCA:
 
     def fit(self, X: Float[Array, "N D"]):
         """Fit the model with X."""
+        # Validate n_components
+        if isinstance(self.n_components, float):
+            if not 0 <= self.n_components <= 1.0:
+                raise ValueError("n_components must be between 0 and 1")
+        else:
+            if not 1 <= self.n_components <= min(X.shape[0], X.shape[1]):
+                raise ValueError(
+                    "n_components must be between 1 and min(n_samples, n_features)"
+                )
+
         # Center the data
         self.mean_ = jnp.mean(X, axis=0, keepdims=True)
         X_centered = X - self.mean_
@@ -102,9 +112,12 @@ class JaxPCA:
         # Determine number of components
         if isinstance(self.n_components, float):
             cumsum = jnp.cumsum(self.explained_variance_ratio_)
-            self.n_components_ = jnp.sum(cumsum <= self.n_components) + 1
+            # self.n_components_ = jnp.sum(cumsum <= self.n_components) + 1
+            self.n_components_ = jnp.sum(cumsum < self.n_components) + 1
+            self.n_components_ = min(self.n_components_, X.shape[1])
         else:
-            self.n_components_ = self.n_components
+            # self.n_components_ = self.n_components
+            self.n_components_ = min(self.n_components, X.shape[1])
 
         # Store components (right singular vectors)
         self.components_ = Vt[: self.n_components_]

@@ -1,3 +1,4 @@
+from functools import partial
 from typing import Union
 
 import jax
@@ -10,6 +11,7 @@ from flax import linen as nn
 from flax.training.train_state import TrainState
 from jax.flatten_util import ravel_pytree
 from jaxtyping import Array, Float, Scalar
+from sklearn.decomposition import PCA
 from tensorflow_probability.substrates import jax as tfp
 
 from bnn_pref.alg.agent_utils import (
@@ -21,6 +23,7 @@ from bnn_pref.alg.agent_utils import (
 from bnn_pref.data.ekf_env import retrieve
 from bnn_pref.utils.network import count_params
 from bnn_pref.utils.type import CAR, CARL, BeliefState
+from bnn_pref.utils.utils import vmap_chunked
 
 tfd = tfp.distributions
 
@@ -41,6 +44,7 @@ class SubspaceNeuralEKF:
         prior_noise: float = 0.0001,
         dynamics_noise: float = 0.0,
         obs_noise: float = 1.0,
+        iekf: int = 1,
     ):
         """
         Subspace Neural Bandit implementation.
@@ -80,6 +84,7 @@ class SubspaceNeuralEKF:
         self.rnd_proj = rnd_proj
         self.l2_reg = l2_reg
         self.batch_size = batch_size
+        self.iekf = iekf
 
         if not rnd_proj:
             n_eff_iterates = (niters - warm_burns) // thinning
@@ -106,13 +111,13 @@ class SubspaceNeuralEKF:
         def loss_fn(params, batch_idx: Float[Array, "batch_size"]):
             # For full batch, use all data
             bs = self.batch_size
-            contexts_batch = contexts if bs == -1 else retrieve(contexts, batch_idx)
-            labels_batch = labels if bs == -1 else retrieve(labels, batch_idx)
-            logits_N2 = self.model.apply({"params": params}, contexts_batch)
-            loss = optax.softmax_cross_entropy(logits_N2, labels_batch).mean()
+            contexts_B2TD = contexts if bs == -1 else retrieve(contexts, batch_idx)
+            labels_B2 = labels if bs == -1 else retrieve(labels, batch_idx)  # one-hot
+            logits_B2 = self.model.apply({"params": params}, contexts_B2TD)
+            loss = optax.softmax_cross_entropy(logits_B2, labels_B2).mean()
             params_flat, _ = ravel_pytree(params)
             l2_loss = self.l2_reg * (params_flat**2).sum()
-            return loss + l2_loss, logits_N2
+            return loss + l2_loss, logits_B2
 
         key, key_sgd = jr.split(key, 2)
         warm_ts, warm_metrics = run_gradient_descent(
@@ -186,7 +191,7 @@ class SubspaceNeuralEKF:
 
         def emission_fn(params, inputs):
             """
-            emission model where inputs is (N, D + 1)
+            emission model where inputs is (N, D + 1), output is logit of taken action (N, 1)
             """
             context = inputs[..., :-1].reshape(2, -1, self.n_feats)
             action = inputs[..., -1].astype(int)
@@ -222,7 +227,7 @@ class SubspaceNeuralEKF:
         context = rearrange(context, "K T D -> (K T D)", K=2)
         action = rearrange(action, " -> 1")
         inputs = rearrange(jnp.concat((context, action)), "d -> 1 d")
-        emission = rearrange(reward, " -> 1 1")
+        emissions = rearrange(reward, " -> 1 1")
 
         self.ekf_params = self.ekf_params._replace(
             initial_mean=prior_mean,
@@ -230,8 +235,9 @@ class SubspaceNeuralEKF:
         )
         ekf_posterior = extended_kalman_filter(
             self.ekf_params,
-            emissions=emission,  # reward
+            emissions=emissions,
             inputs=inputs,  # context + action
+            num_iter=self.iekf,
         )
 
         posterior_mean = ekf_posterior.filtered_means[-1]
@@ -255,6 +261,37 @@ class SubspaceNeuralEKF:
     def sample_params(self, key, bel: BeliefState) -> Array:
         """only used in choose_action()"""
         mean, cov, t = bel
-        mvg = tfd.MultivariateNormalFullCovariance(mean, cov)
-        params = mvg.sample(seed=key)
+        distr = tfd.MultivariateNormalFullCovariance(mean, cov)
+        params = distr.sample(seed=key)
         return params
+
+    def acquire_next_query(self, key, bel: BeliefState, contexts_n2TD) -> int:
+        """
+        active learning: greedily compute query that maximizes InfoGain acquisition fn
+        """
+        M = 100  # number of models to sample
+        mean, cov = bel.mean, bel.cov
+        distr = tfd.MultivariateNormalFullCovariance(mean, cov)
+        key, key_sample = jr.split(key, 2)
+        ss_params = distr.sample(seed=key_sample, sample_shape=(M,))
+
+        # def mi_acquisition_fn(context: Float[Array, "2 T D"]):
+        fn = jax.vmap(self.sub2full_predict_logits, in_axes=(0, None))  # over params
+        fn = jax.vmap(fn, in_axes=(None, 0))  # over contexts
+        logits_NM2 = fn(ss_params, contexts_n2TD)
+        probs_NM2 = jax.nn.softmax(logits_NM2, axis=2)
+
+        @partial(jax.vmap, in_axes=(0,))
+        def compute_info_gain(probs_M2):
+            mi = probs_M2 * jnp.log2(M * probs_M2 / jnp.sum(probs_M2, axis=0))
+            mi = jnp.sum(mi) / M
+            return mi
+
+        values_N = vmap_chunked(
+            compute_info_gain,
+            probs_NM2,
+            size=32,
+            fout_shape=(),
+        )
+        query_idx = jnp.argmax(values_N)
+        return query_idx

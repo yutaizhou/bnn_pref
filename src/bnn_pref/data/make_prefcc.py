@@ -68,7 +68,10 @@ def process_prefcc_data(
 
 
 def split_dataset(key, ds, train_frac=0.8):
-    n = len(jax.tree_util.tree_leaves(ds)[0])  # Get length from first array
+    """
+    take (optionally ranked) ds, split into train/test, each sorted by return (ascending)
+    """
+    n = len(jax.tree.leaves(ds)[0])  # Get length from first array
     idxs = jr.permutation(key, n)
     n_train = int(n * train_frac)
     train_idxs, test_idxs = idxs[:n_train], idxs[n_train:]
