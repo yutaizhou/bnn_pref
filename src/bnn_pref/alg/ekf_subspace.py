@@ -5,6 +5,8 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 import optax
+from dynamax.generalized_gaussian_ssm import EKFIntegrals, ParamsGGSSM
+from dynamax.generalized_gaussian_ssm import conditional_moments_gaussian_filter as cmgf
 from dynamax.nonlinear_gaussian_ssm import ParamsNLGSSM, extended_kalman_filter
 from einops import rearrange
 from flax import linen as nn
@@ -201,7 +203,30 @@ class SubspaceNeuralEKF:
             probs = jax.nn.softmax(logits, axis=0)
             return probs
 
-        # def emission_cov_fn(params, inputs)
+        # def emission_mean_cmgf(params, inputs):
+        #     """
+        #     emission model where
+        #         inputs: (2 * T * D,) query features -> (2,) traj rewards as logits
+        #         predicted measurement: (2,) # probabilities of traj 2 > traj 1
+        #         gt measurement: (2,) # one hot labels
+        #     """
+        #     context = inputs.reshape(2, -1, self.n_feats)
+        #     logits = sub2full_predict_logits(params, context)  # (2,)
+        #     p = jax.nn.softmax(logits, axis=0)[1][None]  # (1,1)
+
+        #     return p
+
+        # def emission_cov_cmgf(params, inputs):
+        #     """
+        #     emission model where
+        #         inputs: (2 * T * D,) query features -> (2,) traj rewards as logits
+        #         predicted measurement: (2,) # probabilities of traj 2 > traj 1
+        #         gt measurement: (2,) # one hot labels
+        #     """
+        #     context = inputs.reshape(2, -1, self.n_feats)
+        #     logits = sub2full_predict_logits(params, context)  # (2,)
+        #     p = jax.nn.softmax(logits, axis=0)[1][None]
+        #     return p * (1 - p)
 
         init_mean = jnp.zeros(sub_dim)
         S = jnp.eye(sub_dim) * self.prior_noise
@@ -215,6 +240,15 @@ class SubspaceNeuralEKF:
             emission_function=emission_fn,
             emission_covariance=R,
         )
+
+        # self.cmgf_params = ParamsGGSSM(
+        #     initial_mean=init_mean,
+        #     initial_covariance=S,
+        #     dynamics_function=lambda z, u: z,  # constant dynamics
+        #     dynamics_covariance=Q,
+        #     emission_mean_function=emission_mean_cmgf,
+        #     emission_cov_function=emission_cov_cmgf,
+        # )
 
         bel = BeliefState(mean=init_mean, cov=S, t=0)
         return bel
@@ -234,15 +268,29 @@ class SubspaceNeuralEKF:
             initial_mean=prior_mean,
             initial_covariance=prior_cov,
         )
-        ekf_posterior = extended_kalman_filter(
+        posterior = extended_kalman_filter(
             self.ekf_params,
             emissions=emissions,
             inputs=inputs,
             num_iter=self.iekf,
         )
 
-        posterior_mean = ekf_posterior.filtered_means[-1]
-        posterior_cov = ekf_posterior.filtered_covariances[-1]
+        # emissions_cmgf = rearrange(label[1][None], "K -> 1 K", K=1)  # OH: always 1
+
+        # self.cmgf_params = self.cmgf_params._replace(
+        #     initial_mean=prior_mean,
+        #     initial_covariance=prior_cov,
+        # )
+        # posterior = cmgf(
+        #     self.cmgf_params,
+        #     EKFIntegrals(),
+        #     emissions=emissions_cmgf,
+        #     inputs=inputs,
+        #     num_iter=self.iekf,
+        # )
+
+        posterior_mean = posterior.filtered_means[-1]
+        posterior_cov = posterior.filtered_covariances[-1]
         bel = BeliefState(mean=posterior_mean, cov=posterior_cov, t=t + 1)
         return bel
 
