@@ -34,6 +34,7 @@ def print_ekf_cfg(seed, cfg, length=None, n_feats=None):
         f"  n_demos={n_demos}, nq_train={nq_train}, T={length}, D={n_feats} (Q Test = {nq_test})\n"
         f"  Samples for init/update = {nq_init}/{n_updates}\n"
         f"EKF:\n"
+        f"  active={ekf_kw['active']}\n"
         f"  init: bs={batch_size}, niters={niters}[{warm_burns}::{thinning}] ({n_eff_iterates} eff), {sub_dim=}, {rnd_proj=}\n"
     )
 

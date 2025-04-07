@@ -16,11 +16,7 @@ from bnn_pref.alg.ekf_trainer import bandit_pipeline
 from bnn_pref.data import dataset_creators
 from bnn_pref.data.ekf_env import EKFEnvironment
 from bnn_pref.utils.hydra_resolvers import *
-from bnn_pref.utils.metrics import (
-    compute_accuracy_nn,
-    compute_accuracy_nn_bel,
-    compute_logpdf_nn,
-)
+from bnn_pref.utils.metrics import compute_acc_nn, compute_acc_nn_bma, compute_logpdf_nn
 from bnn_pref.utils.plotting import plot_reward_heatmap
 from bnn_pref.utils.print_utils import print_ekf_cfg
 from bnn_pref.utils.utils import get_random_seed
@@ -44,43 +40,65 @@ def main(cfg):
     print_ekf_cfg(seed, cfg, n_feats=n_feats, length=T)
 
     # * build + run bandit alg
-    key, key1, key2 = jr.split(key, 3)
+    key, key_env, key_bandit, key_bma = jr.split(key, 4)
     env = EKFEnvironment(
-        key1,
+        key_env,
         X=train_prefs.queries_Q2TD,
         Y=jax.nn.one_hot(train_prefs.responses_Q1.squeeze(), num_classes=2),
     )
 
-    bel_trace, bandit = bandit_pipeline(key2, env, ekf_kw)
-    bel0 = jax.tree.map(lambda x: x[0], bel_trace)  # init belief, assume zero vec
-    bel = jax.tree.map(lambda x: x[-1], bel_trace)  # final belief
+    bel_trace, bandit = bandit_pipeline(key_bandit, env, ekf_kw)
 
     # * compute metrics
-    key, key_bma = jr.split(key)
-    logits_predictor = jax.vmap(partial(bandit.sub2full_predict_logits, bel.mean))
-    init_logit_predictor = jax.vmap(partial(bandit.sub2full_predict_logits, bel0.mean))
+    sub2full_logits_fn = bandit.sub2full_predict_logits  # (params, N2TD) -> (N2,)
 
-    train_acc_warm = compute_accuracy_nn(init_logit_predictor, train_prefs)
-    train_acc = compute_accuracy_nn(logits_predictor, train_prefs)
-    train_logpdf_warm = compute_logpdf_nn(init_logit_predictor, train_prefs)
-    train_logpdf = compute_logpdf_nn(logits_predictor, train_prefs)
+    def eval_bel(_, bel):
+        mean, cov, t = bel
+        key = jr.fold_in(key_bma, t)
+        fn = jax.vmap(partial(sub2full_logits_fn, mean))
+        train_logpdf = compute_logpdf_nn(fn, train_prefs)
+        test_logpdf = compute_logpdf_nn(fn, test_prefs)
+        train_acc = compute_acc_nn(fn, train_prefs)
+        test_acc = compute_acc_nn(fn, test_prefs)
+        train_acc_bma = compute_acc_nn_bma(key, sub2full_logits_fn, bel, train_prefs)
+        test_acc_bma = compute_acc_nn_bma(key, sub2full_logits_fn, bel, test_prefs)
 
-    test_acc_warm = compute_accuracy_nn(init_logit_predictor, test_prefs)
-    test_acc = compute_accuracy_nn(logits_predictor, test_prefs)
-    test_acc_bma = compute_accuracy_nn_bel(
-        key_bma, bandit.sub2full_predict_logits, bel, test_prefs
-    )
-    test_logpdf_warm = compute_logpdf_nn(init_logit_predictor, test_prefs)
-    test_logpdf = compute_logpdf_nn(logits_predictor, test_prefs)
+        result = {
+            # * logpdf
+            "train_logpdf": train_logpdf,
+            "test_logpdf": test_logpdf,
+            # * acc
+            "train_acc": train_acc,
+            "test_acc": test_acc,
+            "train_acc_bma": train_acc_bma,
+            "test_acc_bma": test_acc_bma,
+        }
+        return (), result
+
+    *_, res = jax.lax.scan(eval_bel, init=(), xs=bel_trace)
 
     print(
         f"Param Count:  {bandit.full_params_count} -> {bandit.subspace_params_count}\n"
-        f"Train acc:    {train_acc_warm:.2%} -> {train_acc:.2%}\n"
-        f"Test acc:     {test_acc_warm:.2%} -> {test_acc:.2%}\n"
-        f"Test acc BMA: {test_acc_bma:.2%}\n"
-        f"Train avg_ll: {train_logpdf_warm:.2f} -> {train_logpdf:.2f}\n"
-        f"Test avg_ll:  {test_logpdf_warm:.2f} -> {test_logpdf:.2f}\n"
+        f"Train acc:    {res['train_acc'][0]:.2%} -> {res['train_acc'][-1]:.2%}\n"
+        f"Test acc:     {res['test_acc'][0]:.2%} -> {res['test_acc'][-1]:.2%}\n"
+        f"Test acc BMA: {res['test_acc_bma'][-1]:.2%}\n"
+        f"Train avg_ll: {res['train_logpdf'][0]:.2f} -> {res['train_logpdf'][-1]:.2f}\n"
+        f"Test avg_ll:  {res['test_logpdf'][0]:.2f} -> {res['test_logpdf'][-1]:.2f}\n"
     )
+
+    # * performance viz
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 8))
+    ax1.plot(res["train_acc"], label="train acc")
+    ax1.plot(res["test_acc"], label="test acc")
+    # ax1.plot(al_results["train_acc_bma"], label="train acc bma")
+    # ax1.plot(al_results["test_acc_bma"], label="test acc bma")
+    ax1.set_ylim(0, 1)
+    ax1.legend()
+    ax2.plot(res["train_logpdf"], label="train logpdf")
+    ax2.plot(res["test_logpdf"], label="test logpdf")
+    ax2.set_ylim(None, 0)
+    ax2.legend()
+    plt.show()
 
     # * visualization
     if (task_kw["ds_type"] == "ogbench") and (n_feats == 2):

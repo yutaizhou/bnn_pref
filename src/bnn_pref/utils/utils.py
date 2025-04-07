@@ -32,6 +32,10 @@ def tile_first_dim(x: jnp.ndarray, reps: int):
 
 
 def vmap_chunked(fn, arr: Num[Array, "N *"], size: int, fout_shape: tuple):
+    """
+    vmap over first dimension of arr, but do so in chunks of `size` to avoid OOM
+    """
+
     N = arr.shape[0]
     if N <= size:
         values = fn(arr)

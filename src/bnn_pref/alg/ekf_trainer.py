@@ -28,7 +28,10 @@ def bandit_pipeline(
     2. Run warmups in the env to collect data (round-robin actions)
     3. Init belief on warmup data: sgd + PCA/random projection + EKF init
     4. Run trials: interact with the env and run EKF filtering
-    5. Return rewards from: warmup, trials, and (optionally) opt_rewards
+
+    Returns:
+        bel_trace: list of BeliefState, length = nq_update + 1 (including sgd init)
+        bandit: SubspaceNeuralEKF class constructed with bandit_kw
     """
     *_, n_feats = env.contexts.shape
     nq_init = bandit_kw["nq_init"]
@@ -50,7 +53,7 @@ def bandit_pipeline(
         key, bandit, bel_init, env, warmup_data, nsteps, active=bandit_kw["active"]
     )
 
-    # prepend initial belief (zero vector in subspace) to bel_trace
+    # * prepend initial belief (zero vector in subspace) to bel_trace
     bel_trace = jax.tree.map(
         lambda a, b: jnp.concat([a, b]),
         jax.tree.map(lambda x: jnp.expand_dims(x, axis=0), bel_init),
@@ -95,7 +98,7 @@ def run_bandit(
         key, subkey = split(key)
         if not active:  # get a random query
             # t_next = t + 1
-            t_next = jr.randint(subkey, (1,), 0, pool_size)[0]
+            t_next = jr.randint(subkey, (), 0, pool_size)
         else:  # get a query that maximizes acquisition fn
             t_next = bandit.acquire_next_query(subkey, bel, active_contexts)
 

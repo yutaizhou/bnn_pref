@@ -14,7 +14,7 @@ from bnn_pref.data import make_synthetic_data
 from bnn_pref.data.ekf_env import EKFEnvironment
 from bnn_pref.utils.hydra_resolvers import *
 from bnn_pref.utils.metrics import (
-    compute_accuracy_nn,
+    compute_acc_nn,
     compute_logpdf_nn,
     compute_pref_ranking_acc,
 )
@@ -47,8 +47,8 @@ def run_ekf(key, cfg):
     key, key1 = jr.split(key, 2)
     pref_predictor = jax.vmap(partial(bandit.sub2full_predict_logits, bel.mean))
     reward_predictor = jax.vmap(partial(bandit.sub2full_predict_return, bel.mean))
-    train_acc = compute_accuracy_nn(pref_predictor, train_data)
-    test_acc = compute_accuracy_nn(pref_predictor, test_data)
+    train_acc = compute_acc_nn(pref_predictor, train_data)
+    test_acc = compute_acc_nn(pref_predictor, test_data)
     test_logpdf = compute_logpdf_nn(pref_predictor, test_data)
     pref_acc = compute_pref_ranking_acc(reward_predictor, test_data)
 

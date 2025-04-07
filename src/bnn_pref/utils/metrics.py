@@ -12,7 +12,7 @@ from bnn_pref.data.pref_utils import QueryWithResponse
 from bnn_pref.utils.type import NTD, SD, D
 
 
-def compute_accuracy_nn(pref_predictor: Callable, data: QueryWithResponse):
+def compute_acc_nn(pref_predictor: Callable, data: QueryWithResponse):
     features_Q2TD, response_Q1 = data.queries_Q2TD, data.responses_Q1
     logits_Q2 = pref_predictor(features_Q2TD)
     pred_response_Q = logits_Q2.argmax(axis=1)
@@ -20,14 +20,14 @@ def compute_accuracy_nn(pref_predictor: Callable, data: QueryWithResponse):
     return acc
 
 
-def compute_accuracy_nn_bel(
+def compute_acc_nn_bma(
     key, sub2full_predict_logits: Callable, bel: BeliefState, data: QueryWithResponse
 ):
     n_models = 10
     mean, cov = bel.mean, bel.cov
     dist = distrax.MultivariateNormalFullCovariance(mean, cov)
-
     ss_params = dist.sample(seed=key, sample_shape=(n_models,))
+
     blah = jax.vmap(sub2full_predict_logits, in_axes=(None, 0))  # input: param, context
     blah = jax.vmap(blah, in_axes=(0, None))
     logits_MQ2 = blah(ss_params, data.queries_Q2TD)
