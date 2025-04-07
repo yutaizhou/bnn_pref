@@ -76,7 +76,6 @@ def run_dimensinality_exp(cfg):
         "cartpoleSwing",
         "cheetahDMC",
         "hopperHop",
-        "lunar",
         "pendulum",
         "reacherEasy",
         "reacherHard",

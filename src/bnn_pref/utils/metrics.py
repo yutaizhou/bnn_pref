@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from functools import partial
 from typing import Callable
 
@@ -10,6 +11,17 @@ import optax
 from bnn_pref.alg.ekf_subspace import BeliefState
 from bnn_pref.data.pref_utils import QueryWithResponse
 from bnn_pref.utils.type import NTD, SD, D
+
+
+@dataclass()
+class MeanStd:
+    array: jnp.ndarray  # (n_seeds, nq_update)
+    mean: jnp.ndarray = None
+    std: jnp.ndarray = None
+
+    def __post_init__(self):
+        self.mean = self.array.mean(axis=0)
+        self.std = self.array.std(axis=0)
 
 
 def compute_acc_nn(pref_predictor: Callable, data: QueryWithResponse):

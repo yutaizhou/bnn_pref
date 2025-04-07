@@ -1,6 +1,7 @@
 import itertools as it
 import os
 from collections import defaultdict
+from dataclasses import dataclass
 
 os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
 os.environ["DISABLE_CODESIGN_WARNING"] = "1"
@@ -19,7 +20,12 @@ from bnn_pref.alg.ekf_trainer import bandit_pipeline
 from bnn_pref.data import dataset_creators
 from bnn_pref.data.ekf_env import EKFEnvironment
 from bnn_pref.utils.hydra_resolvers import *
-from bnn_pref.utils.metrics import compute_acc_nn, compute_acc_nn_bma, compute_logpdf_nn
+from bnn_pref.utils.metrics import (
+    MeanStd,
+    compute_acc_nn,
+    compute_acc_nn_bma,
+    compute_logpdf_nn,
+)
 from bnn_pref.utils.utils import get_random_seed
 
 logging.getLogger("jax._src.xla_bridge").setLevel(logging.ERROR)
@@ -102,7 +108,6 @@ def main(cfg):
         "cartpoleSwing",
         "cheetahDMC",
         "hopperHop",
-        "lunar",
         "pendulum",
         "reacherEasy",
         "reacherHard",
@@ -160,41 +165,31 @@ def main(cfg):
             rs_m = {
                 "task": task,
                 "active": is_al,
-                # progress curve
                 "test_logpdf_all": rs_m["test_logpdf"],
                 "test_acc_all": rs_m["test_acc"],
                 # acc
-                "train_acc_warm": rs_m["train_acc"][:, 0].mean().item(),
-                "train_acc_warm_std": rs_m["train_acc"][:, 0].std().item(),
-                "train_acc": rs_m["train_acc"][:, -1].mean().item(),
-                "train_acc_std": rs_m["train_acc"][:, -1].std().item(),
-                "test_acc_warm": rs_m["test_acc"][:, 0].mean().item(),
-                "test_acc_warm_std": rs_m["test_acc"][:, 0].std().item(),
-                "test_acc": rs_m["test_acc"][:, -1].mean().item(),
-                "test_acc_std": rs_m["test_acc"][:, -1].std().item(),
-                "test_acc_bma": rs_m["test_acc_bma"][:, -1].mean().item(),
-                "test_acc_bma_std": rs_m["test_acc_bma"][:, -1].std().item(),
+                "train_acc_warm": MeanStd(rs_m["train_acc"][:, 0]),
+                "train_acc": MeanStd(rs_m["train_acc"][:, -1]),
+                "test_acc_warm": MeanStd(rs_m["test_acc"][:, 0]),
+                "test_acc": MeanStd(rs_m["test_acc"][:, -1]),
+                "test_acc_bma": MeanStd(rs_m["test_acc_bma"][:, -1]),
                 # logpdf
-                "train_logpdf_warm": rs_m["train_logpdf"][:, 0].mean().item(),
-                "train_logpdf_warm_std": rs_m["train_logpdf"][:, 0].std().item(),
-                "train_logpdf": rs_m["train_logpdf"][:, -1].mean().item(),
-                "train_logpdf_std": rs_m["train_logpdf"][:, -1].std().item(),
-                "test_logpdf_warm": rs_m["test_logpdf"][:, 0].mean().item(),
-                "test_logpdf_warm_std": rs_m["test_logpdf"][:, 0].std().item(),
-                "test_logpdf": rs_m["test_logpdf"][:, -1].mean().item(),
-                "test_logpdf_std": rs_m["test_logpdf"][:, -1].std().item(),
+                "train_logpdf_warm": MeanStd(rs_m["train_logpdf"][:, 0]),
+                "train_logpdf": MeanStd(rs_m["train_logpdf"][:, -1]),
+                "test_logpdf_warm": MeanStd(rs_m["test_logpdf"][:, 0]),
+                "test_logpdf": MeanStd(rs_m["test_logpdf"][:, -1]),
             }
 
             stats[task][is_al] = rs_m
 
             print(
                 f"  active={str(is_al):5}, "
-                f"acc: {rs_m['test_acc']:.2%} ± {rs_m['test_acc_std']:.2%}, "
+                f"acc: {rs_m['test_acc'].mean:.2%} ± {rs_m['test_acc'].std:.2%}, "
                 # f"acc: {results['test_acc_warm']:.2%} ± {results['test_acc_warm_std']:.2%} -> {results['test_acc']:.2%} ± {results['test_acc_std']:.2%}, "
-                f"logpdf: {rs_m['test_logpdf']:.2f} ± {rs_m['test_logpdf_std']:.2f}, "
+                f"logpdf: {rs_m['test_logpdf'].mean:.2f} ± {rs_m['test_logpdf'].std:.2f}, "
                 # f"({metadata_m['full_param_count'][0]:,d} -> {metadata_m['subspace_param_count'][0]:,d}) "
                 f"({duration:.1f}s)"
-                f", bma_acc: {rs_m['test_acc_bma']:.2%} ± {rs_m['test_acc_bma_std']:.2%}, "
+                f", bma_acc: {rs_m['test_acc_bma'].mean:.2%} ± {rs_m['test_acc_bma'].std:.2%}, "
             )
 
     print("\n === Printing extra stats ===")
@@ -209,20 +204,41 @@ def main(cfg):
     #         f"  logpdf:       {results['test_logpdf_warm']:.2f} ± {results['test_logpdf_warm_std']:.2f} -> {results['test_logpdf']:.2f} ± {results['test_logpdf_std']:.2f}\n"
     #     )
 
-    # * plot progress curves
-    fig, axs = plt.subplots(4, 4, figsize=(12, 8))  # 14 tasks total
+    # * plot logpdf learning curve
+    fig, axs = plt.subplots(4, 4, figsize=(12, 8))  # 13 tasks total
     axs = axs.flatten()
+
     for i, task in enumerate(tasks):
         ax = axs[i]
+        y_min = min(stat["test_logpdf_all"].min() for stat in stats[task].values())
+        ax.set_ylim(y_min, 0)
         for is_al in [False, True]:
             stat = stats[task][is_al]
             # (n_seeds, nq_update)
             ax.plot(stat["test_logpdf_all"][0], label="Active" if is_al else "Random")
-            ax.set_ylim(None, 0)
         ax.set_title(f"{task}")
 
     dummy_lines = [plt.plot([], [], label=label)[0] for label in ["Random", "Active"]]
     fig.legend(dummy_lines, ["Random", "Active"], loc="center right")
+    fig.suptitle("log PDF vs. num queries ")
+    plt.tight_layout(rect=[0, 0, 0.9, 1])  # [left, bottom, right, top]
+    plt.show()
+
+    # * plot acc learning curve
+    fig, axs = plt.subplots(4, 4, figsize=(12, 8))  # 13 tasks total
+    axs = axs.flatten()
+    for i, task in enumerate(tasks):
+        ax = axs[i]
+        ax.set_ylim(0, 1)
+        for is_al in [False, True]:
+            stat = stats[task][is_al]
+            # (n_seeds, nq_update)
+            ax.plot(stat["test_acc_all"][0], label="Active" if is_al else "Random")
+        ax.set_title(f"{task}")
+
+    dummy_lines = [plt.plot([], [], label=label)[0] for label in ["Random", "Active"]]
+    fig.legend(dummy_lines, ["Random", "Active"], loc="center right")
+    fig.suptitle("Accuracy vs. num queries")
     plt.tight_layout(rect=[0, 0, 0.9, 1])  # [left, bottom, right, top]
     plt.show()
 
