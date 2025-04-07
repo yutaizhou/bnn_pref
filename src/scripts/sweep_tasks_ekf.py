@@ -1,4 +1,6 @@
+import itertools as it
 import os
+from collections import defaultdict
 
 os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
 os.environ["DISABLE_CODESIGN_WARNING"] = "1"
@@ -17,11 +19,7 @@ from bnn_pref.alg.ekf_trainer import bandit_pipeline
 from bnn_pref.data import dataset_creators
 from bnn_pref.data.ekf_env import EKFEnvironment
 from bnn_pref.utils.hydra_resolvers import *
-from bnn_pref.utils.metrics import (
-    compute_accuracy_nn,
-    compute_accuracy_nn_bel,
-    compute_logpdf_nn,
-)
+from bnn_pref.utils.metrics import compute_acc_nn, compute_acc_nn_bma, compute_logpdf_nn
 from bnn_pref.utils.utils import get_random_seed
 
 logging.getLogger("jax._src.xla_bridge").setLevel(logging.ERROR)
@@ -40,44 +38,45 @@ def run_ekf(key, cfg, data_dict):
     train_prefs, test_prefs = data_dict["train_prefs"], data_dict["test_prefs"]
 
     # * build + run bandit alg
-    key, key1, key2 = jr.split(key, 3)
+    key, key_env, key_bandit, key_bma = jr.split(key, 4)
     env = EKFEnvironment(
-        key1,
+        key_env,
         X=train_prefs.queries_Q2TD,
         Y=jax.nn.one_hot(train_prefs.responses_Q1.squeeze(), num_classes=2),
     )
 
-    key, key_bma = jr.split(key)
+    bel_trace, bandit = bandit_pipeline(key_bandit, env, ekf_kw)
 
-    bel_trace, bandit = bandit_pipeline(key2, env, ekf_kw)
-    bel0 = jax.tree.map(lambda x: x[0], bel_trace)  # init belief, assume zero vec
-    bel = jax.tree.map(lambda x: x[-1], bel_trace)  # final belief
-    pref_predictor = jax.vmap(partial(bandit.sub2full_predict_logits, bel.mean))
-    init_logit_predictor = jax.vmap(partial(bandit.sub2full_predict_logits, bel0.mean))
+    # * compute metrics
+    sub2full_logits_fn = bandit.sub2full_predict_logits  # (params, N2TD) -> (N2,)
 
-    train_acc_warm = compute_accuracy_nn(init_logit_predictor, train_prefs)
-    train_acc = compute_accuracy_nn(pref_predictor, train_prefs)
-    train_logpdf_warm = compute_logpdf_nn(init_logit_predictor, train_prefs)
-    train_logpdf = compute_logpdf_nn(pref_predictor, train_prefs)
-    test_acc_warm = compute_accuracy_nn(init_logit_predictor, test_prefs)
-    test_acc = compute_accuracy_nn(pref_predictor, test_prefs)
-    test_acc_bma = compute_accuracy_nn_bel(
-        key_bma, bandit.sub2full_predict_logits, bel, test_prefs
-    )
-    test_logpdf_warm = compute_logpdf_nn(init_logit_predictor, test_prefs)
-    test_logpdf = compute_logpdf_nn(pref_predictor, test_prefs)
+    def eval_bel(_, bel):
+        mean, cov, t = bel
+        key = jr.fold_in(key_bma, t)
+        fn = jax.vmap(partial(sub2full_logits_fn, mean))
+        train_logpdf = compute_logpdf_nn(fn, train_prefs)
+        test_logpdf = compute_logpdf_nn(fn, test_prefs)
+        train_acc = compute_acc_nn(fn, train_prefs)
+        test_acc = compute_acc_nn(fn, test_prefs)
+        train_acc_bma = compute_acc_nn_bma(key, sub2full_logits_fn, bel, train_prefs)
+        test_acc_bma = compute_acc_nn_bma(key, sub2full_logits_fn, bel, test_prefs)
 
-    results = {
-        "train_acc_warm": train_acc_warm,
-        "train_acc": train_acc,
-        "train_logpdf_warm": train_logpdf_warm,
-        "train_logpdf": train_logpdf,
-        "test_acc_warm": test_acc_warm,
-        "test_acc": test_acc,
-        "test_acc_bma": test_acc_bma,
-        "test_logpdf_warm": test_logpdf_warm,
-        "test_logpdf": test_logpdf,
-    }
+        # all arrays of (1 + nq_updates, )
+        result = {
+            # * logpdf
+            "train_logpdf": train_logpdf,
+            "test_logpdf": test_logpdf,
+            # * acc
+            "train_acc": train_acc,
+            "test_acc": test_acc,
+            "train_acc_bma": train_acc_bma,
+            "test_acc_bma": test_acc_bma,
+        }
+        return (), result
+
+    *_, al_results = jax.lax.scan(eval_bel, init=(), xs=bel_trace)
+
+    results = al_results
     metadata = {
         "nq_train": nq_train,
         "nq_test": nq_test,
@@ -95,9 +94,8 @@ def main(cfg):
     key = jr.key(seed)
 
     tasks = [
-        "ogbench",
-        "lunar",
         "reacher",
+        "lunar",
         "cheetah",
         "acrobot",
         "ball",
@@ -109,8 +107,9 @@ def main(cfg):
         "reacherEasy",
         "reacherHard",
         "walkerWalk",
+        "ogbench",
     ]
-    stats = []
+    stats = defaultdict(lambda: defaultdict(dict))
 
     data_cfg = cfg["data"]
     ekf_cfg = cfg["ekf"]
@@ -136,62 +135,96 @@ def main(cfg):
     )
 
     for task in tasks:
-        new_cfg = hydra.compose("config", overrides=[f"task={task}"])
-        cfg["task"] = new_cfg["task"]
+        print(f"{task}: ")
+        for is_al in [False, True]:
+            # * update cfg
+            new_cfg = hydra.compose(
+                "config",
+                overrides=[
+                    f"task={task}",
+                    f"ekf.active={is_al}",
+                ],
+            )
+            cfg["task"] = new_cfg["task"]
+            cfg["ekf"]["active"] = is_al
 
-        key_data, *key_seeds = jr.split(key, 1 + cfg["seeds"])  # m = 1 + n_seeds
-        data_dict = dataset_creators[cfg["task"]["ds_type"]](key_data, cfg)
+            # * run
+            key, key_data, *key_seeds = jr.split(key, 2 + cfg["seeds"])
+            data_dict = dataset_creators[cfg["task"]["ds_type"]](key_data, cfg)
 
-        start_time = datetime.now()
-        vmap_run_ekf = jax.vmap(run_ekf, in_axes=(0, None, None))
-        results_m, metadata_m = vmap_run_ekf(jnp.array(key_seeds), cfg, data_dict)
-        duration = (datetime.now() - start_time).total_seconds()
+            start_time = datetime.now()
+            vmap_run_ekf = jax.vmap(run_ekf, in_axes=(0, None, None))
+            rs_m, metadata_m = vmap_run_ekf(jnp.array(key_seeds), cfg, data_dict)
+            duration = (datetime.now() - start_time).total_seconds()
 
-        results = {
-            "task": task,
-            "train_acc_warm": results_m["train_acc_warm"].mean().item(),
-            "train_acc_warm_std": results_m["train_acc_warm"].std().item(),
-            "train_acc": results_m["train_acc"].mean().item(),
-            "train_acc_std": results_m["train_acc"].std().item(),
-            "test_acc_warm": results_m["test_acc_warm"].mean().item(),
-            "test_acc_warm_std": results_m["test_acc_warm"].std().item(),
-            "test_acc": results_m["test_acc"].mean().item(),
-            "test_acc_std": results_m["test_acc"].std().item(),
-            "test_acc_bma": results_m["test_acc_bma"].mean().item(),
-            "test_acc_bma_std": results_m["test_acc_bma"].std().item(),
-            "train_logpdf_warm": results_m["train_logpdf_warm"].mean().item(),
-            "train_logpdf_warm_std": results_m["train_logpdf_warm"].std().item(),
-            "train_logpdf": results_m["train_logpdf"].mean().item(),
-            "train_logpdf_std": results_m["train_logpdf"].std().item(),
-            "test_logpdf_warm": results_m["test_logpdf_warm"].mean().item(),
-            "test_logpdf_warm_std": results_m["test_logpdf_warm"].std().item(),
-            "test_logpdf": results_m["test_logpdf"].mean().item(),
-            "test_logpdf_std": results_m["test_logpdf"].std().item(),
-        }
+            rs_m = {
+                "task": task,
+                "active": is_al,
+                # progress curve
+                "test_logpdf_all": rs_m["test_logpdf"],
+                "test_acc_all": rs_m["test_acc"],
+                # acc
+                "train_acc_warm": rs_m["train_acc"][:, 0].mean().item(),
+                "train_acc_warm_std": rs_m["train_acc"][:, 0].std().item(),
+                "train_acc": rs_m["train_acc"][:, -1].mean().item(),
+                "train_acc_std": rs_m["train_acc"][:, -1].std().item(),
+                "test_acc_warm": rs_m["test_acc"][:, 0].mean().item(),
+                "test_acc_warm_std": rs_m["test_acc"][:, 0].std().item(),
+                "test_acc": rs_m["test_acc"][:, -1].mean().item(),
+                "test_acc_std": rs_m["test_acc"][:, -1].std().item(),
+                "test_acc_bma": rs_m["test_acc_bma"][:, -1].mean().item(),
+                "test_acc_bma_std": rs_m["test_acc_bma"][:, -1].std().item(),
+                # logpdf
+                "train_logpdf_warm": rs_m["train_logpdf"][:, 0].mean().item(),
+                "train_logpdf_warm_std": rs_m["train_logpdf"][:, 0].std().item(),
+                "train_logpdf": rs_m["train_logpdf"][:, -1].mean().item(),
+                "train_logpdf_std": rs_m["train_logpdf"][:, -1].std().item(),
+                "test_logpdf_warm": rs_m["test_logpdf"][:, 0].mean().item(),
+                "test_logpdf_warm_std": rs_m["test_logpdf"][:, 0].std().item(),
+                "test_logpdf": rs_m["test_logpdf"][:, -1].mean().item(),
+                "test_logpdf_std": rs_m["test_logpdf"][:, -1].std().item(),
+            }
 
-        stats.append(results)
+            stats[task][is_al] = rs_m
 
-        print(
-            f"{task:13}: "
-            f"acc: {results['test_acc']:.2%} ± {results['test_acc_std']:.2%}, "
-            # f"acc: {results['test_acc_warm']:.2%} ± {results['test_acc_warm_std']:.2%} -> {results['test_acc']:.2%} ± {results['test_acc_std']:.2%}, "
-            f"logpdf: {results['test_logpdf']:.2f} ± {results['test_logpdf_std']:.2f}, "
-            # f"({metadata_m['full_param_count'][0]:,d} -> {metadata_m['subspace_param_count'][0]:,d}) "
-            f"({duration:.1f}s)"
-            f", bma_acc: {results['test_acc_bma']:.2%} ± {results['test_acc_bma_std']:.2%}, "
-        )
+            print(
+                f"  active={str(is_al):5}, "
+                f"acc: {rs_m['test_acc']:.2%} ± {rs_m['test_acc_std']:.2%}, "
+                # f"acc: {results['test_acc_warm']:.2%} ± {results['test_acc_warm_std']:.2%} -> {results['test_acc']:.2%} ± {results['test_acc_std']:.2%}, "
+                f"logpdf: {rs_m['test_logpdf']:.2f} ± {rs_m['test_logpdf_std']:.2f}, "
+                # f"({metadata_m['full_param_count'][0]:,d} -> {metadata_m['subspace_param_count'][0]:,d}) "
+                f"({duration:.1f}s)"
+                f", bma_acc: {rs_m['test_acc_bma']:.2%} ± {rs_m['test_acc_bma_std']:.2%}, "
+            )
 
     print("\n === Printing extra stats ===")
-    for results in stats:
-        print(
-            f"{results['task']} ({duration:.1f}s):\n"
-            f"  ({metadata_m['full_param_count'][0]:,d} -> {metadata_m['subspace_param_count'][0]:,d})\n"
-            f"  Train acc:    {results['train_acc_warm']:.2%} ± {results['train_acc_warm_std']:.2%} -> {results['train_acc']:.2%} ± {results['train_acc_std']:.2%}\n"
-            f"  Acc:          {results['test_acc_warm']:.2%} ± {results['test_acc_warm_std']:.2%} -> {results['test_acc']:.2%} ± {results['test_acc_std']:.2%}\n"
-            f"  Acc BMA:      {results['test_acc_bma']:.2%} ± {results['test_acc_bma_std']:.2%}\n"
-            f"  Train logpdf: {results['train_logpdf_warm']:.2f} ± {results['train_logpdf_warm_std']:.2f} -> {results['train_logpdf']:.2f} ± {results['train_logpdf_std']:.2f}\n"
-            f"  logpdf:       {results['test_logpdf_warm']:.2f} ± {results['test_logpdf_warm_std']:.2f} -> {results['test_logpdf']:.2f} ± {results['test_logpdf_std']:.2f}\n"
-        )
+    # for results in stats:
+    #     print(
+    #         f"{results['task']} ({duration:.1f}s):\n"
+    #         f"  ({metadata_m['full_param_count'][0]:,d} -> {metadata_m['subspace_param_count'][0]:,d})\n"
+    #         f"  Train acc:    {results['train_acc_warm']:.2%} ± {results['train_acc_warm_std']:.2%} -> {results['train_acc']:.2%} ± {results['train_acc_std']:.2%}\n"
+    #         f"  Acc:          {results['test_acc_warm']:.2%} ± {results['test_acc_warm_std']:.2%} -> {results['test_acc']:.2%} ± {results['test_acc_std']:.2%}\n"
+    #         f"  Acc BMA:      {results['test_acc_bma']:.2%} ± {results['test_acc_bma_std']:.2%}\n"
+    #         f"  Train logpdf: {results['train_logpdf_warm']:.2f} ± {results['train_logpdf_warm_std']:.2f} -> {results['train_logpdf']:.2f} ± {results['train_logpdf_std']:.2f}\n"
+    #         f"  logpdf:       {results['test_logpdf_warm']:.2f} ± {results['test_logpdf_warm_std']:.2f} -> {results['test_logpdf']:.2f} ± {results['test_logpdf_std']:.2f}\n"
+    #     )
+
+    # * plot progress curves
+    fig, axs = plt.subplots(4, 4, figsize=(12, 8))  # 14 tasks total
+    axs = axs.flatten()
+    for i, task in enumerate(tasks):
+        ax = axs[i]
+        for is_al in [False, True]:
+            stat = stats[task][is_al]
+            # (n_seeds, nq_update)
+            ax.plot(stat["test_logpdf_all"][0], label="Active" if is_al else "Random")
+            ax.set_ylim(None, 0)
+        ax.set_title(f"{task}")
+
+    dummy_lines = [plt.plot([], [], label=label)[0] for label in ["Random", "Active"]]
+    fig.legend(dummy_lines, ["Random", "Active"], loc="center right")
+    plt.tight_layout(rect=[0, 0, 0.9, 1])  # [left, bottom, right, top]
+    plt.show()
 
 
 if __name__ == "__main__":

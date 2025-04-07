@@ -68,9 +68,8 @@ def run_dimensinality_exp(cfg):
     key = jr.key(seed)
 
     tasks = [
-        "ogbench",
-        "lunar",
         "reacher",
+        "lunar",
         "cheetah",
         "acrobot",
         "ball",
@@ -82,6 +81,7 @@ def run_dimensinality_exp(cfg):
         "reacherEasy",
         "reacherHard",
         "walkerWalk",
+        "ogbench",
     ]
     stats = []
     for task in tasks:
