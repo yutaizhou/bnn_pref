@@ -47,6 +47,7 @@ class SubspaceNeuralEKF:
         dynamics_noise: float = 0.0,
         obs_noise: float = 1.0,
         iekf: int = 1,
+        mi_samples: int = 20,
     ):
         """
         Subspace Neural Bandit implementation.
@@ -87,6 +88,7 @@ class SubspaceNeuralEKF:
         self.l2_reg = l2_reg
         self.batch_size = batch_size
         self.iekf = iekf
+        self.mi_samples = mi_samples
 
         if not rnd_proj:
             n_eff_iterates = (niters - warm_burns) // thinning
@@ -319,7 +321,7 @@ class SubspaceNeuralEKF:
         active learning: greedily compute query that maximizes InfoGain acquisition fn
         """
         # * sample M (subspace) models from posterior
-        M = 20  # number of models to sample
+        M = self.mi_samples  # number of models to sample
         mean, cov = bel.mean, bel.cov
         distr = tfd.MultivariateNormalFullCovariance(mean, cov)
         key, key_sample = jr.split(key, 2)
@@ -337,6 +339,7 @@ class SubspaceNeuralEKF:
         )
         probs_NM2 = jax.nn.softmax(logits_NM2, axis=2)
 
+        # * compute info gain for each query
         @partial(jax.vmap, in_axes=(0,))
         def compute_info_gain(probs_M2):
             mi = probs_M2 * jnp.log2(M * probs_M2 / jnp.sum(probs_M2, axis=0))

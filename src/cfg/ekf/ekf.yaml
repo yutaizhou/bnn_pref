@@ -7,7 +7,10 @@ hidden_sizes:
 # * Data partitioning for EKF Trainer (bandit_pipeline)
 nq_init: 200 # num samples to use for SGD belief initalization
 nq_update: -1 # num samples to do EKF filtering (if -1, use all remaining afer nq_init)
+
+# * active learning
 active: False
+mi_samples: 20
 
 # * Subspace Init w/ SGD 
 niters: 100  # Total number of GD steps on warmup data
@@ -40,3 +43,4 @@ cls:
   dynamics_noise: ${..dynamics_noise}
   obs_noise: ${..obs_noise}
   iekf: ${..iekf}
+  mi_samples: ${..mi_samples}
