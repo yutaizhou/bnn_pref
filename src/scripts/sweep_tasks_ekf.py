@@ -33,12 +33,12 @@ jnp.set_printoptions(precision=2)
 
 
 def run_ekf(key, cfg, data_dict):
-    ekf_kw = cfg["ekf"]
-    data_kw = cfg["data"]
+    ekf_cfg = cfg["ekf"]
+    data_cfg = cfg["data"]
 
-    nq_train, nq_test = data_kw["nq_train"], data_kw["nq_test"]
-    nq_init = ekf_kw["nq_init"]
-    nq_update = ekf_kw["nq_update"]
+    nq_train, nq_test = data_cfg["nq_train"], data_cfg["nq_test"]
+    nq_init = ekf_cfg["nq_init"]
+    nq_update = ekf_cfg["nq_update"]
     n_updates = (nq_train - nq_init) if nq_update == -1 else nq_update
 
     train_prefs, test_prefs = data_dict["train_prefs"], data_dict["test_prefs"]
@@ -51,7 +51,7 @@ def run_ekf(key, cfg, data_dict):
         Y=jax.nn.one_hot(train_prefs.responses_Q1.squeeze(), num_classes=2),
     )
 
-    bel_trace, bandit = bandit_pipeline(key_bandit, env, ekf_kw)
+    bel_trace, bandit = bandit_pipeline(key_bandit, env, ekf_cfg)
 
     # * compute metrics
     sub2full_logits_fn = bandit.sub2full_predict_logits  # (params, N2TD) -> (N2,)
@@ -159,49 +159,49 @@ def main(cfg):
 
             start_time = datetime.now()
             vmap_run_ekf = jax.vmap(run_ekf, in_axes=(0, None, None))
-            rs_m, metadata_m = vmap_run_ekf(jnp.array(key_seeds), cfg, data_dict)
+            res_m, metadata_m = vmap_run_ekf(jnp.array(key_seeds), cfg, data_dict)
             duration = (datetime.now() - start_time).total_seconds()
 
-            rs_m = {
+            res = {
                 "task": task,
                 "active": is_al,
-                "test_logpdf_all": rs_m["test_logpdf"],
-                "test_acc_all": rs_m["test_acc"],
+                "test_logpdf_all": res_m["test_logpdf"],
+                "test_acc_all": res_m["test_acc"],
                 # acc
-                "train_acc_warm": MeanStd(rs_m["train_acc"][:, 0]),
-                "train_acc": MeanStd(rs_m["train_acc"][:, -1]),
-                "test_acc_warm": MeanStd(rs_m["test_acc"][:, 0]),
-                "test_acc": MeanStd(rs_m["test_acc"][:, -1]),
-                "test_acc_bma": MeanStd(rs_m["test_acc_bma"][:, -1]),
+                "train_acc_warm": MeanStd(res_m["train_acc"][:, 0]),
+                "train_acc": MeanStd(res_m["train_acc"][:, -1]),
+                "test_acc_warm": MeanStd(res_m["test_acc"][:, 0]),
+                "test_acc": MeanStd(res_m["test_acc"][:, -1]),
+                "test_acc_bma": MeanStd(res_m["test_acc_bma"][:, -1]),
                 # logpdf
-                "train_logpdf_warm": MeanStd(rs_m["train_logpdf"][:, 0]),
-                "train_logpdf": MeanStd(rs_m["train_logpdf"][:, -1]),
-                "test_logpdf_warm": MeanStd(rs_m["test_logpdf"][:, 0]),
-                "test_logpdf": MeanStd(rs_m["test_logpdf"][:, -1]),
+                "train_logpdf_warm": MeanStd(res_m["train_logpdf"][:, 0]),
+                "train_logpdf": MeanStd(res_m["train_logpdf"][:, -1]),
+                "test_logpdf_warm": MeanStd(res_m["test_logpdf"][:, 0]),
+                "test_logpdf": MeanStd(res_m["test_logpdf"][:, -1]),
             }
 
-            stats[task][is_al] = rs_m
+            stats[task][is_al] = res
 
             print(
                 f"  active={str(is_al):5}, "
-                f"acc: {rs_m['test_acc'].mean:.2%} ± {rs_m['test_acc'].std:.2%}, "
-                # f"acc: {results['test_acc_warm']:.2%} ± {results['test_acc_warm_std']:.2%} -> {results['test_acc']:.2%} ± {results['test_acc_std']:.2%}, "
-                f"logpdf: {rs_m['test_logpdf'].mean:.2f} ± {rs_m['test_logpdf'].std:.2f}, "
+                f"acc: {res['test_acc'].mean:.2%} ± {res['test_acc'].std:.2%}, "
+                # f"acc: {res['test_acc_warm']:.2%} ± {res['test_acc_warm_std']:.2%} -> {res['test_acc']:.2%} ± {res['test_acc_std']:.2%}, "
+                f"logpdf: {res['test_logpdf'].mean:.2f} ± {res['test_logpdf'].std:.2f}, "
                 # f"({metadata_m['full_param_count'][0]:,d} -> {metadata_m['subspace_param_count'][0]:,d}) "
                 f"({duration:.1f}s)"
-                f", bma_acc: {rs_m['test_acc_bma'].mean:.2%} ± {rs_m['test_acc_bma'].std:.2%}, "
+                f", bma_acc: {res['test_acc_bma'].mean:.2%} ± {res['test_acc_bma'].std:.2%}, "
             )
 
-    print("\n === Printing extra stats ===")
-    # for results in stats:
+    # print("\n === Printing extra stats ===")
+    # for stat in stats:
     #     print(
-    #         f"{results['task']} ({duration:.1f}s):\n"
+    #         f"{stat['task']} ({duration:.1f}s):\n"
     #         f"  ({metadata_m['full_param_count'][0]:,d} -> {metadata_m['subspace_param_count'][0]:,d})\n"
-    #         f"  Train acc:    {results['train_acc_warm']:.2%} ± {results['train_acc_warm_std']:.2%} -> {results['train_acc']:.2%} ± {results['train_acc_std']:.2%}\n"
-    #         f"  Acc:          {results['test_acc_warm']:.2%} ± {results['test_acc_warm_std']:.2%} -> {results['test_acc']:.2%} ± {results['test_acc_std']:.2%}\n"
-    #         f"  Acc BMA:      {results['test_acc_bma']:.2%} ± {results['test_acc_bma_std']:.2%}\n"
-    #         f"  Train logpdf: {results['train_logpdf_warm']:.2f} ± {results['train_logpdf_warm_std']:.2f} -> {results['train_logpdf']:.2f} ± {results['train_logpdf_std']:.2f}\n"
-    #         f"  logpdf:       {results['test_logpdf_warm']:.2f} ± {results['test_logpdf_warm_std']:.2f} -> {results['test_logpdf']:.2f} ± {results['test_logpdf_std']:.2f}\n"
+    #         f"  Train acc:    {stat['train_acc_warm']:.2%} ± {stat['train_acc_warm_std']:.2%} -> {stat['train_acc']:.2%} ± {stat['train_acc_std']:.2%}\n"
+    #         f"  Acc:          {stat['test_acc_warm']:.2%} ± {stat['test_acc_warm_std']:.2%} -> {stat['test_acc']:.2%} ± {stat['test_acc_std']:.2%}\n"
+    #         f"  Acc BMA:      {stat['test_acc_bma']:.2%} ± {stat['test_acc_bma_std']:.2%}\n"
+    #         f"  Train logpdf: {stat['train_logpdf_warm']:.2f} ± {stat['train_logpdf_warm_std']:.2f} -> {stat['train_logpdf']:.2f} ± {stat['train_logpdf_std']:.2f}\n"
+    #         f"  logpdf:       {stat['test_logpdf_warm']:.2f} ± {stat['test_logpdf_warm_std']:.2f} -> {stat['test_logpdf']:.2f} ± {stat['test_logpdf_std']:.2f}\n"
     #     )
 
     # * plot logpdf learning curve

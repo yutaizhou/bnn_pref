@@ -14,6 +14,7 @@ from bnn_pref.data import make_synthetic_data
 from bnn_pref.data.ekf_env import EKFEnvironment
 from bnn_pref.utils.hydra_resolvers import *
 from bnn_pref.utils.metrics import (
+    MeanStd,
     compute_acc_nn,
     compute_logpdf_nn,
     compute_pref_ranking_acc,
@@ -87,22 +88,20 @@ def main(cfg):
 
         start_time = datetime.now()
         vmap_run_ekf = jax.vmap(run_ekf, in_axes=(0, None))
-        results_m, metadata_m = vmap_run_ekf(jnp.array(subkeys), new_cfg)
+        res_m, metadata_m = vmap_run_ekf(jnp.array(subkeys), new_cfg)
         duration = (datetime.now() - start_time).total_seconds()
 
         # Compute statistics
-        results = {
+        res = {
             "n_feats": n_feats,
-            "accs_mean": results_m["test_acc"].mean(),
-            "accs_std": results_m["test_acc"].std(),
-            "logpdf_mean": results_m["test_logpdf"].mean(),
-            "logpdf_std": results_m["test_logpdf"].std(),
+            "test_acc": MeanStd(res_m["test_acc"]),
+            "test_logpdf": MeanStd(res_m["test_logpdf"]),
         }
-        stats.append(results)
+        stats.append(res)
 
         print(
-            f"n_feats={n_feats:4}, acc = {results['accs_mean']:.2%} ± {results['accs_std']:.1%}, "
-            f"logpdf = {results['logpdf_mean']:.2f} ± {results['logpdf_std']:.1f}, "
+            f"n_feats={n_feats:4}, acc = {res['test_acc'].mean:.2%} ± {res['test_acc'].std:.1%}, "
+            f"logpdf = {res['test_logpdf'].mean:.2f} ± {res['test_logpdf'].std:.1f}, "
             f"Param count: {metadata_m['full_param_count'][0]} -> {metadata_m['subspace_param_count'][0]}, "
             f"Time: {duration:.1f} seconds"
         )
@@ -113,8 +112,8 @@ def main(cfg):
     color1 = "tab:blue"
     ax1.errorbar(
         [stat["n_feats"] for stat in stats],
-        [stat["accs_mean"] for stat in stats],
-        yerr=[stat["accs_std"] for stat in stats],
+        [stat["test_acc"].mean for stat in stats],
+        yerr=[stat["test_acc"].std for stat in stats],
         label="Accuracy",
         marker="o",
         markersize=3,
@@ -130,8 +129,8 @@ def main(cfg):
     color2 = "tab:orange"
     ax2.errorbar(
         [stat["n_feats"] for stat in stats],
-        [stat["logpdf_mean"] for stat in stats],
-        yerr=[stat["logpdf_std"] for stat in stats],
+        [stat["test_logpdf"].mean for stat in stats],
+        yerr=[stat["test_logpdf"].std for stat in stats],
         label="Logpdf",
         marker="o",
         markersize=3,

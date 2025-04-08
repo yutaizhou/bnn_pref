@@ -18,7 +18,7 @@ from bnn_pref.alg.mcmc import build_hmc, build_mh, plot_samples, plot_trace, run
 from bnn_pref.data import make_synthetic_data
 from bnn_pref.data.pref_utils import BradleyTerry
 from bnn_pref.utils.hydra_resolvers import *
-from bnn_pref.utils.metrics import alignment_metric, compute_accuracy2_mcmc
+from bnn_pref.utils.metrics import MeanStd, alignment_metric, compute_accuracy2_mcmc
 from bnn_pref.utils.test_functions import test_functions_dict
 from bnn_pref.utils.utils import get_random_seed
 
@@ -56,7 +56,7 @@ def run_experiment(key, cfg):
     sample_D /= jnpl.norm(sample_D)
     test_logpdf = dist.logpdf(sample_D, test_prefs, learned_reward_fn).mean()
 
-    results = {"accs": test_accs, "aligns": aligns, "logpdf": test_logpdf}
+    results = {"test_accs": test_accs, "aligns": aligns, "test_logpdf": test_logpdf}
     metadata = {"true_reward": true_param_D}
 
     return results, metadata
@@ -79,23 +79,21 @@ def run_dimensinality_exp(cfg):
 
         start_time = datetime.now()
         vmap_run_experiment = jax.vmap(run_experiment, in_axes=(0, None))
-        results, metadata = vmap_run_experiment(jnp.array(subkeys), new_cfg)
+        res_m, metadata_m = vmap_run_experiment(jnp.array(subkeys), new_cfg)
         duration = (datetime.now() - start_time).total_seconds()
-        stats.append(
-            {
-                "n_feats": n_feats,
-                "accs_mean": results["accs"].mean(),
-                "accs_std": results["accs"].std(),
-                "aligns_mean": results["aligns"].mean(),
-                "aligns_std": results["aligns"].std(),
-                "logpdf_mean": results["logpdf"].mean(),
-                "logpdf_std": results["logpdf"].std(),
-            }
-        )
+
+        stat = {
+            "n_feats": n_feats,
+            "test_acc": MeanStd(res_m["test_accs"]),
+            "aligns": MeanStd(res_m["aligns"]),
+            "test_logpdf": MeanStd(res_m["test_logpdf"]),
+        }
+        stats.append(stat)
+
         print(
-            f"n_feats={n_feats:4}, acc = {results['accs'].mean():.2%} ± {results['accs'].std():.1%}, "
-            f"align = {results['aligns'].mean():.2f} ± {results['aligns'].std():.1f}, "
-            f"avg_ll = {results['logpdf'].mean():.2f} ± {results['logpdf'].std():.1f}, "
+            f"n_feats={n_feats:4}, acc = {stat['test_acc'].mean:.2%} ± {stat['test_acc'].std:.1%}, "
+            f"align = {stat['aligns'].mean:.2f} ± {stat['aligns'].std:.1f}, "
+            f"avg_ll = {stat['test_logpdf'].mean:.2f} ± {stat['test_logpdf'].std:.1f}, "
             f"Time: {duration:.1f} seconds"
         )
 
@@ -106,8 +104,8 @@ def run_dimensinality_exp(cfg):
     color1 = "tab:blue"
     ax1.errorbar(
         [stat["n_feats"] for stat in stats],
-        [stat["accs_mean"] for stat in stats],
-        yerr=[stat["accs_std"] for stat in stats],
+        [stat["test_acc"].mean for stat in stats],
+        yerr=[stat["test_acc"].std for stat in stats],
         label="Accuracy",
         marker="o",
         markersize=3,
@@ -115,8 +113,8 @@ def run_dimensinality_exp(cfg):
     )
     ax1.errorbar(
         [stat["n_feats"] for stat in stats],
-        [stat["aligns_mean"] for stat in stats],
-        yerr=[stat["aligns_std"] for stat in stats],
+        [stat["aligns"].mean for stat in stats],
+        yerr=[stat["aligns"].std for stat in stats],
         label="Alignment",
         marker="o",
         markersize=3,
@@ -132,8 +130,8 @@ def run_dimensinality_exp(cfg):
     color2 = "tab:orange"
     ax2.errorbar(
         [stat["n_feats"] for stat in stats],
-        [stat["logpdf_mean"] for stat in stats],
-        yerr=[stat["logpdf_std"] for stat in stats],
+        [stat["test_logpdf"].mean for stat in stats],
+        yerr=[stat["test_logpdf"].std for stat in stats],
         label="Log-Likelihood",
         marker="o",
         markersize=3,

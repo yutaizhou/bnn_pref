@@ -20,7 +20,7 @@ from bnn_pref.alg.agent_utils import run_gradient_descent
 from bnn_pref.data import dataset_creators
 from bnn_pref.data.ekf_env import retrieve
 from bnn_pref.utils.hydra_resolvers import *
-from bnn_pref.utils.metrics import compute_acc_nn, compute_logpdf_nn
+from bnn_pref.utils.metrics import MeanStd, compute_acc_nn, compute_logpdf_nn
 from bnn_pref.utils.network import RewardNet, count_params
 from bnn_pref.utils.utils import get_random_seed
 
@@ -142,23 +142,20 @@ def run_dimensinality_exp(cfg):
 
         start_time = datetime.now()
         vmap_run_experiment = jax.vmap(run_experiment, in_axes=(0, None))
-        results, metadata = vmap_run_experiment(jnp.array(subkeys), new_cfg)
+        res_m, metadata_m = vmap_run_experiment(jnp.array(subkeys), new_cfg)
         duration = (datetime.now() - start_time).total_seconds()
 
-        stats.append(
-            {
-                "acc_mean": results["test_acc"].mean(),
-                "acc_std": results["test_acc"].std(),
-                "logpdf_mean": results["test_logpdf"].mean(),
-                "logpdf_std": results["test_logpdf"].std(),
-            }
-        )
+        stat = {
+            "test_acc": MeanStd(res_m["test_acc"]),
+            "test_logpdf": MeanStd(res_m["test_logpdf"]),
+        }
+        stats.append(stat)
 
         print(
             f"{task:14}: "
-            f"acc: {results['test_acc'].mean():.2%} ± {results['test_acc'].std():.1%}, "
-            f"logpdf: {results['test_logpdf'].mean():.2f} ± {results['test_logpdf'].std():.1f}, "
-            f"({metadata['param_count'][0]:,d}) "
+            f"acc: {stat['test_acc'].mean:.2%} ± {stat['test_acc'].std:.1%}, "
+            f"logpdf: {stat['test_logpdf'].mean:.2f} ± {stat['test_logpdf'].std:.1f}, "
+            f"({metadata_m['param_count'][0]:,d}) "
             f"({duration:.1f}s)"
         )
 

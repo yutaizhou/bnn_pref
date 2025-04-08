@@ -18,7 +18,7 @@ from bnn_pref.alg.mcmc import build_hmc, build_mh, plot_samples, plot_trace, run
 from bnn_pref.data import dataset_creators
 from bnn_pref.data.pref_utils import BradleyTerry
 from bnn_pref.utils.hydra_resolvers import *
-from bnn_pref.utils.metrics import alignment_metric, compute_accuracy2_mcmc
+from bnn_pref.utils.metrics import MeanStd, compute_accuracy2_mcmc
 from bnn_pref.utils.test_functions import test_functions_dict
 from bnn_pref.utils.utils import get_random_seed
 
@@ -56,7 +56,7 @@ def run_experiment(key, cfg):
     sample_D /= jnpl.norm(sample_D)
     test_logpdf = dist.logpdf(sample_D, test_prefs, learned_reward_fn).mean()
 
-    results = {"accs": test_accs, "logpdf": test_logpdf}
+    results = {"test_accs": test_accs, "test_logpdf": test_logpdf}
     metadata = None
 
     return results, metadata
@@ -92,20 +92,19 @@ def run_dimensinality_exp(cfg):
 
         start_time = datetime.now()
         vmap_run_experiment = jax.vmap(run_experiment, in_axes=(0, None))
-        results, metadata = vmap_run_experiment(jnp.array(subkeys), new_cfg)
+        res_m, metadata_m = vmap_run_experiment(jnp.array(subkeys), new_cfg)
         duration = (datetime.now() - start_time).total_seconds()
-        stats.append(
-            {
-                "accs_mean": results["accs"].mean(),
-                "accs_std": results["accs"].std(),
-                "logpdf_mean": results["logpdf"].mean(),
-                "logpdf_std": results["logpdf"].std(),
-            }
-        )
+
+        stat = {
+            "test_accs": MeanStd(res_m["test_accs"]),
+            "test_logpdf": MeanStd(res_m["test_logpdf"]),
+        }
+        stats.append(stat)
+
         print(
             f"{task:10}: "
-            f"acc = {results['accs'].mean():.2%} ± {results['accs'].std():.1%}, "
-            f"avg_ll = {results['logpdf'].mean():.2f} ± {results['logpdf'].std():.1f}, "
+            f"acc = {stat['test_accs'].mean:.2%} ± {stat['test_accs'].std:.1%}, "
+            f"avg_ll = {stat['test_logpdf'].mean:.2f} ± {stat['test_logpdf'].std:.1f}, "
             f"Time: {duration:.1f} seconds"
         )
 
