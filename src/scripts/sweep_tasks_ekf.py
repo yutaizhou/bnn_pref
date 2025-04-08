@@ -32,7 +32,7 @@ logging.getLogger("jax._src.xla_bridge").setLevel(logging.ERROR)
 jnp.set_printoptions(precision=2)
 
 
-def run_ekf(key, cfg, data_dict):
+def run_ekf(key, cfg, data_dict, env):
     ekf_cfg = cfg["ekf"]
     data_cfg = cfg["data"]
 
@@ -44,13 +44,7 @@ def run_ekf(key, cfg, data_dict):
     train_prefs, test_prefs = data_dict["train_prefs"], data_dict["test_prefs"]
 
     # * build + run bandit alg
-    key, key_env, key_bandit, key_bma = jr.split(key, 4)
-    env = EKFEnvironment(
-        key_env,
-        X=train_prefs.queries_Q2TD,
-        Y=jax.nn.one_hot(train_prefs.responses_Q1.squeeze(), num_classes=2),
-    )
-
+    key, key_bandit, key_bma = jr.split(key, 3)
     bel_trace, bandit = bandit_pipeline(key_bandit, env, ekf_cfg)
 
     # * compute metrics
@@ -141,6 +135,14 @@ def main(cfg):
 
     for task in tasks:
         print(f"{task}: ")
+        key, key_data, key_env, *key_seeds = jr.split(key, 3 + cfg["seeds"])
+        data_dict = dataset_creators[cfg["task"]["ds_type"]](key_data, cfg)
+        train_prefs = data_dict["train_prefs"]
+        env = EKFEnvironment(
+            key_env,
+            X=train_prefs.queries_Q2TD,
+            Y=jax.nn.one_hot(train_prefs.responses_Q1.squeeze(), num_classes=2),
+        )
         for is_al in [False, True]:
             # * update cfg
             new_cfg = hydra.compose(
@@ -154,12 +156,9 @@ def main(cfg):
             cfg["ekf"]["active"] = is_al
 
             # * run
-            key, key_data, *key_seeds = jr.split(key, 2 + cfg["seeds"])
-            data_dict = dataset_creators[cfg["task"]["ds_type"]](key_data, cfg)
-
             start_time = datetime.now()
-            vmap_run_ekf = jax.vmap(run_ekf, in_axes=(0, None, None))
-            res_m, metadata_m = vmap_run_ekf(jnp.array(key_seeds), cfg, data_dict)
+            vmap_run_ekf = jax.vmap(run_ekf, in_axes=(0, None, None, None))
+            res_m, metadata_m = vmap_run_ekf(jnp.array(key_seeds), cfg, data_dict, env)
             duration = (datetime.now() - start_time).total_seconds()
 
             res = {
@@ -213,9 +212,14 @@ def main(cfg):
         y_min = min(stat["test_logpdf_all"].min() for stat in stats[task].values())
         ax.set_ylim(y_min, 0)
         for is_al in [False, True]:
-            stat = stats[task][is_al]
-            # (n_seeds, nq_update)
-            ax.plot(stat["test_logpdf_all"][0], label="Active" if is_al else "Random")
+            values = stats[task][is_al]["test_logpdf_all"]  # (n_seeds, nq_update)
+            ax.plot(values.mean(0), label="Active" if is_al else "Random")
+            ax.fill_between(
+                jnp.arange(values.shape[1]),
+                values.mean(0) - values.std(0),
+                values.mean(0) + values.std(0),
+                alpha=0.2,
+            )
         ax.set_title(f"{task}")
 
     dummy_lines = [plt.plot([], [], label=label)[0] for label in ["Random", "Active"]]
@@ -231,9 +235,14 @@ def main(cfg):
         ax = axs[i]
         ax.set_ylim(0, 1)
         for is_al in [False, True]:
-            stat = stats[task][is_al]
-            # (n_seeds, nq_update)
-            ax.plot(stat["test_acc_all"][0], label="Active" if is_al else "Random")
+            values = stats[task][is_al]["test_acc_all"]  # (n_seeds, nq_update)
+            ax.plot(values.mean(0), label="Active" if is_al else "Random")
+            ax.fill_between(
+                jnp.arange(values.shape[1]),
+                values.mean(0) - values.std(0),
+                values.mean(0) + values.std(0),
+                alpha=0.2,
+            )
         ax.set_title(f"{task}")
 
     dummy_lines = [plt.plot([], [], label=label)[0] for label in ["Random", "Active"]]

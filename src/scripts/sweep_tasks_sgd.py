@@ -80,8 +80,6 @@ def run_experiment(key, cfg):
         has_aux=True,
     )
 
-    # Print training metrics
-
     # Evaluate on test set
     pref_predictor = partial(pref_predictor, final_ts.params)
     test_acc = compute_acc_nn(pref_predictor, test_prefs)
