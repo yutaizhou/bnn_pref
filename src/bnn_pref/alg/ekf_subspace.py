@@ -17,12 +17,13 @@ from sklearn.decomposition import PCA
 from tensorflow_probability.substrates import jax as tfp
 
 from bnn_pref.alg.agent_utils import (
+    Agent,
     JaxPCA,
+    bt_loss_fn,
     generate_random_basis,
     run_gradient_descent,
     subspace2full_params,
 )
-from bnn_pref.data.ekf_env import retrieve
 from bnn_pref.utils.network import count_params
 from bnn_pref.utils.type import CARL, BeliefState
 from bnn_pref.utils.utils import vmap_chunked
@@ -30,7 +31,7 @@ from bnn_pref.utils.utils import vmap_chunked
 tfd = tfp.distributions
 
 
-class SubspaceNeuralEKF:
+class SubspaceNeuralEKF(Agent):
     def __init__(
         self,
         n_feats: int,
@@ -74,21 +75,21 @@ class SubspaceNeuralEKF:
         batch_size: Optional[int]
             The batch size for mini-batch SGD.
         """
-        self.n_feats = n_feats
-        self.model = model
-        self.opt = opt
-        self.prior_noise = prior_noise
-        self.warm_burns = warm_burns
-        self.niters = niters
-        self.thinning = thinning
-        self.dynamics_noise = dynamics_noise
-        self.obs_noise = obs_noise
-        self.sub_dim = sub_dim
-        self.rnd_proj = rnd_proj
-        self.l2_reg = l2_reg
-        self.batch_size = batch_size
-        self.iekf = iekf
-        self.mi_samples = mi_samples
+        self.n_feats: int = n_feats
+        self.model: nn.Module = model
+        self.opt: optax.GradientTransformation = opt
+        self.prior_noise: float = prior_noise
+        self.warm_burns: int = warm_burns
+        self.niters: int = niters
+        self.thinning: int = thinning
+        self.dynamics_noise: float = dynamics_noise
+        self.obs_noise: float = obs_noise
+        self.sub_dim: Union[float, int] = sub_dim
+        self.rnd_proj: bool = rnd_proj
+        self.l2_reg: float = l2_reg
+        self.batch_size: int = batch_size
+        self.iekf: int = iekf
+        self.mi_samples: int = mi_samples
 
         if not rnd_proj:
             n_eff_iterates = (niters - warm_burns) // thinning
@@ -112,25 +113,17 @@ class SubspaceNeuralEKF:
             apply_fn=self.model.apply, params=initial_params, tx=self.opt
         )
 
-        def loss_fn(params, batch_idx: Float[Array, "batch_size"]):
-            # For full batch, use all data
-            bs = self.batch_size
-            contexts_B2TD = contexts if bs == -1 else retrieve(contexts, batch_idx)
-            labels_B2 = labels if bs == -1 else retrieve(labels, batch_idx)  # one-hot
-            logits_B2 = self.model.apply({"params": params}, contexts_B2TD)
-            loss = optax.softmax_cross_entropy(logits_B2, labels_B2).mean()
-            params_flat, _ = ravel_pytree(params)
-            l2_loss = self.l2_reg * (params_flat**2).sum()
-            return loss + l2_loss, logits_B2
-
         key, key_sgd = jr.split(key, 2)
         warm_ts, warm_metrics = run_gradient_descent(
             key_sgd,
             ts,
-            loss_fn,
+            loss_fn=bt_loss_fn,
+            has_aux=True,
+            model=self.model,
+            dataset=warmup_data,
             niters=self.niters,
-            data_size=contexts.shape[0],
             batch_size=self.batch_size,
+            l2_reg=self.l2_reg,
         )
 
         params_trace = warm_metrics["params"][self.warm_burns :: self.thinning]

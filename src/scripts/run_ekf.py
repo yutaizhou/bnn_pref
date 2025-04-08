@@ -90,15 +90,13 @@ def main(cfg):
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 8))
     ax1.plot(res["train_acc"], label="train acc")
     ax1.plot(res["test_acc"], label="test acc")
-    # ax1.plot(al_results["train_acc_bma"], label="train acc bma")
-    # ax1.plot(al_results["test_acc_bma"], label="test acc bma")
     ax1.set_ylim(0, 1)
     ax1.legend()
     ax2.plot(res["train_logpdf"], label="train logpdf")
     ax2.plot(res["test_logpdf"], label="test logpdf")
     ax2.set_ylim(None, 0)
     ax2.legend()
-    plt.show()
+    # plt.show()
 
     # * visualization
     if (task_kw["ds_type"] == "ogbench") and (n_feats == 2):

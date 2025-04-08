@@ -1,0 +1,23 @@
+# * NN model
+learning_rate: 0.001
+hidden_sizes:
+  - 32
+  - 32
+
+# * Data partitioning for EKF Trainer (bandit_pipeline)
+nq_init: 200 # num samples to use for SGD belief initalization
+nq_update: -1 # num samples to do EKF filtering (if -1, use all remaining afer nq_init)
+
+# * active learning
+active: False
+M: 20 # ensemble size
+
+# * Init
+niters: 100  # Total number of GD steps on warmup data
+bs: 32 # -1 for full batch GD. Otherwise, mini-batch SGD
+l2_reg: 0
+
+# * Update
+cls:
+  niters: ${..niters}
+  bs: ${..bs}

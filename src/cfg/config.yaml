@@ -3,6 +3,7 @@ defaults:
 - task: synthetic
 - mcmc: mh
 - ekf: ekf
+- sgd: sgd
 - data: base
 - optional local: default # specifies project dir & wandb login, goes after wandb
 # - optional run: debug

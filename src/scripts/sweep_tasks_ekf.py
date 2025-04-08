@@ -37,8 +37,7 @@ def run_ekf(key, cfg, data_dict, env):
     data_cfg = cfg["data"]
 
     nq_train, nq_test = data_cfg["nq_train"], data_cfg["nq_test"]
-    nq_init = ekf_cfg["nq_init"]
-    nq_update = ekf_cfg["nq_update"]
+    nq_init, nq_update = ekf_cfg["nq_init"], ekf_cfg["nq_update"]
     n_updates = (nq_train - nq_init) if nq_update == -1 else nq_update
 
     train_prefs, test_prefs = data_dict["train_prefs"], data_dict["test_prefs"]
@@ -147,18 +146,14 @@ def main(cfg):
             # * update cfg
             new_cfg = hydra.compose(
                 "config",
-                overrides=[
-                    f"task={task}",
-                    f"ekf.active={is_al}",
-                ],
+                overrides=[f"task={task}", f"ekf.active={is_al}"],
             )
-            cfg["task"] = new_cfg["task"]
-            cfg["ekf"]["active"] = is_al
 
             # * run
-            start_time = datetime.now()
+            seeds = jnp.array(key_seeds)
             vmap_run_ekf = jax.vmap(run_ekf, in_axes=(0, None, None, None))
-            res_m, metadata_m = vmap_run_ekf(jnp.array(key_seeds), cfg, data_dict, env)
+            start_time = datetime.now()
+            res_m, metadata_m = vmap_run_ekf(seeds, new_cfg, data_dict, env)
             duration = (datetime.now() - start_time).total_seconds()
 
             res = {

@@ -1,14 +1,31 @@
-from typing import Callable, Union
+from abc import ABC, abstractmethod
+from typing import Callable, Dict, Tuple, Union
 
 import jax.numpy as jnp
 import jax.random as jr
+import optax
+from flax import linen as nn
 from flax.training.train_state import TrainState
 from jax import jit, value_and_grad
 from jax.flatten_util import ravel_pytree
 from jax.lax import scan
 from jaxtyping import Array, Float
 
-from bnn_pref.data.ekf_env import BatchIndexManager
+from bnn_pref.data.ekf_env import CARL, BatchIndexManager, retrieve
+
+
+class Agent(ABC):
+    @abstractmethod
+    def init_bel(self, key, warmup_data: CARL):
+        pass
+
+    @abstractmethod
+    def update_bel(self, bel, batch: CARL):
+        pass
+
+    @abstractmethod
+    def acquire_next_query(self, key, bel, context: Float[Array, "2 T D"]) -> int:
+        pass
 
 
 def subspace2full_params(
@@ -30,35 +47,57 @@ def generate_random_basis(key, d: int, D: int):
     return P
 
 
+def bt_loss_fn(params, model, batch, l2_reg: float = 0.0):
+    contexts_B2TD, labels_B2 = batch
+    logits_B2 = model.apply({"params": params}, contexts_B2TD)
+    loss = optax.softmax_cross_entropy(logits_B2, labels_B2).mean()
+    params_flat, _ = ravel_pytree(params)
+    l2_loss = l2_reg * (params_flat**2).sum()
+    return loss + l2_loss, logits_B2
+
+
 def run_gradient_descent(
     key,
     ts: TrainState,
     loss_fn: Callable,
+    has_aux: bool,
+    model: nn.Module,
+    dataset: CARL,
     niters: int,
-    data_size: int,
     batch_size: int = -1,
-    has_aux: bool = True,
+    l2_reg: float = 0.0,
 ):
     """
     Run GD training for exactly niters steps.
     If batch_size == -1, run full-batch GD. Otherwise, run mini-batch SGD.
     """
 
+    contexts, _, _, labels = dataset
+    N = contexts.shape[0]
+    bs = batch_size
+
     @jit
-    def step(state, idxs):
+    def train_step(ts: TrainState, idxs_B) -> Tuple[TrainState, Dict]:
+        # retrieve batch. If full batch (bs==-1), use all data
+        contexts_B2TD = contexts if bs == -1 else retrieve(contexts, idxs_B)
+        labels_B2 = labels if bs == -1 else retrieve(labels, idxs_B)  # one-hot
+        batch = (contexts_B2TD, labels_B2)
+
+        # loss, grad, update
         grad_fn = value_and_grad(loss_fn, has_aux=has_aux)
-        val, grads = grad_fn(state.params, idxs)
+        val, grads = grad_fn(ts.params, model, batch, l2_reg)
         loss = val[0] if has_aux else val
-        state = state.apply_gradients(grads=grads)
-        flat_params, _ = ravel_pytree(state.params)
-        return state, {"loss": loss, "params": flat_params}
+
+        ts = ts.apply_gradients(grads=grads)
+        flat_params, _ = ravel_pytree(ts.params)
+        return ts, {"loss": loss, "params": flat_params}
 
     # Create batch manager and get all batches upfront
-    batch_manager = BatchIndexManager(key, data_size, batch_size)
+    batch_manager = BatchIndexManager(key, N, batch_size)
     batch_idxs = batch_manager.get_n_batches(niters)  # (niters, batch_size)
 
     # Run all steps
-    ts, metrics = scan(step, init=ts, xs=batch_idxs)
+    ts, metrics = scan(train_step, init=ts, xs=batch_idxs)
     return ts, metrics
 
 

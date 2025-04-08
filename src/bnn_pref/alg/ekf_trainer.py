@@ -109,17 +109,3 @@ def run_bandit(
 
     # print(ts)
     return bel_trace
-
-
-def summarize_results(warmup_rewards, rewards):
-    """
-    Print a summary of running a Bandit algorithm for a number of runs
-    """
-    warmup_reward = warmup_rewards.sum()
-    rewards = rewards.sum(axis=-1)
-    r_mean = rewards.mean()
-    r_std = rewards.std()
-    r_total = r_mean + warmup_reward
-
-    print(f"Expected Reward : {r_total:0.2f} ± {r_std:0.2f}")
-    return r_total, r_std

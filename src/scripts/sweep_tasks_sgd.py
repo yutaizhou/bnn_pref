@@ -1,4 +1,5 @@
 import logging
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
 from functools import partial
@@ -16,68 +17,66 @@ import numpy as np
 import optax
 from flax.training.train_state import TrainState
 
-from bnn_pref.alg.agent_utils import run_gradient_descent
+from bnn_pref.alg.agent_utils import bt_loss_fn, run_gradient_descent
 from bnn_pref.data import dataset_creators
-from bnn_pref.data.ekf_env import retrieve
+from bnn_pref.data.ekf_env import CARL, EKFEnvironment
 from bnn_pref.utils.hydra_resolvers import *
 from bnn_pref.utils.metrics import MeanStd, compute_acc_nn, compute_logpdf_nn
 from bnn_pref.utils.network import RewardNet, count_params
 from bnn_pref.utils.utils import get_random_seed
 
 
-def run_experiment(key, cfg):
+def run_sgd(key, cfg, data_dict, env):
     # check RLHF paper
-    data_kw = cfg["data"]
-    ekf_kw = cfg["ekf"]
-    task_kw = cfg["task"]
+    data_cfg = cfg["data"]
+    sgd_cfg = cfg["sgd"]
 
-    hidden_sizes = ekf_kw["hidden_sizes"]
-    niters = ekf_kw["cls"]["niters"]
-    batch_size = ekf_kw["cls"]["batch_size"]
-    lr = ekf_kw["learning_rate"]
+    nq_train, nq_test = data_cfg["nq_train"], data_cfg["nq_test"]
+    nq_init, nq_update = sgd_cfg["nq_init"], sgd_cfg["nq_update"]
+    n_updates = nq_update if nq_update != -1 else nq_test - nq_init
 
-    # * generate true params + preference data
-    output = dataset_creators[task_kw["ds_type"]](key, cfg)
-    train_prefs, test_prefs = output["train_prefs"], output["test_prefs"]
-    Q, _, T, D = train_prefs.queries_Q2TD.shape
+    hidden_sizes = sgd_cfg["hidden_sizes"]
+    niters = sgd_cfg["cls"]["niters"]
+    batch_size = sgd_cfg["cls"]["bs"]
+    lr = sgd_cfg["learning_rate"]
+
+    train_prefs, test_prefs = data_dict["train_prefs"], data_dict["test_prefs"]
 
     # Initialize RewardNet
     key, model_key = jr.split(key)
-    reward_net = RewardNet(hidden_sizes)
+    model = RewardNet(hidden_sizes)
     dummy_input = train_prefs.queries_Q2TD[:1]
-    params = reward_net.init(model_key, dummy_input)["params"]
+    params = model.init(model_key, dummy_input)["params"]
 
     # Create optimizer and training state
     optimizer = optax.adam(lr)
     ts = TrainState.create(
-        apply_fn=reward_net.apply,
+        apply_fn=model.apply,
         params=params,
         tx=optimizer,
     )
 
-    # Define loss function for preference learning
-    def loss_fn(params, batch_idx):
-        # Retrieve batch data using the retrieve function
-        contexts_batch = retrieve(train_prefs.queries_Q2TD, batch_idx)
-        labels_batch = retrieve(train_prefs.responses_Q1, batch_idx)
-        logits_B2 = reward_net.apply({"params": params}, contexts_batch)
-        labels_B2 = jax.nn.one_hot(labels_batch, num_classes=2)
-        loss = optax.softmax_cross_entropy(logits_B2, labels_B2).mean()
-        return loss, logits_B2
+    train_data = CARL(
+        train_prefs.queries_Q2TD,
+        None,
+        None,
+        jax.nn.one_hot(train_prefs.responses_Q1, num_classes=2),
+    )
 
     def pref_predictor(params, queries_Q2TD):
-        return reward_net.apply({"params": params}, queries_Q2TD)
+        return model.apply({"params": params}, queries_Q2TD)
 
     # Run training
     key, train_key = jr.split(key)
     final_ts, metrics = run_gradient_descent(
         train_key,
         ts,
-        loss_fn,
-        niters=niters,
-        data_size=Q,
-        batch_size=batch_size,
+        loss_fn=bt_loss_fn,
         has_aux=True,
+        model=model,
+        dataset=train_data,
+        niters=niters,
+        batch_size=batch_size,
     )
 
     # Evaluate on test set
@@ -97,7 +96,7 @@ def run_experiment(key, cfg):
 
 
 @hydra.main(version_base=None, config_name="config", config_path="../cfg")
-def run_dimensinality_exp(cfg):
+def main(cfg):
     seed = get_random_seed() if cfg["seed"] == -1 else cfg["seed"]
     key = jr.key(seed)
 
@@ -116,13 +115,12 @@ def run_dimensinality_exp(cfg):
         "walkerWalk",
         "ogbench",
     ]
-    stats = []
-
+    stats = defaultdict(lambda: defaultdict(dict))
     data_cfg = cfg["data"]
-    ekf_cfg = cfg["ekf"]
+    sgd_cfg = cfg["sgd"]
     nq_train, nq_test = data_cfg["nq_train"], data_cfg["nq_test"]
-    batch_size = ekf_cfg["bs"]
-    niters = ekf_cfg["niters"]
+    batch_size = sgd_cfg["bs"]
+    niters = sgd_cfg["niters"]
     print(
         f"Seed: {seed} x {cfg['seeds']}\n"
         f"Data:\n"
@@ -132,31 +130,42 @@ def run_dimensinality_exp(cfg):
     )
 
     for task in tasks:
-        new_cfg = hydra.compose(
-            "config",
-            overrides=[f"task={task}"],
+        print(f"{task}: ")
+        key, key_data, key_env, *key_seeds = jr.split(key, 3 + cfg["seeds"])
+        data_dict = dataset_creators[cfg["task"]["ds_type"]](key_data, cfg)
+        train_prefs = data_dict["train_prefs"]
+        env = EKFEnvironment(
+            key_env,
+            X=train_prefs.queries_Q2TD,
+            Y=jax.nn.one_hot(train_prefs.responses_Q1.squeeze(), num_classes=2),
         )
-        key, *subkeys = jr.split(key, 1 + cfg["seeds"])  # m = 1 + n_seeds
+        for is_al in [False, True]:
+            # * update cfg
+            new_cfg = hydra.compose(
+                "config",
+                overrides=[f"task={task}", f"sgd.active={is_al}"],
+            )
 
-        start_time = datetime.now()
-        vmap_run_experiment = jax.vmap(run_experiment, in_axes=(0, None))
-        res_m, metadata_m = vmap_run_experiment(jnp.array(subkeys), new_cfg)
-        duration = (datetime.now() - start_time).total_seconds()
+            # * run
+            seeds = jnp.array(key_seeds)
+            vmap_run_experiment = jax.vmap(run_sgd, in_axes=(0, None, None, None))
+            start_time = datetime.now()
+            res_m, metadata_m = vmap_run_experiment(seeds, new_cfg, data_dict, env)
+            duration = (datetime.now() - start_time).total_seconds()
 
-        stat = {
-            "test_acc": MeanStd(res_m["test_acc"]),
-            "test_logpdf": MeanStd(res_m["test_logpdf"]),
-        }
-        stats.append(stat)
+            stat = {
+                "test_acc": MeanStd(res_m["test_acc"]),
+                "test_logpdf": MeanStd(res_m["test_logpdf"]),
+            }
+            stats[task][is_al] = stat
 
-        print(
-            f"{task:14}: "
-            f"acc: {stat['test_acc'].mean:.2%} ± {stat['test_acc'].std:.1%}, "
-            f"logpdf: {stat['test_logpdf'].mean:.2f} ± {stat['test_logpdf'].std:.1f}, "
-            f"({metadata_m['param_count'][0]:,d}) "
-            f"({duration:.1f}s)"
-        )
+            print(
+                f"  acc: {stat['test_acc'].mean:.2%} ± {stat['test_acc'].std:.1%}, "
+                f"logpdf: {stat['test_logpdf'].mean:.2f} ± {stat['test_logpdf'].std:.1f}, "
+                f"({metadata_m['param_count'][0]:,d}) "
+                f"({duration:.1f}s)"
+            )
 
 
 if __name__ == "__main__":
-    run_dimensinality_exp()
+    main()
