@@ -9,10 +9,10 @@ from jax.lax import scan
 from jax.random import split
 from jaxtyping import Key
 
-from bnn_pref.alg.ekf_subspace import SubspaceNeuralEKF
+from bnn_pref.alg.ekf_subspace import EKFBeliefState, SubspaceNeuralEKF
 from bnn_pref.data.ekf_env import EKFEnvironment
 from bnn_pref.utils.network import RewardNet
-from bnn_pref.utils.type import CAR, CARL, BeliefState
+from bnn_pref.utils.type import CAR, CARL
 
 warnings.filterwarnings("ignore")
 
@@ -66,12 +66,12 @@ def bandit_pipeline(
 def run_bandit(
     key,
     bandit: SubspaceNeuralEKF,
-    bel: BeliefState,
+    bel: EKFBeliefState,
     env: EKFEnvironment,
     warmup_data: CARL,
     nsteps: int,  # either len(env) - nq_init or nq_update
     active: bool = False,
-) -> Tuple[BeliefState, CAR]:
+) -> Tuple[EKFBeliefState, CAR]:
     """
     Run the bandit algorithm on the environment.
     Given `nq_train` queries, warmup sgd took `nq_init` queries
@@ -84,9 +84,9 @@ def run_bandit(
     assert pool_size == len(active_contexts)
 
     def filter_onestep(
-        curr: Tuple[BeliefState, int],
+        curr: Tuple[EKFBeliefState, int],
         key: Key,
-    ) -> Tuple[BeliefState, CAR]:
+    ) -> Tuple[EKFBeliefState, CAR]:
         bel, t = curr
         t_offset = t + nq_init  # offset by nq_init
 

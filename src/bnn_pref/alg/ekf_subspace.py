@@ -25,10 +25,17 @@ from bnn_pref.alg.agent_utils import (
     subspace2full_params,
 )
 from bnn_pref.utils.network import count_params
-from bnn_pref.utils.type import CARL, BeliefState
+from bnn_pref.utils.type import CARL, unpackable_dataclass
 from bnn_pref.utils.utils import vmap_chunked
 
 tfd = tfp.distributions
+
+
+@unpackable_dataclass
+class EKFBeliefState:
+    mean: Float[Array, "system_dim"]
+    cov: Float[Array, "system_dim system_dim"]
+    t: int
 
 
 class SubspaceNeuralEKF(Agent):
@@ -36,7 +43,7 @@ class SubspaceNeuralEKF(Agent):
         self,
         n_feats: int,
         model: nn.Module,
-        opt,
+        opt: optax.GradientTransformation,
         l2_reg: float = 0.0,
         niters: int = 1000,
         batch_size: int = 32,
@@ -75,27 +82,27 @@ class SubspaceNeuralEKF(Agent):
         batch_size: Optional[int]
             The batch size for mini-batch SGD.
         """
-        self.n_feats: int = n_feats
-        self.model: nn.Module = model
-        self.opt: optax.GradientTransformation = opt
-        self.prior_noise: float = prior_noise
-        self.warm_burns: int = warm_burns
-        self.niters: int = niters
-        self.thinning: int = thinning
-        self.dynamics_noise: float = dynamics_noise
-        self.obs_noise: float = obs_noise
-        self.sub_dim: Union[float, int] = sub_dim
-        self.rnd_proj: bool = rnd_proj
-        self.l2_reg: float = l2_reg
-        self.batch_size: int = batch_size
-        self.iekf: int = iekf
-        self.mi_samples: int = mi_samples
+        self.n_feats = n_feats
+        self.model = model
+        self.opt = opt
+        self.l2_reg = l2_reg
+        self.niters = niters
+        self.batch_size = batch_size
+        self.warm_burns = warm_burns
+        self.thinning = thinning
+        self.sub_dim = sub_dim
+        self.rnd_proj = rnd_proj
+        self.prior_noise = prior_noise
+        self.dynamics_noise = dynamics_noise
+        self.obs_noise = obs_noise
+        self.iekf = iekf
+        self.mi_samples = mi_samples
 
         if not rnd_proj:
             n_eff_iterates = (niters - warm_burns) // thinning
             assert n_eff_iterates >= sub_dim, f"{n_eff_iterates=} < {sub_dim=}"
 
-    def init_bel(self, key, warmup_data: CARL) -> BeliefState:
+    def init_bel(self, key, warmup_data: CARL) -> EKFBeliefState:
         """
         Run SGD on warmup data, get subspace projection matrix, initialize EKF
         contexts: Q2TD
@@ -245,14 +252,14 @@ class SubspaceNeuralEKF(Agent):
         #     emission_cov_function=emission_cov_cmgf,
         # )
 
-        bel = BeliefState(mean=init_mean, cov=S, t=0)
+        bel = EKFBeliefState(mean=init_mean, cov=S, t=0)
         return bel
 
     def update_bel(
         self,
-        bel: BeliefState,
+        bel: EKFBeliefState,
         batch: CARL,
-    ) -> BeliefState:
+    ) -> EKFBeliefState:
         prior_mean, prior_cov, t = bel
         context, *_, label = batch
 
@@ -286,13 +293,13 @@ class SubspaceNeuralEKF(Agent):
 
         posterior_mean = posterior.filtered_means[-1]
         posterior_cov = posterior.filtered_covariances[-1]
-        bel = BeliefState(mean=posterior_mean, cov=posterior_cov, t=t + 1)
+        bel = EKFBeliefState(mean=posterior_mean, cov=posterior_cov, t=t + 1)
         return bel
 
     def choose_action(
         self,
         key,
-        bel: BeliefState,
+        bel: EKFBeliefState,
         context: Float[Array, "2 T D"],
     ) -> Scalar:
         # Thompson sampling strategy
@@ -302,14 +309,14 @@ class SubspaceNeuralEKF(Agent):
         action = logits_2.argmax()
         return action
 
-    def sample_params(self, key, bel: BeliefState) -> Array:
+    def sample_params(self, key, bel: EKFBeliefState) -> Array:
         """only used in choose_action()"""
         mean, cov, t = bel
         distr = tfd.MultivariateNormalFullCovariance(mean, cov)
         params = distr.sample(seed=key)
         return params
 
-    def acquire_next_query(self, key, bel: BeliefState, contexts_N2TD) -> int:
+    def acquire_next_query(self, key, bel: EKFBeliefState, contexts_N2TD) -> int:
         """
         active learning: greedily compute query that maximizes InfoGain acquisition fn
         """

@@ -8,7 +8,7 @@ import jax.numpy as jnp
 import jax.numpy.linalg as jnpl
 import optax
 
-from bnn_pref.alg.ekf_subspace import BeliefState
+from bnn_pref.alg.ekf_subspace import EKFBeliefState
 from bnn_pref.data.pref_utils import QueryWithResponse
 from bnn_pref.utils.type import NTD, SD, D
 
@@ -33,7 +33,7 @@ def compute_acc_nn(pref_predictor: Callable, data: QueryWithResponse):
 
 
 def compute_acc_nn_bma(
-    key, sub2full_predict_logits: Callable, bel: BeliefState, data: QueryWithResponse
+    key, sub2full_predict_logits: Callable, bel: EKFBeliefState, data: QueryWithResponse
 ):
     n_models = 10
     mean, cov = bel.mean, bel.cov
@@ -73,7 +73,7 @@ def compute_logpdf_nn(pref_predictor: Callable, data: QueryWithResponse):
 
 
 def compute_logpdf_nn_bel(
-    key, sub2full_predict_logits: Callable, bel: BeliefState, data: QueryWithResponse
+    key, sub2full_predict_logits: Callable, bel: EKFBeliefState, data: QueryWithResponse
 ):
     # todo: this is not used anywhere. need to debug
     n_models = 10

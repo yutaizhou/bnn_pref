@@ -41,14 +41,6 @@ def unpackable_dataclass(cls=None, **kwargs):
     return wrap(cls)
 
 
-# EKF
-@unpackable_dataclass
-class BeliefState:
-    mean: Float[Array, "system_dim"]
-    cov: Float[Array, "system_dim system_dim"]
-    t: int
-
-
 @unpackable_dataclass
 class CAR:
     """Context, Action, Reward"""
