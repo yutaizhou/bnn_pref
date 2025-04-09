@@ -1,11 +1,10 @@
 import warnings
-from typing import Dict, Tuple, Union
+from typing import Dict, Tuple
 
 import jax
 import jax.numpy as jnp
 import jax.random as jr
 import optax
-from flax.training.train_state import TrainState
 from jax.lax import scan
 from jax.random import split
 from jaxtyping import Key
@@ -100,8 +99,8 @@ def bandit_pipeline(
 
 def run_bandit(
     key,
-    bandit: Union[SubspaceNeuralEKF, DeepEnsemble],
-    bel: Union[EKFBeliefState, TrainState],
+    bandit: SubspaceNeuralEKF,
+    bel: EKFBeliefState,
     env: EKFEnvironment,
     warmup_data: CARL,
     nsteps: int,  # either len(env) - nq_init or nq_update

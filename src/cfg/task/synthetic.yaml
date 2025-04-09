@@ -1,4 +1,7 @@
 ds_type: synthetic
+name: ${.f}
+tensordict_path: null
+
 length: 1
 n_feats: 4
 

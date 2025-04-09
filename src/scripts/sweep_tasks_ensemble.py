@@ -14,17 +14,17 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 import matplotlib.pyplot as plt
+from flax.training.train_state import TrainState
 from hydra.core.hydra_config import HydraConfig
 
-from bnn_pref.alg.ekf_trainer import bandit_pipeline
+from bnn_pref.alg.ekf_trainer import ensemble_pipeline
 from bnn_pref.data import dataset_creators
 from bnn_pref.data.ekf_env import EKFEnvironment
 from bnn_pref.utils.hydra_resolvers import *
 from bnn_pref.utils.metrics import (
     MeanStd,
-    compute_acc_nn,
-    compute_acc_nn_bma,
-    compute_logpdf_nn,
+    compute_acc_ensemble,
+    compute_logpdf_ensemble,
 )
 from bnn_pref.utils.utils import get_random_seed
 
@@ -32,35 +32,29 @@ logging.getLogger("jax._src.xla_bridge").setLevel(logging.ERROR)
 jnp.set_printoptions(precision=2)
 
 
-def run_ekf(key, cfg, data_dict, env):
-    ekf_cfg = cfg["ekf"]
+def run_ensemble(key, cfg, data_dict, env):
     data_cfg = cfg["data"]
+    alg_cfg = cfg["sgd"]
 
     nq_train, nq_test = data_cfg["nq_train"], data_cfg["nq_test"]
-    nq_init, nq_update = ekf_cfg["nq_init"], ekf_cfg["nq_update"]
+    nq_init, nq_update = alg_cfg["nq_init"], alg_cfg["nq_update"]
     n_updates = (nq_train - nq_init) if nq_update == -1 else nq_update
-
     train_prefs, test_prefs = data_dict["train_prefs"], data_dict["test_prefs"]
 
-    # * build + run bandit alg
-    key, key_bandit, key_bma = jr.split(key, 3)
-    bel_trace, bandit = bandit_pipeline(key_bandit, env, ekf_cfg)
+    # * build + run ensemble alg
+    key, key_ensemble = jr.split(key, 2)
+    ts_trace, bandit = ensemble_pipeline(key_ensemble, env, alg_cfg)
 
     # * compute metrics
-    sub2full_logits_fn = bandit.sub2full_predict_logits  # (params, N2TD) -> (N2,)
+    def eval_bel(carry, ts: TrainState):
+        fn = jax.vmap(ts.apply_fn, in_axes=(0, None), out_axes=1)  # fn(param, input)
+        fn = partial(fn, {"params": ts.params})
+        train_logpdf = compute_logpdf_ensemble(fn, train_prefs)
+        test_logpdf = compute_logpdf_ensemble(fn, test_prefs)
 
-    def eval_bel(_, bel):
-        mean, cov, t = bel
-        key = jr.fold_in(key_bma, t)
-        fn = jax.vmap(partial(sub2full_logits_fn, mean))
-        train_logpdf = compute_logpdf_nn(fn, train_prefs)
-        test_logpdf = compute_logpdf_nn(fn, test_prefs)
-        train_acc = compute_acc_nn(fn, train_prefs)
-        test_acc = compute_acc_nn(fn, test_prefs)
-        train_acc_bma = compute_acc_nn_bma(key, sub2full_logits_fn, bel, train_prefs)
-        test_acc_bma = compute_acc_nn_bma(key, sub2full_logits_fn, bel, test_prefs)
+        train_acc = compute_acc_ensemble(fn, train_prefs)
+        test_acc = compute_acc_ensemble(fn, test_prefs)
 
-        # all arrays of (1 + nq_updates, )
         result = {
             # * logpdf
             "train_logpdf": train_logpdf,
@@ -68,12 +62,10 @@ def run_ekf(key, cfg, data_dict, env):
             # * acc
             "train_acc": train_acc,
             "test_acc": test_acc,
-            "train_acc_bma": train_acc_bma,
-            "test_acc_bma": test_acc_bma,
         }
         return (), result
 
-    *_, al_results = jax.lax.scan(eval_bel, init=(), xs=bel_trace)
+    *_, al_results = jax.lax.scan(eval_bel, init=(), xs=ts_trace)
 
     results = al_results
     metadata = {
@@ -81,8 +73,8 @@ def run_ekf(key, cfg, data_dict, env):
         "nq_test": nq_test,
         "nq_init": nq_init,
         "nq_update": n_updates,
-        "full_param_count": bandit.full_params_count,
-        "subspace_param_count": bandit.subspace_params_count,
+        "model_params_count": bandit.model_params_count,
+        "ensemble_params_count": bandit.ensemble_params_count,
     }
     return results, metadata
 
@@ -110,26 +102,21 @@ def main(cfg):
     stats = defaultdict(lambda: defaultdict(dict))
 
     data_cfg = cfg["data"]
-    ekf_cfg = cfg["ekf"]
+    alg_cfg = cfg["sgd"]
     nq_train, nq_test = data_cfg["nq_train"], data_cfg["nq_test"]
-    nq_init = ekf_cfg["nq_init"]
-    nq_update = ekf_cfg["nq_update"]
+    nq_init = alg_cfg["nq_init"]
+    nq_update = alg_cfg["nq_update"]
     n_updates = (nq_train - nq_init) if nq_update == -1 else nq_update
-    batch_size = ekf_cfg["bs"]
-    niters = ekf_cfg["niters"]
-    warm_burns = ekf_cfg["warm_burns"]
-    thinning = ekf_cfg["thinning"]
-    sub_dim = ekf_cfg["sub_dim"]
-    rnd_proj = ekf_cfg["rnd_proj"]
-    n_eff_iterates = (niters - warm_burns) // thinning
+    batch_size = alg_cfg["bs"]
+    niters = alg_cfg["niters"]
     print(
         f"Seed: {seed} x {cfg['seeds']}\n"
         f"Data:\n"
         f"  Train/Test: {nq_train}/{nq_test}\n"
         f"  Init/Update: {nq_init}/{n_updates}\n"
-        f"EKF:\n"
-        f"  sub_dim={ekf_cfg['sub_dim']}, rnd_proj={ekf_cfg['rnd_proj']}\n"
-        f"  init: bs={batch_size}, niters={niters}[{warm_burns}::{thinning}] ({n_eff_iterates} eff), {sub_dim=}, {rnd_proj=}\n"
+        f"Ensemble:\n"
+        f"  n_models={alg_cfg['M']}\n"
+        f"  init: bs={batch_size}, niters={niters}\n"
     )
 
     for task in tasks:
@@ -144,16 +131,13 @@ def main(cfg):
         )
         for is_al in [False, True]:
             # * update cfg
-            new_cfg = hydra.compose(
-                "config",
-                overrides=[f"task={task}", f"ekf.active={is_al}"],
-            )
+            new_cfg = hydra.compose("config", overrides=[f"task={task}"])
             cfg["task"].update(new_cfg["task"])
-            cfg["ekf"]["active"] = is_al
+            cfg["sgd"]["active"] = is_al
 
             # * run
             seeds = jnp.array(key_seeds)
-            run_vmap = jax.vmap(run_ekf, in_axes=(0, None, None, None))
+            run_vmap = jax.vmap(run_ensemble, in_axes=(0, None, None, None))
             start_time = datetime.now()
             res_m, metadata_m = run_vmap(seeds, cfg, data_dict, env)
             duration = (datetime.now() - start_time).total_seconds()
@@ -168,7 +152,6 @@ def main(cfg):
                 "train_acc": MeanStd(res_m["train_acc"][:, -1]),
                 "test_acc_warm": MeanStd(res_m["test_acc"][:, 0]),
                 "test_acc": MeanStd(res_m["test_acc"][:, -1]),
-                "test_acc_bma": MeanStd(res_m["test_acc_bma"][:, -1]),
                 # logpdf
                 "train_logpdf_warm": MeanStd(res_m["train_logpdf"][:, 0]),
                 "train_logpdf": MeanStd(res_m["train_logpdf"][:, -1]),
@@ -185,20 +168,7 @@ def main(cfg):
                 f"logpdf: {res['test_logpdf'].mean:.2f} ± {res['test_logpdf'].std:.2f}, "
                 # f"({metadata_m['full_param_count'][0]:,d} -> {metadata_m['subspace_param_count'][0]:,d}) "
                 f"({duration:.1f}s)"
-                f", bma_acc: {res['test_acc_bma'].mean:.2%} ± {res['test_acc_bma'].std:.2%}, "
             )
-
-    # print("\n === Printing extra stats ===")
-    # for stat in stats:
-    #     print(
-    #         f"{stat['task']} ({duration:.1f}s):\n"
-    #         f"  ({metadata_m['full_param_count'][0]:,d} -> {metadata_m['subspace_param_count'][0]:,d})\n"
-    #         f"  Train acc:    {stat['train_acc_warm']:.2%} ± {stat['train_acc_warm_std']:.2%} -> {stat['train_acc']:.2%} ± {stat['train_acc_std']:.2%}\n"
-    #         f"  Acc:          {stat['test_acc_warm']:.2%} ± {stat['test_acc_warm_std']:.2%} -> {stat['test_acc']:.2%} ± {stat['test_acc_std']:.2%}\n"
-    #         f"  Acc BMA:      {stat['test_acc_bma']:.2%} ± {stat['test_acc_bma_std']:.2%}\n"
-    #         f"  Train logpdf: {stat['train_logpdf_warm']:.2f} ± {stat['train_logpdf_warm_std']:.2f} -> {stat['train_logpdf']:.2f} ± {stat['train_logpdf_std']:.2f}\n"
-    #         f"  logpdf:       {stat['test_logpdf_warm']:.2f} ± {stat['test_logpdf_warm_std']:.2f} -> {stat['test_logpdf']:.2f} ± {stat['test_logpdf_std']:.2f}\n"
-    #     )
 
     # * plot logpdf learning curve
     fig, axs = plt.subplots(4, 4, figsize=(12, 8))  # 13 tasks total
@@ -210,12 +180,10 @@ def main(cfg):
         ax.set_ylim(y_min, 0)
         for is_al in [False, True]:
             values = stats[task][is_al]["test_logpdf_all"]  # (n_seeds, nq_update)
-            ax.plot(values.mean(0), label="Active" if is_al else "Random")
+            mean, std = values.mean(0), values.std(0)
+            ax.plot(mean, label="Active" if is_al else "Random")
             ax.fill_between(
-                jnp.arange(values.shape[1]),
-                values.mean(0) - values.std(0),
-                values.mean(0) + values.std(0),
-                alpha=0.2,
+                jnp.arange(values.shape[1]), mean - std, mean + std, alpha=0.2
             )
         ax.set_title(f"{task}")
 
@@ -233,12 +201,10 @@ def main(cfg):
         ax.set_ylim(0, 1)
         for is_al in [False, True]:
             values = stats[task][is_al]["test_acc_all"]  # (n_seeds, nq_update)
-            ax.plot(values.mean(0), label="Active" if is_al else "Random")
+            mean, std = values.mean(0), values.std(0)
+            ax.plot(mean, label="Active" if is_al else "Random")
             ax.fill_between(
-                jnp.arange(values.shape[1]),
-                values.mean(0) - values.std(0),
-                values.mean(0) + values.std(0),
-                alpha=0.2,
+                jnp.arange(values.shape[1]), mean - std, mean + std, alpha=0.2
             )
         ax.set_title(f"{task}")
 

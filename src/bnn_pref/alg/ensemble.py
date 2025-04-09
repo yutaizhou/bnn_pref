@@ -188,7 +188,6 @@ if __name__ == "__main__":
 
     _, (loss, ts) = jax.lax.scan(scan_step, init=ts, length=n_iters)
     print(loss)
-    ipdb.set_trace()
 
     # * Model prediction
     predict_step_vj = jax.jit(jax.vmap(predict_step, in_axes=(0, None)))
