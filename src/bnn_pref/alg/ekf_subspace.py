@@ -41,7 +41,6 @@ class EKFBeliefState:
 class SubspaceNeuralEKF(Agent):
     def __init__(
         self,
-        n_feats: int,
         model: nn.Module,
         opt: optax.GradientTransformation,
         l2_reg: float = 0.0,
@@ -82,7 +81,6 @@ class SubspaceNeuralEKF(Agent):
         batch_size: Optional[int]
             The batch size for mini-batch SGD.
         """
-        self.n_feats = n_feats
         self.model = model
         self.opt = opt
         self.l2_reg = l2_reg
@@ -97,6 +95,7 @@ class SubspaceNeuralEKF(Agent):
         self.obs_noise = obs_noise
         self.iekf = iekf
         self.mi_samples = mi_samples
+        self.n_feats = None
 
         if not rnd_proj:
             n_eff_iterates = (niters - warm_burns) // thinning
@@ -111,6 +110,7 @@ class SubspaceNeuralEKF(Agent):
         labels: Q2 (onehot)
         """
         contexts, _, _, labels = warmup_data
+        self.n_feats = contexts.shape[-1]  # (Q,2,T, D) -> D
         key, model_key = jr.split(key, 2)
         dummy_context = rearrange(jnp.ones_like(contexts[0]), "K T D  -> 1 K T D", K=2)
         initial_params = self.model.init(model_key, dummy_context)["params"]
@@ -126,7 +126,6 @@ class SubspaceNeuralEKF(Agent):
             ts,
             loss_fn=bt_loss_fn,
             has_aux=True,
-            model=self.model,
             dataset=warmup_data,
             niters=self.niters,
             batch_size=self.batch_size,

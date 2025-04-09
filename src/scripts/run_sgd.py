@@ -71,7 +71,6 @@ def main(cfg):
         ts,
         loss_fn=bt_loss_fn,
         has_aux=True,
-        model=model,
         dataset=train_data,
         niters=niters,
         batch_size=batch_size,

@@ -10,7 +10,7 @@ nq_update: -1 # num samples to do EKF filtering (if -1, use all remaining afer n
 
 # * active learning
 active: False
-M: 20 # ensemble size
+M: 3 # ensemble size
 
 # * Init
 niters: 100  # Total number of GD steps on warmup data
@@ -19,5 +19,7 @@ l2_reg: 0
 
 # * Update
 cls:
+  n_models: ${..M}
+  l2_reg: ${..l2_reg}
   niters: ${..niters}
-  bs: ${..bs}
+  batch_size: ${..bs}

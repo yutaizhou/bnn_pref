@@ -47,9 +47,9 @@ def generate_random_basis(key, d: int, D: int):
     return P
 
 
-def bt_loss_fn(params, model, batch, l2_reg: float = 0.0):
+def bt_loss_fn(params, ts: TrainState, batch, l2_reg: float = 0.0):
     contexts_B2TD, labels_B2 = batch
-    logits_B2 = model.apply({"params": params}, contexts_B2TD)
+    logits_B2 = ts.apply_fn({"params": params}, contexts_B2TD)
     loss = optax.softmax_cross_entropy(logits_B2, labels_B2).mean()
     params_flat, _ = ravel_pytree(params)
     l2_loss = l2_reg * (params_flat**2).sum()
@@ -61,7 +61,6 @@ def run_gradient_descent(
     ts: TrainState,
     loss_fn: Callable,
     has_aux: bool,
-    model: nn.Module,
     dataset: CARL,
     niters: int,
     batch_size: int = -1,
@@ -85,7 +84,7 @@ def run_gradient_descent(
 
         # loss, grad, update
         grad_fn = value_and_grad(loss_fn, has_aux=has_aux)
-        val, grads = grad_fn(ts.params, model, batch, l2_reg)
+        val, grads = grad_fn(ts.params, ts, batch, l2_reg)
         loss = val[0] if has_aux else val
 
         ts = ts.apply_gradients(grads=grads)

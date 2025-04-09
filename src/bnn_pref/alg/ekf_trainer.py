@@ -10,11 +10,48 @@ from jax.random import split
 from jaxtyping import Key
 
 from bnn_pref.alg.ekf_subspace import EKFBeliefState, SubspaceNeuralEKF
+from bnn_pref.alg.ensemble import DeepEnsemble
 from bnn_pref.data.ekf_env import EKFEnvironment
 from bnn_pref.utils.network import RewardNet
 from bnn_pref.utils.type import CAR, CARL
 
 warnings.filterwarnings("ignore")
+
+
+def ensemble_pipeline(
+    key,
+    env: EKFEnvironment,
+    sgd_cfg: Dict,
+):
+    *_, n_feats = env.contexts.shape
+    nq_init = sgd_cfg["nq_init"]
+    bs = sgd_cfg["cls"]["batch_size"]
+    n_models = sgd_cfg["cls"]["n_models"]
+    if nq_init < bs:
+        sgd_cfg["cls"]["batch_size"] = 1
+        # print(f"WARNING: {nq_init=} < {bs=}, setting ekf.cls.batch_size = 1")
+    nq_update = sgd_cfg["nq_update"]
+    nsteps = len(env) - nq_init if nq_update == -1 else nq_update
+
+    model = RewardNet(sgd_cfg["hidden_sizes"])
+    opt = optax.adam(sgd_cfg["learning_rate"])
+    bandit = DeepEnsemble(model, opt, **sgd_cfg["cls"])
+
+    key, key_warmup, key_belief_init = split(key, 3)
+    warmup_data = env.warmup(key_warmup, nq_init)
+    bel_init = bandit.init_bel(key_belief_init, warmup_data)
+    bel_trace = run_bandit(
+        key, bandit, bel_init, env, warmup_data, nsteps, active=sgd_cfg["active"]
+    )
+
+    # * prepend initial belief (zero vector in subspace) to bel_trace
+    bel_trace = jax.tree.map(
+        lambda a, b: jnp.concat([a, b]),
+        jax.tree.map(lambda x: jnp.expand_dims(x, axis=0), bel_init),
+        bel_trace,
+    )
+
+    return bel_trace, bandit
 
 
 def bandit_pipeline(
@@ -33,18 +70,17 @@ def bandit_pipeline(
         bel_trace: list of BeliefState, length = nq_update + 1 (including sgd init)
         bandit: SubspaceNeuralEKF class constructed with bandit_kw
     """
-    *_, n_feats = env.contexts.shape
     nq_init = bandit_kw["nq_init"]
     bs = bandit_kw["cls"]["batch_size"]
     if nq_init < bs:
         bandit_kw["cls"]["batch_size"] = 1
-        print(f"WARNING: {nq_init=} < {bs=}, setting ekf.cls.batch_size = 1")
+        # print(f"WARNING: {nq_init=} < {bs=}, setting ekf.cls.batch_size = 1")
     nq_update = bandit_kw["nq_update"]
     nsteps = len(env) - nq_init if nq_update == -1 else nq_update
 
     model = RewardNet(bandit_kw["hidden_sizes"])
     opt = optax.adam(bandit_kw["learning_rate"])
-    bandit = SubspaceNeuralEKF(n_feats, model, opt, **bandit_kw["cls"])
+    bandit = SubspaceNeuralEKF(model, opt, **bandit_kw["cls"])
 
     key, key_warmup, key_belief_init = split(key, 3)
     warmup_data = env.warmup(key_warmup, nq_init)
