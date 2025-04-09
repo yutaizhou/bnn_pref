@@ -25,29 +25,29 @@ from bnn_pref.utils.utils import get_random_seed
 
 def run_experiment(key, cfg):
     # check RLHF paper
-    data_kw = cfg["data"]
-    task_kw = cfg["task"]
-    mcmc_kw = cfg["mcmc"]
+    data_cfg = cfg["data"]
+    task_cfg = cfg["task"]
+    mcmc_cfg = cfg["mcmc"]
     dist = BradleyTerry()
 
     # * generate true params + preference data
     output = make_synthetic_data(key, cfg)
     train_prefs, test_prefs = output["train_prefs"], output["test_prefs"]
     true_param_D, true_reward_fn = output["true_param"], output["true_reward_fn"]
-    learned_reward_fn = test_functions_dict[task_kw["fhat"]]
+    learned_reward_fn = test_functions_dict[task_cfg["fhat"]]
 
     # * build + run sampler
     key, key1, key2 = jr.split(key, 3)
     init_sample = jnp.zeros_like(true_param_D)
     alg = build_mh(
         partial(dist.potential, data=train_prefs, reward_fn=learned_reward_fn),
-        sigma=mcmc_kw["sigma"],
+        sigma=mcmc_cfg["sigma"],
     )
     samples_SD, states, infos = run_mcmc(
         key1,
         alg=alg,
         init_sample=init_sample,
-        **{k: mcmc_kw[k] for k in ["n_samples", "burn_in", "thinning", "normalize"]},
+        **{k: mcmc_cfg[k] for k in ["n_samples", "burn_in", "thinning", "normalize"]},
     )
 
     test_accs = compute_accuracy2_mcmc(samples_SD, test_prefs, learned_reward_fn)

@@ -4,10 +4,6 @@ hidden_sizes:
   - 32
   - 32
 
-# * Data partitioning for EKF Trainer (bandit_pipeline)
-nq_init: 200 # num samples to use for SGD belief initalization
-nq_update: -1 # num samples to do EKF filtering (if -1, use all remaining afer nq_init)
-
 # * active learning
 active: False
 M: 20 # num models to sample for mutual information acquisition function

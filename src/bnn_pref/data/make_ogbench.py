@@ -11,13 +11,13 @@ from bnn_pref.utils.utils import get_random_seed
 
 
 def make_ogbench_data(key, cfg):
-    data_kw = cfg["data"]
-    task_kw = cfg["task"]
-    nq_train, nq_test = data_kw["nq_train"], data_kw["nq_test"]
+    data_cfg = cfg["data"]
+    task_cfg = cfg["task"]
+    nq_train, nq_test = data_cfg["nq_train"], data_cfg["nq_test"]
 
     # * load data
     _, train_trajs, test_trajs = ogbench.make_env_and_datasets(
-        task_kw["name"],
+        task_cfg["name"],
         compact_dataset=False,
     )
     # * data normalization

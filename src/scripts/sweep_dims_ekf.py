@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 
 from bnn_pref.alg.ekf_trainer import bandit_pipeline
 from bnn_pref.data import make_synthetic_data
-from bnn_pref.data.ekf_env import EKFEnvironment
+from bnn_pref.data.ekf_env import DataEnvironment
 from bnn_pref.utils.hydra_resolvers import *
 from bnn_pref.utils.metrics import (
     MeanStd,
@@ -36,13 +36,13 @@ def run_ekf(key, cfg):
 
     # * build + run bandit alg
     key, key1, key2 = jr.split(key, 3)
-    env = EKFEnvironment(
+    env = DataEnvironment(
         key1,
         X=train_data.queries_Q2TD,
         Y=jax.nn.one_hot(train_data.responses_Q1.squeeze(), num_classes=2),
     )
 
-    bel_trace, bandit = bandit_pipeline(key2, env, ekf_kw)
+    bel_trace, bandit = bandit_pipeline(key2, env, ekf_kw, data_kw)
     bel = jax.tree_util.tree_map(lambda x: x[-1], bel_trace)
 
     key, key1 = jr.split(key, 2)

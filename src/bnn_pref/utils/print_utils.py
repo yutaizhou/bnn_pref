@@ -9,10 +9,8 @@ def print_ekf_cfg(seed, cfg, length=None, n_feats=None):
     length = length if length is not None else task_cfg["length"]
 
     nq_train, nq_test = data_cfg["nq_train"], data_cfg["nq_test"]
-    nq_init = alg_cfg["nq_init"]
-    nq_update = alg_cfg["nq_update"]
-    n_updates = (nq_train - nq_init) if nq_update == -1 else nq_update
-    assert n_updates > 0, "n_update must be positive"
+    nq_init, nsteps = data_cfg["nq_init"], data_cfg["nsteps"]
+    assert nsteps > 0, "nsteps must be positive"
 
     niters = ekf_cls_cfg["niters"]
     batch_size = ekf_cls_cfg["batch_size"]
@@ -33,7 +31,7 @@ def print_ekf_cfg(seed, cfg, length=None, n_feats=None):
         f"Data:\n"
         f"  {task_str}\n"
         f"  n_demos={n_demos}, nq_train={nq_train}, T={length}, D={n_feats} (Q Test = {nq_test})\n"
-        f"  Samples for init/update = {nq_init}/{n_updates}\n"
+        f"  Samples for init/update = {nq_init}/{nsteps}\n"
         f"EKF:\n"
         f"  active={alg_cfg['active']}\n"
         f"  init: bs={batch_size}, niters={niters}[{warm_burns}::{thinning}] ({n_eff_iterates} eff), {sub_dim=}, {rnd_proj=}\n"
@@ -50,10 +48,8 @@ def print_ensemble_cfg(seed, cfg, length=None, n_feats=None):
     n_feats = n_feats if n_feats is not None else task_cfg["n_feats"]
 
     nq_train, nq_test = data_cfg["nq_train"], data_cfg["nq_test"]
-    nq_init = alg_cfg["nq_init"]
-    nq_update = alg_cfg["nq_update"]
-    n_updates = (nq_train - nq_init) if nq_update == -1 else nq_update
-    assert n_updates > 0, "n_update must be positive"
+    nq_init, nsteps = data_cfg["nq_init"], data_cfg["nsteps"]
+    assert nsteps > 0, "nsteps must be positive"
 
     if task_cfg["ds_type"] == "synthetic":
         # todo fix this fhat thing
@@ -66,7 +62,7 @@ def print_ensemble_cfg(seed, cfg, length=None, n_feats=None):
         f"Data:\n"
         f"  {task_str}\n"
         f"  N={n_demos}, Q={nq_train}, T={length}, D={n_feats} (Q Test = {nq_test})\n"
-        f"  Samples for init/update = {nq_init}/{n_updates}\n"
+        f"  Samples for init/update = {nq_init}/{nsteps}\n"
         f"Ensemble:\n"
         f"  active={alg_cfg['active']}\n"
         f"  n_models={alg_cfg['M']}\n"

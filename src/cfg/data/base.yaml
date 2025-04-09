@@ -8,3 +8,8 @@ demo_train_frac: 0.8
 # take nq_train / nq_test from the already split train/test trajs
 nq_train: 200
 nq_test: 200
+
+# * Data partitioning for streaming algs: EKF, Ensemble, etc.
+nq_init: 5 
+nq_update: 50 # if -1, use all remaining data after nq_init
+nsteps: ${get_nsteps:${.nq_train}, ${.nq_init}, ${.nq_update}}

@@ -30,17 +30,17 @@ jnp.set_printoptions(precision=2)
 def main(cfg):
     seed = get_random_seed() if cfg["seed"] == -1 else cfg["seed"]
     key = jr.key(seed)
-    data_kw = cfg["data"]
-    ekf_kw = cfg["ekf"]
-    task_kw = cfg["task"]
+    data_cfg = cfg["data"]
+    ekf_cfg = cfg["ekf"]
+    task_cfg = cfg["task"]
 
-    hidden_sizes = ekf_kw["hidden_sizes"]
-    niters = ekf_kw["cls"]["niters"]
-    batch_size = ekf_kw["cls"]["batch_size"]
-    lr = ekf_kw["learning_rate"]
+    hidden_sizes = ekf_cfg["hidden_sizes"]
+    niters = ekf_cfg["cls"]["niters"]
+    batch_size = ekf_cfg["cls"]["batch_size"]
+    lr = ekf_cfg["learning_rate"]
 
     # * generate true params + preference data
-    output = dataset_creators[task_kw["ds_type"]](key, cfg)
+    output = dataset_creators[task_cfg["ds_type"]](key, cfg)
     train_prefs, test_prefs = output["train_prefs"], output["test_prefs"]
     Q, _, T, D = train_prefs.queries_Q2TD.shape
     print_sgd_cfg(seed, cfg, length=T, n_feats=D)

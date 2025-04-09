@@ -19,7 +19,7 @@ from flax.training.train_state import TrainState
 
 from bnn_pref.alg.agent_utils import bt_loss_fn, run_gradient_descent
 from bnn_pref.data import dataset_creators
-from bnn_pref.data.ekf_env import CARL, EKFEnvironment
+from bnn_pref.data.ekf_env import CARL, DataEnvironment
 from bnn_pref.utils.hydra_resolvers import *
 from bnn_pref.utils.metrics import MeanStd, compute_acc_nn, compute_logpdf_nn
 from bnn_pref.utils.network import RewardNet, count_params
@@ -30,10 +30,6 @@ def run_sgd(key, cfg, data_dict, env):
     # check RLHF paper
     data_cfg = cfg["data"]
     sgd_cfg = cfg["sgd"]
-
-    nq_train, nq_test = data_cfg["nq_train"], data_cfg["nq_test"]
-    nq_init, nq_update = sgd_cfg["nq_init"], sgd_cfg["nq_update"]
-    n_updates = nq_update if nq_update != -1 else nq_test - nq_init
 
     hidden_sizes = sgd_cfg["hidden_sizes"]
     niters = sgd_cfg["cls"]["niters"]
@@ -133,7 +129,7 @@ def main(cfg):
         key, key_data, key_env, *key_seeds = jr.split(key, 3 + cfg["seeds"])
         data_dict = dataset_creators[cfg["task"]["ds_type"]](key_data, cfg)
         train_prefs = data_dict["train_prefs"]
-        env = EKFEnvironment(
+        env = DataEnvironment(
             key_env,
             X=train_prefs.queries_Q2TD,
             Y=jax.nn.one_hot(train_prefs.responses_Q1.squeeze(), num_classes=2),

@@ -11,18 +11,18 @@ from bnn_pref.utils.utils import get_gaussian_vector
 
 
 def make_synthetic_data(key, cfg) -> Tuple[NTD, N, QueryWithResponse]:
-    data_kw = cfg["data"]
-    task_kw = cfg["task"]
-    n_feats = task_kw["n_feats"]
-    demo_len = task_kw["length"]
-    n_demos = data_kw["n_demos"]
-    demo_train_frac = data_kw["demo_train_frac"]
-    nq_train, nq_test = data_kw["nq_train"], data_kw["nq_test"]
+    data_cfg = cfg["data"]
+    task_cfg = cfg["task"]
+    n_feats = task_cfg["n_feats"]
+    demo_len = task_cfg["length"]
+    n_demos = data_cfg["n_demos"]
+    demo_train_frac = data_cfg["demo_train_frac"]
+    nq_train, nq_test = data_cfg["nq_train"], data_cfg["nq_test"]
 
     # * generate true params + trajectories
     key, key1, key2, key3, key4 = jr.split(key, 5)
     true_param_D = get_gaussian_vector(key1, dim=n_feats, normalize=True)
-    true_reward_fn = test_functions_dict[task_kw["f"]]
+    true_reward_fn = test_functions_dict[task_cfg["f"]]
     train_trajs, test_trajs = generate_synthetic_trajs(
         key2,
         traj_shape=(n_demos, demo_len, n_feats),

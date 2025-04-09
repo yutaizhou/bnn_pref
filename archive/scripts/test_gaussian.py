@@ -82,7 +82,7 @@ def inference_loop(rng_key, kernel, initial_state, num_samples):
 
 
 if __name__ == "__main__":
-    data_kw = {
+    data_cfg = {
         "mean1": -2.0,
         "mean2": 3.0,
         "var": 1.0,
@@ -93,7 +93,7 @@ if __name__ == "__main__":
     key = jr.key(0)
     dist = BimodalGaussian()
     key, data_key = jr.split(key)
-    data = dist.sample(data_key, **data_kw)
+    data = dist.sample(data_key, **data_cfg)
 
     # Initialize parameters and sampler
     initial_params = {"mean1": 0.0, "mean2": 0.0}
@@ -102,12 +102,12 @@ if __name__ == "__main__":
     step_size = 1e-3
 
     sampler = blackjax.nuts(
-        partial(dist.potential, data=data, fixed_logvar=jnp.log(data_kw["var"])),
+        partial(dist.potential, data=data, fixed_logvar=jnp.log(data_cfg["var"])),
         step_size,
         inv_mass_matrix,
     )
 
-    mcmc_kw = {
+    mcmc_cfg = {
         "init_sample": initial_params,
         "n_samples": 2000,
         "burn_in": 1000,
@@ -117,9 +117,9 @@ if __name__ == "__main__":
     keys, subkey = jax.random.split(rng_key)
     kernel = sampler.step
     state = sampler.init(initial_params)
-    states = inference_loop(subkey, kernel, state, mcmc_kw["n_samples"])
+    states = inference_loop(subkey, kernel, state, mcmc_cfg["n_samples"])
     states_sampling = jax.tree.map(
-        lambda x: x[mcmc_kw["burn_in"] :: mcmc_kw["thinning"]],
+        lambda x: x[mcmc_cfg["burn_in"] :: mcmc_cfg["thinning"]],
         states,
     )
     posterior_samples = states_sampling.position
@@ -142,7 +142,7 @@ if __name__ == "__main__":
     az.plot_posterior(
         idata,
         var_names=["mean1", "mean2"],
-        ref_val=[data_kw["mean1"], data_kw["mean2"]],
+        ref_val=[data_cfg["mean1"], data_cfg["mean2"]],
         hdi_prob=0.94,
     )
     plt.show()

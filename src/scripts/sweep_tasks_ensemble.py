@@ -19,7 +19,7 @@ from hydra.core.hydra_config import HydraConfig
 
 from bnn_pref.alg.ekf_trainer import ensemble_pipeline
 from bnn_pref.data import dataset_creators
-from bnn_pref.data.ekf_env import EKFEnvironment
+from bnn_pref.data.ekf_env import DataEnvironment
 from bnn_pref.utils.hydra_resolvers import *
 from bnn_pref.utils.metrics import (
     MeanStd,
@@ -35,15 +35,11 @@ jnp.set_printoptions(precision=2)
 def run_ensemble(key, cfg, data_dict, env):
     data_cfg = cfg["data"]
     alg_cfg = cfg["sgd"]
-
-    nq_train, nq_test = data_cfg["nq_train"], data_cfg["nq_test"]
-    nq_init, nq_update = alg_cfg["nq_init"], alg_cfg["nq_update"]
-    n_updates = (nq_train - nq_init) if nq_update == -1 else nq_update
     train_prefs, test_prefs = data_dict["train_prefs"], data_dict["test_prefs"]
 
     # * build + run ensemble alg
     key, key_ensemble = jr.split(key, 2)
-    ts_trace, bandit = ensemble_pipeline(key_ensemble, env, alg_cfg)
+    ts_trace, bandit = ensemble_pipeline(key_ensemble, env, alg_cfg, data_cfg)
 
     # * compute metrics
     def eval_bel(carry, ts: TrainState):
@@ -69,10 +65,6 @@ def run_ensemble(key, cfg, data_dict, env):
 
     results = al_results
     metadata = {
-        "nq_train": nq_train,
-        "nq_test": nq_test,
-        "nq_init": nq_init,
-        "nq_update": n_updates,
         "model_params_count": bandit.model_params_count,
         "ensemble_params_count": bandit.ensemble_params_count,
     }
@@ -104,16 +96,14 @@ def main(cfg):
     data_cfg = cfg["data"]
     alg_cfg = cfg["sgd"]
     nq_train, nq_test = data_cfg["nq_train"], data_cfg["nq_test"]
-    nq_init = alg_cfg["nq_init"]
-    nq_update = alg_cfg["nq_update"]
-    n_updates = (nq_train - nq_init) if nq_update == -1 else nq_update
+    nq_init, nsteps = data_cfg["nq_init"], data_cfg["nsteps"]
     batch_size = alg_cfg["bs"]
     niters = alg_cfg["niters"]
     print(
         f"Seed: {seed} x {cfg['seeds']}\n"
         f"Data:\n"
         f"  Train/Test: {nq_train}/{nq_test}\n"
-        f"  Init/Update: {nq_init}/{n_updates}\n"
+        f"  Init/Update: {nq_init}/{nsteps}\n"
         f"Ensemble:\n"
         f"  n_models={alg_cfg['M']}\n"
         f"  init: bs={batch_size}, niters={niters}\n"
@@ -124,7 +114,7 @@ def main(cfg):
         key, key_data, key_env, *key_seeds = jr.split(key, 3 + cfg["seeds"])
         data_dict = dataset_creators[cfg["task"]["ds_type"]](key_data, cfg)
         train_prefs = data_dict["train_prefs"]
-        env = EKFEnvironment(
+        env = DataEnvironment(
             key_env,
             X=train_prefs.queries_Q2TD,
             Y=jax.nn.one_hot(train_prefs.responses_Q1.squeeze(), num_classes=2),

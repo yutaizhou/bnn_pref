@@ -18,7 +18,7 @@ from hydra.core.hydra_config import HydraConfig
 
 from bnn_pref.alg.ekf_trainer import bandit_pipeline
 from bnn_pref.data import dataset_creators
-from bnn_pref.data.ekf_env import EKFEnvironment
+from bnn_pref.data.ekf_env import DataEnvironment
 from bnn_pref.utils.hydra_resolvers import *
 from bnn_pref.utils.metrics import (
     MeanStd,
@@ -35,16 +35,11 @@ jnp.set_printoptions(precision=2)
 def run_ekf(key, cfg, data_dict, env):
     ekf_cfg = cfg["ekf"]
     data_cfg = cfg["data"]
-
-    nq_train, nq_test = data_cfg["nq_train"], data_cfg["nq_test"]
-    nq_init, nq_update = ekf_cfg["nq_init"], ekf_cfg["nq_update"]
-    n_updates = (nq_train - nq_init) if nq_update == -1 else nq_update
-
     train_prefs, test_prefs = data_dict["train_prefs"], data_dict["test_prefs"]
 
     # * build + run bandit alg
     key, key_bandit, key_bma = jr.split(key, 3)
-    bel_trace, bandit = bandit_pipeline(key_bandit, env, ekf_cfg)
+    bel_trace, bandit = bandit_pipeline(key_bandit, env, ekf_cfg, data_cfg)
 
     # * compute metrics
     sub2full_logits_fn = bandit.sub2full_predict_logits  # (params, N2TD) -> (N2,)
@@ -77,10 +72,6 @@ def run_ekf(key, cfg, data_dict, env):
 
     results = al_results
     metadata = {
-        "nq_train": nq_train,
-        "nq_test": nq_test,
-        "nq_init": nq_init,
-        "nq_update": n_updates,
         "full_param_count": bandit.full_params_count,
         "subspace_param_count": bandit.subspace_params_count,
     }
@@ -112,9 +103,7 @@ def main(cfg):
     data_cfg = cfg["data"]
     ekf_cfg = cfg["ekf"]
     nq_train, nq_test = data_cfg["nq_train"], data_cfg["nq_test"]
-    nq_init = ekf_cfg["nq_init"]
-    nq_update = ekf_cfg["nq_update"]
-    n_updates = (nq_train - nq_init) if nq_update == -1 else nq_update
+    nq_init, nsteps = data_cfg["nq_init"], data_cfg["nsteps"]
     batch_size = ekf_cfg["bs"]
     niters = ekf_cfg["niters"]
     warm_burns = ekf_cfg["warm_burns"]
@@ -126,7 +115,7 @@ def main(cfg):
         f"Seed: {seed} x {cfg['seeds']}\n"
         f"Data:\n"
         f"  Train/Test: {nq_train}/{nq_test}\n"
-        f"  Init/Update: {nq_init}/{n_updates}\n"
+        f"  Init/Update: {nq_init}/{nsteps}\n"
         f"EKF:\n"
         f"  sub_dim={ekf_cfg['sub_dim']}, rnd_proj={ekf_cfg['rnd_proj']}\n"
         f"  init: bs={batch_size}, niters={niters}[{warm_burns}::{thinning}] ({n_eff_iterates} eff), {sub_dim=}, {rnd_proj=}\n"
@@ -137,7 +126,7 @@ def main(cfg):
         key, key_data, key_env, *key_seeds = jr.split(key, 3 + cfg["seeds"])
         data_dict = dataset_creators[cfg["task"]["ds_type"]](key_data, cfg)
         train_prefs = data_dict["train_prefs"]
-        env = EKFEnvironment(
+        env = DataEnvironment(
             key_env,
             X=train_prefs.queries_Q2TD,
             Y=jax.nn.one_hot(train_prefs.responses_Q1.squeeze(), num_classes=2),

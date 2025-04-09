@@ -20,7 +20,7 @@ def retrieve(data, batch_idx: Float[Array, "B"]):
     return retrieve_fn(data, batch_idx)
 
 
-class EKFEnvironment:
+class DataEnvironment:
     def __init__(self, key, X: Q2TD, Y: Q2):
         # * Randomise dataset rows
         self.n_obs, *_, self.n_feats = X.shape  # n_feats not rly used?

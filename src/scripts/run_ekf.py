@@ -14,7 +14,7 @@ from hydra.core.hydra_config import HydraConfig
 
 from bnn_pref.alg.ekf_trainer import bandit_pipeline
 from bnn_pref.data import dataset_creators
-from bnn_pref.data.ekf_env import EKFEnvironment
+from bnn_pref.data.ekf_env import DataEnvironment
 from bnn_pref.utils.hydra_resolvers import *
 from bnn_pref.utils.metrics import compute_acc_nn, compute_acc_nn_bma, compute_logpdf_nn
 from bnn_pref.utils.plotting import plot_reward_heatmap
@@ -29,25 +29,25 @@ jnp.set_printoptions(precision=2)
 def main(cfg):
     seed = get_random_seed() if cfg["seed"] == -1 else cfg["seed"]
     key = jr.key(seed)
-    data_kw = cfg["data"]
-    ekf_kw = cfg["ekf"]
-    task_kw = cfg["task"]
+    data_cfg = cfg["data"]
+    ekf_cfg = cfg["ekf"]
+    task_cfg = cfg["task"]
 
     # * generate true params + preference data
-    output = dataset_creators[task_kw["ds_type"]](key, cfg)
+    output = dataset_creators[task_cfg["ds_type"]](key, cfg)
     train_prefs, test_prefs = output["train_prefs"], output["test_prefs"]
     Q, _, T, n_feats = train_prefs.queries_Q2TD.shape
     print_ekf_cfg(seed, cfg, n_feats=n_feats, length=T)
 
     # * build + run bandit alg
     key, key_env, key_bandit, key_bma = jr.split(key, 4)
-    env = EKFEnvironment(
+    env = DataEnvironment(
         key_env,
         X=train_prefs.queries_Q2TD,
         Y=jax.nn.one_hot(train_prefs.responses_Q1.squeeze(), num_classes=2),
     )
 
-    bel_trace, bandit = bandit_pipeline(key_bandit, env, ekf_kw)
+    bel_trace, bandit = bandit_pipeline(key_bandit, env, ekf_cfg, data_cfg)
 
     # * compute metrics
     sub2full_logits_fn = bandit.sub2full_predict_logits  # (params, N2TD) -> (N2,)
@@ -99,7 +99,7 @@ def main(cfg):
     # plt.show()
 
     # * visualization
-    if (task_kw["ds_type"] == "ogbench") and (n_feats == 2):
+    if (task_cfg["ds_type"] == "ogbench") and (n_feats == 2):
         # ogbench "pointmaze-medium-navigate-singletask-v0": train traj + reward plot
         train_trajs = output["train_trajs"]
         train_traj_obs = train_trajs["observations"]
@@ -137,7 +137,7 @@ def main(cfg):
 
         plt.show()
 
-    if (task_kw["ds_type"] == "synthetic") and (n_feats == 1) and (T == 1):
+    if (task_cfg["ds_type"] == "synthetic") and (n_feats == 1) and (T == 1):
         true_param_D, true_reward_fn = output["true_param"], output["true_reward_fn"]
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 8))
 
@@ -173,7 +173,7 @@ def main(cfg):
         plt.tight_layout()
         plt.show()
 
-    if (task_kw["ds_type"] == "synthetic") and (n_feats == 2) and (T == 1):
+    if (task_cfg["ds_type"] == "synthetic") and (n_feats == 2) and (T == 1):
         true_param_D, true_reward_fn = output["true_param"], output["true_reward_fn"]
         nrows, ncols = 2, 3
         fig = plt.figure(figsize=(12, 5))

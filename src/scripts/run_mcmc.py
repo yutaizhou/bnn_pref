@@ -30,16 +30,16 @@ jnp.set_printoptions(precision=2)
 @hydra.main(version_base=None, config_name="config", config_path="../cfg")
 def main(cfg):
     # check RLHF paper
-    data_kw = cfg["data"]
-    mcmc_kw = cfg["mcmc"]
-    task_kw = cfg["task"]
+    data_cfg = cfg["data"]
+    mcmc_cfg = cfg["mcmc"]
+    task_cfg = cfg["task"]
     dist = BradleyTerry()
 
     seed = get_random_seed() if cfg["seed"] == -1 else cfg["seed"]
     key = jr.key(seed)
 
     # * generate true params + preference data
-    output = dataset_creators[task_kw["ds_type"]](key, cfg)
+    output = dataset_creators[task_cfg["ds_type"]](key, cfg)
     train_prefs, test_prefs = output["train_prefs"], output["test_prefs"]
     learned_reward_fn = test_functions_dict[cfg["fhat"]]
     _, _, T, D = train_prefs.queries_Q2TD.shape
@@ -50,13 +50,13 @@ def main(cfg):
     init_sample = jnp.zeros(D)
     alg = build_mh(
         partial(dist.potential, data=train_prefs, reward_fn=learned_reward_fn),
-        sigma=mcmc_kw["sigma"],
+        sigma=mcmc_cfg["sigma"],
     )
     samples_SD, states, infos = run_mcmc(
         key1,
         alg=alg,
         init_sample=init_sample,
-        **{k: mcmc_kw[k] for k in ["n_samples", "burn_in", "thinning", "normalize"]},
+        **{k: mcmc_cfg[k] for k in ["n_samples", "burn_in", "thinning", "normalize"]},
     )
 
     # * posterior check
@@ -65,7 +65,7 @@ def main(cfg):
     sample_D = samples_SD.mean(axis=0)
     sample_D /= jnpl.norm(sample_D)
     test_logpdf = dist.logpdf(sample_D, test_prefs, learned_reward_fn).mean()
-    if task_kw["ds_type"] == "synthetic":
+    if task_cfg["ds_type"] == "synthetic":
         true_param_D, true_reward_fn = output["true_param"], output["true_reward_fn"]
         align = alignment_metric(true_param_D, samples_SD)
     else:
@@ -111,8 +111,8 @@ def main(cfg):
     # * plotting
     # all_samples = jnp.concat([init_sample[None, :], samples_SD], axis=0)
     # bbox_dict = {
-    #     "D": task_kw["n_feats"],
-    #     "Q": data_kw["nq_train"],
+    #     "D": task_cfg["n_feats"],
+    #     "Q": data_cfg["nq_train"],
     #     "Train Acc": train_acc,
     #     "Test Acc": test_acc,
     #     "m": align,
