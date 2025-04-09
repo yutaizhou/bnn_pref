@@ -9,9 +9,10 @@ import jax.numpy as jnp
 import jax.random as jr
 import matplotlib.pyplot as plt
 
-from bnn_pref.alg.ekf_trainer import bandit_pipeline
+from bnn_pref.alg.ekf_subspace import SubspaceNeuralEKF
+from bnn_pref.alg.trainer import alg_pipeline
 from bnn_pref.data import make_synthetic_data
-from bnn_pref.data.ekf_env import DataEnvironment
+from bnn_pref.data.data_env import DataEnvironment
 from bnn_pref.utils.hydra_resolvers import *
 from bnn_pref.utils.metrics import (
     MeanStd,
@@ -26,9 +27,9 @@ jnp.set_printoptions(precision=2)
 
 
 def run_ekf(key, cfg):
-    data_kw = cfg["data"]
-    task_kw = cfg["task"]
-    ekf_kw = cfg["ekf"]
+    data_cfg = cfg["data"]
+    task_cfg = cfg["task"]
+    ekf_cfg = cfg["ekf"]
 
     # * generate true params + preference data
     output = make_synthetic_data(key, cfg)
@@ -42,7 +43,7 @@ def run_ekf(key, cfg):
         Y=jax.nn.one_hot(train_data.responses_Q1.squeeze(), num_classes=2),
     )
 
-    bel_trace, bandit = bandit_pipeline(key2, env, ekf_kw, data_kw)
+    bel_trace, bandit = alg_pipeline(key2, SubspaceNeuralEKF, env, ekf_cfg, data_cfg)
     bel = jax.tree_util.tree_map(lambda x: x[-1], bel_trace)
 
     key, key1 = jr.split(key, 2)

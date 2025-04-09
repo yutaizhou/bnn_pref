@@ -13,9 +13,10 @@ import matplotlib.pyplot as plt
 from flax.training.train_state import TrainState
 from hydra.core.hydra_config import HydraConfig
 
-from bnn_pref.alg.ekf_trainer import ensemble_pipeline
+from bnn_pref.alg.ensemble import DeepEnsemble
+from bnn_pref.alg.trainer import alg_pipeline
 from bnn_pref.data import dataset_creators
-from bnn_pref.data.ekf_env import DataEnvironment
+from bnn_pref.data.data_env import DataEnvironment
 from bnn_pref.utils.hydra_resolvers import *
 from bnn_pref.utils.metrics import compute_acc_ensemble, compute_logpdf_ensemble
 from bnn_pref.utils.plotting import plot_reward_heatmap
@@ -41,14 +42,14 @@ def main(cfg):
     print_ensemble_cfg(seed, cfg, n_feats=n_feats, length=T)
 
     # * build + run bandit alg
-    key, key_env, key_bandit, key_bma = jr.split(key, 4)
+    key, key_env, key_pipe, key_bma = jr.split(key, 4)
     env = DataEnvironment(
         key_env,
         X=train_prefs.queries_Q2TD,
         Y=jax.nn.one_hot(train_prefs.responses_Q1.squeeze(), num_classes=2),
     )
 
-    ts_trace, bandit = ensemble_pipeline(key_bandit, env, sgd_cfg, data_cfg)
+    ts_trace, bandit = alg_pipeline(key_pipe, DeepEnsemble, env, sgd_cfg, data_cfg)
 
     # * compute metrics
     def eval_bel(carry, ts: TrainState):

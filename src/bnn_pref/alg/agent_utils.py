@@ -11,7 +11,7 @@ from jax.flatten_util import ravel_pytree
 from jax.lax import scan
 from jaxtyping import Array, Float
 
-from bnn_pref.data.ekf_env import CARL, BatchIndexManager, retrieve
+from bnn_pref.data.data_env import CARL, BatchIndexManager, retrieve
 
 
 class Agent(ABC):

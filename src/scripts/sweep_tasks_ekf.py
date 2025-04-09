@@ -16,9 +16,10 @@ import jax.random as jr
 import matplotlib.pyplot as plt
 from hydra.core.hydra_config import HydraConfig
 
-from bnn_pref.alg.ekf_trainer import bandit_pipeline
+from bnn_pref.alg.ekf_subspace import SubspaceNeuralEKF
+from bnn_pref.alg.trainer import alg_pipeline
 from bnn_pref.data import dataset_creators
-from bnn_pref.data.ekf_env import DataEnvironment
+from bnn_pref.data.data_env import DataEnvironment
 from bnn_pref.utils.hydra_resolvers import *
 from bnn_pref.utils.metrics import (
     MeanStd,
@@ -38,8 +39,10 @@ def run_ekf(key, cfg, data_dict, env):
     train_prefs, test_prefs = data_dict["train_prefs"], data_dict["test_prefs"]
 
     # * build + run bandit alg
-    key, key_bandit, key_bma = jr.split(key, 3)
-    bel_trace, bandit = bandit_pipeline(key_bandit, env, ekf_cfg, data_cfg)
+    key, key_pipe, key_bma = jr.split(key, 3)
+    bel_trace, bandit = alg_pipeline(
+        key_pipe, SubspaceNeuralEKF, env, ekf_cfg, data_cfg
+    )
 
     # * compute metrics
     sub2full_logits_fn = bandit.sub2full_predict_logits  # (params, N2TD) -> (N2,)

@@ -15,9 +15,8 @@ from sklearn.decomposition import PCA
 from tensorflow_probability.substrates import jax as tfp
 
 from bnn_pref.alg.agent_utils import Agent, bt_loss_fn, run_gradient_descent
-from bnn_pref.data.ekf_env import retrieve
 from bnn_pref.utils.network import RewardNet, count_params
-from bnn_pref.utils.type import CARL, unpackable_dataclass
+from bnn_pref.utils.type import CARL
 from bnn_pref.utils.utils import vmap_chunked
 
 # # EKF

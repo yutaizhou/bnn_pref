@@ -12,9 +12,10 @@ import jax.random as jr
 import matplotlib.pyplot as plt
 from hydra.core.hydra_config import HydraConfig
 
-from bnn_pref.alg.ekf_trainer import bandit_pipeline
+from bnn_pref.alg.ekf_subspace import SubspaceNeuralEKF
+from bnn_pref.alg.trainer import alg_pipeline
 from bnn_pref.data import dataset_creators
-from bnn_pref.data.ekf_env import DataEnvironment
+from bnn_pref.data.data_env import DataEnvironment
 from bnn_pref.utils.hydra_resolvers import *
 from bnn_pref.utils.metrics import compute_acc_nn, compute_acc_nn_bma, compute_logpdf_nn
 from bnn_pref.utils.plotting import plot_reward_heatmap
@@ -40,14 +41,16 @@ def main(cfg):
     print_ekf_cfg(seed, cfg, n_feats=n_feats, length=T)
 
     # * build + run bandit alg
-    key, key_env, key_bandit, key_bma = jr.split(key, 4)
+    key, key_env, key_pipe, key_bma = jr.split(key, 4)
     env = DataEnvironment(
         key_env,
         X=train_prefs.queries_Q2TD,
         Y=jax.nn.one_hot(train_prefs.responses_Q1.squeeze(), num_classes=2),
     )
 
-    bel_trace, bandit = bandit_pipeline(key_bandit, env, ekf_cfg, data_cfg)
+    bel_trace, bandit = alg_pipeline(
+        key_pipe, SubspaceNeuralEKF, env, ekf_cfg, data_cfg
+    )
 
     # * compute metrics
     sub2full_logits_fn = bandit.sub2full_predict_logits  # (params, N2TD) -> (N2,)
