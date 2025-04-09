@@ -3,6 +3,7 @@ from functools import partial
 from typing import Callable
 
 import distrax
+import ipdb
 import jax
 import jax.numpy as jnp
 import jax.numpy.linalg as jnpl
@@ -24,41 +25,54 @@ class MeanStd:
         self.std = self.array.std(axis=0)
 
 
-def compute_acc_nn(pref_predictor: Callable, data: QueryWithResponse):
+def compute_reward_nn(fn: Callable, demos_NTD: NTD):
+    """
+    fn: (NTD) -> (N) logit/return of a single trajectory
+    """
+    rewards_N = fn(demos_NTD)
+    return rewards_N
+
+
+def compute_acc_nn(fn: Callable, data: QueryWithResponse):
+    """
+    fn: (N2TD) -> (N2) logits of both items in a pairwise query
+    """
     features_Q2TD, response_Q1 = data.queries_Q2TD, data.responses_Q1
-    logits_Q2 = pref_predictor(features_Q2TD)
+    logits_Q2 = fn(features_Q2TD)
     pred_response_Q = logits_Q2.argmax(axis=1)
     acc = jnp.mean(pred_response_Q == response_Q1.squeeze())
     return acc
 
 
 def compute_acc_nn_bma(
-    key, sub2full_predict_logits: Callable, bel: EKFBeliefState, data: QueryWithResponse
+    key, sub2full_fn: Callable, bel: EKFBeliefState, data: QueryWithResponse
 ):
+    """
+    sub2full_fn: (params, N2TD) -> (N2) logits of both items in a pairwise query
+    """
+    queries_Q2TD, labels_Q1 = data.queries_Q2TD, data.responses_Q1
     n_models = 10
     mean, cov = bel.mean, bel.cov
     dist = distrax.MultivariateNormalFullCovariance(mean, cov)
     ss_params = dist.sample(seed=key, sample_shape=(n_models,))
 
-    blah = jax.vmap(sub2full_predict_logits, in_axes=(None, 0))  # input: param, context
-    blah = jax.vmap(blah, in_axes=(0, None))
-    logits_MQ2 = blah(ss_params, data.queries_Q2TD)
+    sub2full_fn = jax.vmap(sub2full_fn, in_axes=(None, 0))  # input: param, context
+    sub2full_fn = jax.vmap(sub2full_fn, in_axes=(0, None))
+    logits_MQ2 = sub2full_fn(ss_params, queries_Q2TD)
     probs_MQ2 = jax.nn.softmax(logits_MQ2, axis=2)
     probs_Q2 = probs_MQ2.mean(0)
 
     pred_response_Q = probs_Q2.argmax(axis=1)
-    acc = jnp.mean(pred_response_Q == data.responses_Q1.squeeze())
+    acc = jnp.mean(pred_response_Q == labels_Q1.squeeze())
     return acc
 
 
-def compute_reward_nn(reward_predictor: Callable, demos_NTD: NTD):
-    rewards_N = reward_predictor(demos_NTD)
-    return rewards_N
-
-
-def compute_logpdf_nn(pref_predictor: Callable, data: QueryWithResponse):
+def compute_logpdf_nn(fn: Callable, data: QueryWithResponse):
+    """
+    fn: (N2TD) -> (N2) logits of both items in a pairwise query
+    """
     features_Q2TD, labels_Q1 = data.queries_Q2TD, data.responses_Q1
-    logits_Q2 = pref_predictor(features_Q2TD)
+    logits_Q2 = fn(features_Q2TD)
     logits_Q1 = jnp.take_along_axis(logits_Q2, labels_Q1, axis=1)
     ll_Q1 = logits_Q1 - jax.nn.logsumexp(logits_Q2, axis=1, keepdims=True)
     avg_ll = ll_Q1.mean()
@@ -70,6 +84,35 @@ def compute_logpdf_nn(pref_predictor: Callable, data: QueryWithResponse):
     # ).mean()
 
     return avg_ll
+
+
+def compute_logpdf_ensemble(fn: Callable, data: QueryWithResponse):
+    """
+    fn: (N2TD) -> (NM2) logits of both items in a pairwise query, across M models
+    """
+    features_Q2TD, labels_Q1 = data.queries_Q2TD, data.responses_Q1
+    logits_QM2 = fn(features_Q2TD)
+    probs_QM2 = jax.nn.softmax(logits_QM2, axis=2)
+    probs_Q2 = probs_QM2.mean(1)
+
+    llik_Q1 = jnp.log(jnp.take_along_axis(probs_Q2, labels_Q1, axis=1))
+    avg_ll = llik_Q1.mean()
+
+    return avg_ll
+
+
+def compute_acc_ensemble(fn: Callable, data: QueryWithResponse):
+    """
+    fn: (N2TD) -> (NM2) logits of both items in a pairwise query, across M models
+    """
+    features_Q2TD, labels_Q1 = data.queries_Q2TD, data.responses_Q1
+    logits_QM2 = fn(features_Q2TD)
+    probs_QM2 = jax.nn.softmax(logits_QM2, axis=2)
+    probs_Q2 = probs_QM2.mean(1)
+
+    pred_response_Q = probs_Q2.argmax(axis=1)
+    acc = jnp.mean(pred_response_Q == labels_Q1.squeeze())
+    return acc
 
 
 def compute_logpdf_nn_bel(

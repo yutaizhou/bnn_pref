@@ -22,7 +22,7 @@ def count_params(params_dict: dict) -> int:
     """
     params_dict = model.init(key, dummy)["params"]
     """
-    return sum(x.size for x in jax.tree_util.tree_leaves(params_dict))
+    return sum(x.size for x in jax.tree.leaves(params_dict))
 
 
 class RewardNet(nn.Module):
