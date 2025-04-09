@@ -12,4 +12,4 @@ nq_test: 200
 # * Data partitioning for streaming algs: EKF, Ensemble, etc.
 nq_init: 5 
 nq_update: 50 # if -1, use all remaining data after nq_init
-nsteps: ${get_nsteps:${.nq_train}, ${.nq_init}, ${.nq_update}}
+nsteps: ${get_nsteps:${.nq_train}, ${.nq_init}, ${.nq_update}} #! do not set manually

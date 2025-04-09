@@ -10,7 +10,7 @@ M: 20 # num models to sample for mutual information acquisition function
 
 # * Subspace Init w/ SGD 
 niters: 100  # Total number of GD steps on warmup data
-bs: 32 # -1 for full batch GD. Otherwise, mini-batch SGD
+bs: 1 # -1 for full batch GD. Otherwise, mini-batch SGD
 l2_reg: 0
 
 warm_burns: 20
@@ -23,7 +23,7 @@ rnd_proj: False
 prior_noise: 0.01
 dynamics_noise: 0.0001 # small Gaussian drift on NN params, where we assume constant dynamics
 obs_noise: 0.01  # noise on emissions, which for pref learning is always +1 for traj2 > traj 1 # 1 rly affects bma 
-iekf: 1 # iterated EKF: multiple linearization of measurement model around current belief instead of prior belief
+iekf: 2 # iterated EKF: multiple linearization of measurement model around current belief instead of prior belief
 
 
 # * following is just for convenience in hydra CLI overrides

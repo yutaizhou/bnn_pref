@@ -19,11 +19,6 @@ from bnn_pref.utils.network import RewardNet, count_params
 from bnn_pref.utils.type import CARL
 from bnn_pref.utils.utils import vmap_chunked
 
-# # EKF
-# @unpackable_dataclass
-# class EnsembleBeliefState:
-#     t: int
-
 
 def init_model(key, model, input_shape, tx):
     dummy_input = jnp.ones((1, *input_shape))
