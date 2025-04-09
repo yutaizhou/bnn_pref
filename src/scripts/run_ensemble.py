@@ -19,7 +19,7 @@ from bnn_pref.data.ekf_env import EKFEnvironment
 from bnn_pref.utils.hydra_resolvers import *
 from bnn_pref.utils.metrics import compute_acc_ensemble, compute_logpdf_ensemble
 from bnn_pref.utils.plotting import plot_reward_heatmap
-from bnn_pref.utils.print_utils import print_ekf_cfg
+from bnn_pref.utils.print_utils import print_ensemble_cfg
 from bnn_pref.utils.utils import get_random_seed
 
 logging.getLogger("jax._src.xla_bridge").setLevel(logging.ERROR)
@@ -38,7 +38,7 @@ def main(cfg):
     output = dataset_creators[task_cfg["ds_type"]](key, cfg)
     train_prefs, test_prefs = output["train_prefs"], output["test_prefs"]
     Q, _, T, n_feats = train_prefs.queries_Q2TD.shape
-    print_ekf_cfg(seed, cfg, n_feats=n_feats, length=T)
+    print_ensemble_cfg(seed, cfg, n_feats=n_feats, length=T)
 
     # * build + run bandit alg
     key, key_env, key_bandit, key_bma = jr.split(key, 4)
