@@ -23,10 +23,8 @@ def ensemble_pipeline(
     env: EKFEnvironment,
     sgd_cfg: Dict,
 ):
-    *_, n_feats = env.contexts.shape
     nq_init = sgd_cfg["nq_init"]
     bs = sgd_cfg["cls"]["batch_size"]
-    n_models = sgd_cfg["cls"]["n_models"]
     if nq_init < bs:
         sgd_cfg["cls"]["batch_size"] = 1
         # print(f"WARNING: {nq_init=} < {bs=}, setting ekf.cls.batch_size = 1")

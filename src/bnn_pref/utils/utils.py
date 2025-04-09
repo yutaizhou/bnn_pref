@@ -33,7 +33,8 @@ def tile_first_dim(x: jnp.ndarray, reps: int):
 
 def vmap_chunked(fn, arr: Num[Array, "N *"], size: int, fout_shape: tuple):
     """
-    vmap over first dimension of arr, but do so in chunks of `size` to avoid OOM
+    fn: assumed to be vmapped over first dimension of arr
+    apply vmapped fn over first dimension of arr, but do so in chunks of `size` to avoid OOM
     """
 
     N = arr.shape[0]

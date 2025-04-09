@@ -96,15 +96,28 @@ class DeepEnsemble(Agent):
 
     def acquire_next_query(self, key, ts: TrainState, contexts_N2TD) -> int:
         """
-        active learning: greedily compute query that maximizes ensemble prediction variance
+        active learning: greedily compute query that maximizes ensemble prediction var
         """
+        chunk_size = 32
 
-        def predict_fn(ts, context):
-            logits_2 = ts.apply_fn({"params": ts.params}, context)
+        def predict_fn(ts: TrainState, contexts):
+            contexts = rearrange(contexts, "K T D -> 1 K T D", K=2)
+            logits_2 = ts.apply_fn({"params": ts.params}, contexts).squeeze()
             return logits_2
 
-        predict_fn = jax.vmap(predict_fn, in_axes=(0, None))
-        logits_N2 = predict_fn(ts.params, contexts_N2TD)
+        fn = jax.vmap(predict_fn, in_axes=(0, None))  # over ts
+        logits_NM2 = vmap_chunked(
+            jax.vmap(partial(fn, ts)),
+            contexts_N2TD,
+            size=chunk_size,
+            fout_shape=(self.n_models, 2),
+        )
+
+        probs_NM2 = jax.nn.softmax(logits_NM2, axis=2)
+        pred_NM = jnp.argmax(probs_NM2, axis=2)
+        values_N = jnp.var(pred_NM, axis=1)
+        query_idx = jnp.argmax(values_N)
+        return query_idx
 
 
 if __name__ == "__main__":
