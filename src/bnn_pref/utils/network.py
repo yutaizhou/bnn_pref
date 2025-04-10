@@ -70,17 +70,6 @@ class MLP(nn.Module):
         return x
 
 
-class MLPWide(nn.Module):
-    num_arms: int
-
-    @nn.compact
-    def __call__(self, x):
-        x = nn.relu(nn.Dense(200)(x))
-        x = nn.relu(nn.Dense(200, name="last_layer")(x))
-        x = nn.Dense(self.num_arms)(x)
-        return x
-
-
 class LeNet5(nn.Module):
     num_arms: int
 

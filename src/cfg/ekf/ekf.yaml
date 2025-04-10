@@ -40,3 +40,4 @@ cls:
   obs_noise: ${..obs_noise}
   iekf: ${..iekf}
   mi_samples: ${..M}
+  chunk_size: ${...chunk_size}

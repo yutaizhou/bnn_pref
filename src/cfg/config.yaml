@@ -10,6 +10,7 @@ defaults:
 - hydra: default
 
 fhat: linear
+chunk_size: 64
 
 paths:
   results_dir: ${paths.root_dir}/results

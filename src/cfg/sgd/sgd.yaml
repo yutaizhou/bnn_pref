@@ -19,3 +19,4 @@ cls:
   l2_reg: ${..l2_reg}
   niters: ${..niters}
   batch_size: ${..bs}
+  chunk_size: ${...chunk_size}

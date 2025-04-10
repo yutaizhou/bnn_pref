@@ -55,6 +55,7 @@ class SubspaceNeuralEKF(Agent):
         obs_noise: float = 1.0,
         iekf: int = 1,
         mi_samples: int = 20,
+        chunk_size: int = 64,
     ):
         """
         Subspace Neural Bandit implementation.
@@ -96,7 +97,7 @@ class SubspaceNeuralEKF(Agent):
         self.iekf = iekf
         self.mi_samples = mi_samples
         self.n_feats = None
-
+        self.chunk_size = chunk_size
         if not rnd_proj:
             n_eff_iterates = (niters - warm_burns) // thinning
             assert n_eff_iterates >= sub_dim, f"{n_eff_iterates=} < {sub_dim=}"
@@ -327,13 +328,12 @@ class SubspaceNeuralEKF(Agent):
         ss_params = distr.sample(seed=key_sample, sample_shape=(M,))
 
         # * compute logits for all contexts
-        chunk_size = 32
         fn = self.sub2full_predict_logits  # (param, context_N2TD) -> logits_N2
         fn = jax.vmap(fn, in_axes=(0, None))  # over params
         logits_NM2 = vmap_chunked(
             jax.vmap(partial(fn, ss_params)),
             contexts_N2TD,
-            size=chunk_size,
+            size=self.chunk_size,
             fout_shape=(M, 2),
         )
         probs_NM2 = jax.nn.softmax(logits_NM2, axis=2)
@@ -348,7 +348,7 @@ class SubspaceNeuralEKF(Agent):
         values_N = vmap_chunked(
             compute_info_gain,
             probs_NM2,
-            size=chunk_size,
+            size=self.chunk_size,
             fout_shape=(),
         )
         query_idx = jnp.argmax(values_N)

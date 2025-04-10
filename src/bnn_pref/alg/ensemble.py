@@ -36,6 +36,7 @@ class DeepEnsemble(Agent):
         l2_reg: float = 0.0,
         niters: int = 1000,
         batch_size: int = 32,
+        chunk_size: int = 64,
     ):
         self.n_models = n_models
         self.model = model
@@ -43,6 +44,7 @@ class DeepEnsemble(Agent):
         self.l2_reg = l2_reg
         self.niters = niters
         self.batch_size = batch_size
+        self.chunk_size = chunk_size
 
     def init_bel(self, key, warmup_data: CARL) -> TrainState:
         key, *keys_init = jr.split(key, 1 + self.n_models)
@@ -94,7 +96,6 @@ class DeepEnsemble(Agent):
         """
         active learning: greedily compute query that maximizes ensemble prediction var
         """
-        chunk_size = 32
 
         def predict_fn(ts: TrainState, contexts):
             contexts = rearrange(contexts, "K T D -> 1 K T D", K=2)
@@ -105,7 +106,7 @@ class DeepEnsemble(Agent):
         logits_NM2 = vmap_chunked(
             jax.vmap(partial(fn, ts)),
             contexts_N2TD,
-            size=chunk_size,
+            size=self.chunk_size,
             fout_shape=(self.n_models, 2),
         )
 
