@@ -30,6 +30,15 @@ class RewardNet(nn.Module):
 
     def setup(self):
         self.layers = [nn.Dense(size) for size in self.hidden_sizes] + [nn.Dense(1)]
+        self.net = nn.Sequential(
+            [
+                nn.Dense(self.hidden_sizes[0]),
+                nn.leaky_relu,
+                nn.Dense(self.hidden_sizes[1]),
+                nn.leaky_relu,
+                nn.Dense(1),
+            ]
+        )
 
     def __call__(self, x: B2TD) -> B2:
         r1 = self.predict_traj_return(x[:, 0])  # B
@@ -41,7 +50,6 @@ class RewardNet(nn.Module):
         return logits
 
     def predict_traj_rewards(self, x: BTD) -> BT:
-        B, T, D = x.shape
         for layer in self.layers:
             x = layer(x)
             if layer != self.layers[-1]:  # not last layer
@@ -50,6 +58,17 @@ class RewardNet(nn.Module):
         # if T > 1:
         #     x = nn.tanh(x) * 1.0
         return rearrange(x, "B T 1 -> B T")
+
+    # def predict_traj_rewards(self, x: BTD) -> BT:
+    #     chunks = []
+    #     for chunk in jnp.split(x, 2, axis=1):
+    #         for layer in self.layers:
+    #             chunk = layer(chunk)
+    #             if layer != self.layers[-1]:  # not last layer
+    #                 chunk = nn.leaky_relu(chunk)
+    #         chunks.append(chunk)
+    #     out = jnp.concatenate(chunks, axis=1).squeeze(-1)
+    #     return out
 
     def predict_traj_return(self, x: BTD) -> B:
         B, T, D = x.shape

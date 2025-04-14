@@ -75,7 +75,6 @@ def main(cfg):
     )
 
     for task in tasks:
-        print(f"{task}: ")
         # * update cfg
         new_cfg = hydra.compose("config", overrides=[f"task={task}"])
         cfg["task"].update(new_cfg["task"])
@@ -90,7 +89,7 @@ def main(cfg):
             X=train_prefs.queries_Q2TD,
             Y=jax.nn.one_hot(train_prefs.responses_Q1.squeeze(), num_classes=2),
         )
-        # print(train_prefs.queries_Q2TD.shape, duration)
+        print(f"{task}: {train_prefs.queries_Q2TD.shape} {duration:.1f}s")
 
         # * run
         for alg, run_fn in [("ekf", run_ekf), ("sgd", run_ensemble)]:

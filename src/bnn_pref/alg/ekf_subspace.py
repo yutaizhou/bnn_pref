@@ -316,6 +316,7 @@ class SubspaceNeuralEKF(Agent):
         params = distr.sample(seed=key)
         return params
 
+    # @partial(jax.jit, static_argnames=["self"])
     def acquire_next_query(self, key, bel: EKFBeliefState, contexts_N2TD) -> int:
         """
         active learning: greedily compute query that maximizes InfoGain acquisition fn
@@ -330,26 +331,49 @@ class SubspaceNeuralEKF(Agent):
         # * compute logits for all contexts
         fn = self.sub2full_predict_logits  # (param, context_N2TD) -> logits_N2
         fn = jax.vmap(fn, in_axes=(0, None))  # over params
-        logits_NM2 = vmap_chunked(
-            jax.vmap(partial(fn, ss_params)),
-            contexts_N2TD,
-            size=self.chunk_size,
-            fout_shape=(M, 2),
-        )
-        probs_NM2 = jax.nn.softmax(logits_NM2, axis=2)
 
-        # * compute info gain for each query
-        @partial(jax.vmap, in_axes=(0,))
         def compute_info_gain(probs_M2):
             mi = probs_M2 * jnp.log2(M * probs_M2 / jnp.sum(probs_M2, axis=0))
             mi = jnp.sum(mi) / M
             return mi
 
-        values_N = vmap_chunked(
-            compute_info_gain,
-            probs_NM2,
-            size=self.chunk_size,
-            fout_shape=(),
-        )
+        # logits_NM2 = vmap_chunked(
+        #     jax.vmap(partial(fn, ss_params)),
+        #     contexts_N2TD,
+        #     size=self.chunk_size,
+        #     fout_shape=(M, 2),
+        # )
+
+        # todo: verified
+        # logits_NM2 = jax.lax.map(
+        #     partial(fn, ss_params),
+        #     contexts_N2TD,
+        #     batch_size=self.chunk_size,
+        # )
+
+        def scan_step(carry, context_2TD):
+            logits_M2 = fn(ss_params, context_2TD)
+            probs_M2 = jax.nn.softmax(logits_M2, axis=1)
+            value = compute_info_gain(probs_M2)
+            return carry, value
+
+        _, values_N = jax.lax.scan(scan_step, None, contexts_N2TD)
+
+        # probs_NM2 = jax.nn.softmax(logits_NM2, axis=2)
+
+        # values_N = vmap_chunked(
+        #     jax.vmap(compute_info_gain),
+        #     probs_NM2,
+        #     size=self.chunk_size,
+        #     fout_shape=(),
+        # )
+
+        # todo: verified
+        # values_N = jax.lax.map(
+        #     compute_info_gain,
+        #     probs_NM2,
+        #     batch_size=self.chunk_size,
+        # )
+
         query_idx = jnp.argmax(values_N)
         return query_idx

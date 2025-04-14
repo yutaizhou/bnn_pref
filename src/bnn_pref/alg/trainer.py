@@ -35,11 +35,11 @@ def alg_pipeline(
     opt = optax.adam(alg_cfg["learning_rate"])
     bandit = alg_cls(model, opt, **alg_cfg["cls"])
 
-    key, key_warmup, key_belief_init = split(key, 3)
-    warmup_data = env.warmup(key_warmup, nq_init)
-    bel_init = bandit.init_bel(key_belief_init, warmup_data)
+    key, key_warm, key_bel_init, key_run = split(key, 4)
+    warmup_data = env.warmup(key_warm, nq_init)
+    bel_init = bandit.init_bel(key_bel_init, warmup_data)
     bel_trace = run_bandit(
-        key, bandit, bel_init, env, warmup_data, nsteps, active=alg_cfg["active"]
+        key_run, bandit, bel_init, env, warmup_data, nsteps, active=alg_cfg["active"]
     )
 
     # * prepend initial belief (zero vector in subspace) to bel_trace
@@ -69,8 +69,8 @@ def run_bandit(
     # index into the dataset, get what's remaining after warmup
     nq_init = len(warmup_data.rewards)
     pool_size = len(env) - nq_init  # active learning
-    active_contexts, _ = env.get_n(jnp.arange(nq_init, len(env)))
-    assert pool_size == len(active_contexts)
+    contexts_pool, _ = env.get_n(jnp.arange(nq_init, len(env)))
+    assert pool_size == len(contexts_pool)
 
     def filter_onestep(
         curr: Tuple[EKFBeliefState, int],
@@ -89,7 +89,7 @@ def run_bandit(
             # t_next = t + 1
             t_next = jr.randint(subkey, (), 0, pool_size)
         else:  # get a query that maximizes acquisition fn
-            t_next = bandit.acquire_next_query(subkey, bel, active_contexts)
+            t_next = bandit.acquire_next_query(subkey, bel, contexts_pool)
 
         return (bel, t_next), (bel, t, batch)
 
