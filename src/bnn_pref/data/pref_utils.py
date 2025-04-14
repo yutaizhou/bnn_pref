@@ -1,3 +1,4 @@
+import itertools as it
 import math
 from dataclasses import dataclass
 from typing import Callable, Tuple
@@ -49,7 +50,7 @@ def bt_likelihood(return_i: float, return_j: float, beta: float = 1.0) -> float:
     return b / (a + b)
 
 
-def random_query_iterator(key, n: int, n_queries: int):
+def random_query_iterator_sample(key, n: int, n_queries: int):
     """
     Note this does not return ti=tj, and migth return duplicates
     """
@@ -60,9 +61,22 @@ def random_query_iterator(key, n: int, n_queries: int):
         yield ti, tj
 
 
+def random_query_iterator_perm(key, n: int, n_queries: int):
+    _, key_perm = jr.split(key)
+
+    queries_gen = it.combinations(range(n), 2)
+    queries = jnp.array(list(queries_gen))  # ((n choose 2), 2)
+    queries = jr.permutation(key_perm, queries)
+    queries = queries[:n_queries]
+
+    for i in range(n_queries):
+        yield queries[i]
+
+
 def create_pref_data(
     key,
     ranked_returns: N,
+    traj_obs: NTD = None,
     n_queries: int = -1,
     use_delta: bool = False,
     delta_rank: int = 1,
@@ -92,9 +106,11 @@ def create_pref_data(
     labels = []
     num_mislabels = 0
 
-    for ti, tj in random_query_iterator(key, n_demos, n_queries):
+    for ti, tj in random_query_iterator_sample(key, n_demos, n_queries):
+        label = 1  # label=1 means tj > ti
+
+        # * skip if tj is not better than ti by delta_rank or delta_reward
         if use_delta:
-            # skip if tj is not better than ti by delta_rank or delta_reward
             if delta_rank > 1:
                 if (tj - ti) < delta_rank:
                     continue
@@ -102,13 +118,11 @@ def create_pref_data(
                 if (ranked_returns[tj] - ranked_returns[ti]) < delta_reward:
                     continue
 
-        label = 1  # label=1 means tj > ti
-
-        # * irrationality: skip if both are bad
+        # * skip if both are bad
         if max(ranked_returns[tj], ranked_returns[ti]) < skip_threshold:
             continue
 
-        # * irrationality: noisily rational prefs (beta=1 in the Bradley-Terry model)
+        # * noisily rational prefs (beta=1 in the Bradley-Terry model)
         if noisy_prefs:
             prob = bt_likelihood(ranked_returns[ti], ranked_returns[tj], bt_beta)
 
@@ -127,7 +141,12 @@ def create_pref_data(
     queries_Q2 = jnp.array(queries).astype(jnp.int32)
     labels_Q1 = jnp.expand_dims(jnp.array(labels), 1).astype(jnp.int32)
 
-    return queries_Q2, labels_Q1, num_mislabels
+    if traj_obs is not None:
+        queries_Q2TD = traj_obs[queries_Q2]  # index into (N, T, D) using (Q, 2)
+        pref_data = QueryWithResponse(queries_Q2TD, labels_Q1)
+        return pref_data, num_mislabels
+    else:
+        return queries_Q2, labels_Q1, num_mislabels
 
 
 def create_pref_data_jit(

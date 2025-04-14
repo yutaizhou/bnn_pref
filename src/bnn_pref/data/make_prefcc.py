@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, Tuple
 
 import jax
 import jax.numpy as jnp
@@ -7,30 +7,33 @@ import numpy as np
 import torch
 from tensordict import TensorDict
 
-from bnn_pref.data.pref_utils import create_pref_data_jit
+from bnn_pref.data.pref_utils import create_pref_data, create_pref_data_jit
 from bnn_pref.utils.utils import get_random_seed
 
 
-def make_prefcc_data(key, cfg) -> Dict:
+def make_prefcc_data(key, cfg) -> Dict[str, jax.Array]:
     task_cfg = cfg["task"]
     data_cfg = cfg["data"]
     path = task_cfg["tensordict_path"]
     demo_train_frac = data_cfg["demo_train_frac"]
     nq_train, nq_test = data_cfg["nq_train"], data_cfg["nq_test"]
 
+    # * load trajectory dat, split into train/test
     td = torch.load(path, weights_only=False)
     ds = process_prefcc_data(td)
 
-    key, key_split, key_train, key_test = jr.split(key, 4)
+    key, key_split = jr.split(key, 2)
     train_trajs, test_trajs = split_dataset(key_split, ds, demo_train_frac)
 
-    train_prefs, _ = create_pref_data_jit(
+    # * turn train/test trajs into preference data
+    key, key_train, key_test = jr.split(key_split, 3)
+    train_prefs, _ = create_pref_data(
         key_train,
         ranked_returns=train_trajs["returns"],
         traj_obs=train_trajs["observations"],
         n_queries=nq_train,
     )
-    test_prefs, _ = create_pref_data_jit(
+    test_prefs, _ = create_pref_data(
         key_test,
         ranked_returns=test_trajs["returns"],
         traj_obs=test_trajs["observations"],
@@ -48,15 +51,17 @@ def make_prefcc_data(key, cfg) -> Dict:
 def process_prefcc_data(
     td: TensorDict,
     rank: bool = False,
-) -> Dict[str, jnp.ndarray]:
+) -> Dict[str, jax.Array]:
     """
     Tensordict only contains obs, act, rew, and are already sorted by returns.
     """
+    rewards = jnp.array(td["rewards"])  # (N, T)
+    returns = rewards.sum(axis=-1)  # (N,)
     ds = {
         "observations": jnp.array(td["obs"]),
-        "actions": jnp.array(td["actions"]),
-        "rewards": jnp.array(td["rewards"]),
-        "returns": jnp.array(td["rewards"]).sum(axis=-1),
+        # "actions": jnp.array(td["actions"]),
+        "rewards": rewards,
+        "returns": returns,
     }
 
     # * sort trajectories by return (ascending)
@@ -67,11 +72,22 @@ def process_prefcc_data(
     return ds
 
 
-def split_dataset(key, ds, train_frac=0.8):
+def split_dataset(
+    key,
+    ds: Dict[str, jax.Array],
+    train_frac=0.8,
+) -> Tuple[Dict[str, jax.Array], Dict[str, jax.Array]]:
     """
     take (optionally ranked) ds, split into train/test, each sorted by return (ascending)
+
+    ds = {
+        "observations": (N, T, D),
+        "actions": (N, T, A),
+        "rewards": (N, T),
+        "returns": (N,),
+    }
     """
-    n = len(jax.tree.leaves(ds)[0])  # Get length from first array
+    n = len(ds["returns"])
     idxs = jr.permutation(key, n)
     n_train = int(n * train_frac)
     train_idxs, test_idxs = idxs[:n_train], idxs[n_train:]
