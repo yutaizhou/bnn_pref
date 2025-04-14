@@ -24,9 +24,9 @@ class BradleyTerry:
         reward_fn: Callable,
         beta: float = 1.0,  # rationality constant
     ) -> Q1:
-        features_Q2TD, response_Q1 = data.queries_Q2TD, data.responses_Q1
+        features_Q2TD, responses_Q1 = data.queries_Q2TD, data.responses_Q1
         returns_Q2 = beta * reward_fn(features_Q2TD, params_D)
-        returns_Q1 = jnp.take_along_axis(returns_Q2, response_Q1, axis=1)
+        returns_Q1 = jnp.take_along_axis(returns_Q2, responses_Q1, axis=1)
         return returns_Q1 - jax.nn.logsumexp(returns_Q2, axis=1, keepdims=True)
 
     @staticmethod
@@ -65,7 +65,7 @@ def random_query_iterator_perm(key, n: int, n_queries: int):
     _, key_perm = jr.split(key)
 
     queries_gen = it.combinations(range(n), 2)
-    queries = jnp.array(list(queries_gen))  # ((n choose 2), 2)
+    queries = jnp.asarray(list(queries_gen))  # ((n choose 2), 2)
     queries = jr.permutation(key_perm, queries)
     queries = queries[:n_queries]
 
@@ -138,8 +138,8 @@ def create_pref_data(
         queries.append((ti, tj))
         labels.append(label)
 
-    queries_Q2 = jnp.array(queries).astype(jnp.int32)
-    labels_Q1 = jnp.expand_dims(jnp.array(labels), 1).astype(jnp.int32)
+    queries_Q2 = jnp.asarray(queries).astype(jnp.int32)
+    labels_Q1 = jnp.expand_dims(jnp.asarray(labels), 1).astype(jnp.int32)
 
     if traj_obs is not None:
         queries_Q2TD = traj_obs[queries_Q2]  # index into (N, T, D) using (Q, 2)

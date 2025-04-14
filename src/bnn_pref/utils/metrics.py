@@ -37,10 +37,10 @@ def compute_acc_nn(fn: Callable, data: QueryWithResponse):
     """
     fn: (N2TD) -> (N2) logits of both items in a pairwise query
     """
-    features_Q2TD, response_Q1 = data.queries_Q2TD, data.responses_Q1
+    features_Q2TD, responses_Q1 = data.queries_Q2TD, data.responses_Q1
     logits_Q2 = fn(features_Q2TD)
     pred_response_Q = logits_Q2.argmax(axis=1)
-    acc = jnp.mean(pred_response_Q == response_Q1.squeeze())
+    acc = jnp.mean(pred_response_Q == responses_Q1.squeeze())
     return acc
 
 
@@ -50,7 +50,7 @@ def compute_acc_nn_bma(
     """
     sub2full_fn: (params, N2TD) -> (N2) logits of both items in a pairwise query
     """
-    queries_Q2TD, labels_Q1 = data.queries_Q2TD, data.responses_Q1
+    queries_Q2TD, responses_Q1 = data.queries_Q2TD, data.responses_Q1
     n_models = 10
     mean, cov = bel.mean, bel.cov
     dist = distrax.MultivariateNormalFullCovariance(mean, cov)
@@ -63,7 +63,7 @@ def compute_acc_nn_bma(
     probs_Q2 = probs_MQ2.mean(0)
 
     pred_response_Q = probs_Q2.argmax(axis=1)
-    acc = jnp.mean(pred_response_Q == labels_Q1.squeeze())
+    acc = jnp.mean(pred_response_Q == responses_Q1.squeeze())
     return acc
 
 
@@ -71,9 +71,9 @@ def compute_logpdf_nn(fn: Callable, data: QueryWithResponse):
     """
     fn: (N2TD) -> (N2) logits of both items in a pairwise query
     """
-    features_Q2TD, labels_Q1 = data.queries_Q2TD, data.responses_Q1
+    features_Q2TD, responses_Q1 = data.queries_Q2TD, data.responses_Q1
     logits_Q2 = fn(features_Q2TD)
-    logits_Q1 = jnp.take_along_axis(logits_Q2, labels_Q1, axis=1)
+    logits_Q1 = jnp.take_along_axis(logits_Q2, responses_Q1, axis=1)
     ll_Q1 = logits_Q1 - jax.nn.logsumexp(logits_Q2, axis=1, keepdims=True)
     avg_ll = ll_Q1.mean()
 
@@ -90,12 +90,12 @@ def compute_logpdf_ensemble(fn: Callable, data: QueryWithResponse):
     """
     fn: (N2TD) -> (NM2) logits of both items in a pairwise query, across M models
     """
-    features_Q2TD, labels_Q1 = data.queries_Q2TD, data.responses_Q1
+    features_Q2TD, responses_Q1 = data.queries_Q2TD, data.responses_Q1
     logits_QM2 = fn(features_Q2TD)
     probs_QM2 = jax.nn.softmax(logits_QM2, axis=2)
     probs_Q2 = probs_QM2.mean(1)
 
-    llik_Q1 = jnp.log(jnp.take_along_axis(probs_Q2, labels_Q1, axis=1))
+    llik_Q1 = jnp.log(jnp.take_along_axis(probs_Q2, responses_Q1, axis=1))
     avg_ll = llik_Q1.mean()
 
     return avg_ll
@@ -105,13 +105,13 @@ def compute_acc_ensemble(fn: Callable, data: QueryWithResponse):
     """
     fn: (N2TD) -> (NM2) logits of both items in a pairwise query, across M models
     """
-    features_Q2TD, labels_Q1 = data.queries_Q2TD, data.responses_Q1
+    features_Q2TD, responses_Q1 = data.queries_Q2TD, data.responses_Q1
     logits_QM2 = fn(features_Q2TD)
     probs_QM2 = jax.nn.softmax(logits_QM2, axis=2)
     probs_Q2 = probs_QM2.mean(1)
 
     pred_response_Q = probs_Q2.argmax(axis=1)
-    acc = jnp.mean(pred_response_Q == labels_Q1.squeeze())
+    acc = jnp.mean(pred_response_Q == responses_Q1.squeeze())
     return acc
 
 
@@ -139,15 +139,15 @@ def compute_logpdf_nn_bel(
 
 def compute_pref_ranking_acc(reward_predictor: Callable, data: QueryWithResponse):
     # todo why same output as compute_accuracy_nn?
-    features_Q2TD, response_Q1 = data.queries_Q2TD, data.responses_Q1
+    features_Q2TD, responses_Q1 = data.queries_Q2TD, data.responses_Q1
     left_rewards_Q = reward_predictor(features_Q2TD[:, 0]).squeeze()
     right_rewards_Q = reward_predictor(features_Q2TD[:, 1]).squeeze()
     pred_prefs_Q = (left_rewards_Q < right_rewards_Q).astype(int)
-    return jnp.mean(pred_prefs_Q == response_Q1.squeeze())
+    return jnp.mean(pred_prefs_Q == responses_Q1.squeeze())
 
 
 def compute_accuracy1_mcmc(samples_SD, data: QueryWithResponse, reward_fn: Callable):
-    features_Q2TD, response_Q1 = data.queries_Q2TD, data.responses_Q1
+    features_Q2TD, responses_Q1 = data.queries_Q2TD, data.responses_Q1
     # * approach 1: mean sample from posterior
     mean_weight_D = samples_SD.mean(axis=0)
     mean_weight_D /= jnpl.norm(mean_weight_D)
@@ -155,12 +155,12 @@ def compute_accuracy1_mcmc(samples_SD, data: QueryWithResponse, reward_fn: Calla
 
     pred_response_Q = probs_Q2.argmax(axis=1)
     # pred_response_Q = jnp.exp(reward_fn(features_Q2TD, mean_weight_D).argmax(axis=1) # approach 0
-    acc = jnp.mean(pred_response_Q == response_Q1.squeeze())
+    acc = jnp.mean(pred_response_Q == responses_Q1.squeeze())
     return acc
 
 
 def compute_accuracy2_mcmc(samples_SD, data: QueryWithResponse, reward_fn: Callable):
-    features_Q2TD, response_Q1 = data.queries_Q2TD, data.responses_Q1
+    features_Q2TD, responses_Q1 = data.queries_Q2TD, data.responses_Q1
 
     # * approach 2: mean predictive probability from posterior
     @partial(jax.vmap, in_axes=(None, 0))
@@ -174,7 +174,7 @@ def compute_accuracy2_mcmc(samples_SD, data: QueryWithResponse, reward_fn: Calla
     probs_Q2 = compute_postpred_mean(samples_SD, features_Q2TD)
 
     pred_response_Q = probs_Q2.argmax(axis=1)
-    acc = jnp.mean(pred_response_Q == response_Q1.squeeze())
+    acc = jnp.mean(pred_response_Q == responses_Q1.squeeze())
     return acc
 
 

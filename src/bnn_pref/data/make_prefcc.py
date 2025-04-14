@@ -18,7 +18,7 @@ def make_prefcc_data(key, cfg) -> Dict[str, jax.Array]:
     demo_train_frac = data_cfg["demo_train_frac"]
     nq_train, nq_test = data_cfg["nq_train"], data_cfg["nq_test"]
 
-    # * load trajectory dat, split into train/test
+    # * load trajectory dat, random split into train/test
     td = torch.load(path, weights_only=False)
     ds = process_prefcc_data(td)
 
@@ -55,11 +55,11 @@ def process_prefcc_data(
     """
     Tensordict only contains obs, act, rew, and are already sorted by returns.
     """
-    rewards = jnp.array(td["rewards"])  # (N, T)
+    rewards = jnp.asarray(td["rewards"])  # (N, T)
     returns = rewards.sum(axis=-1)  # (N,)
     ds = {
-        "observations": jnp.array(td["obs"]),
-        # "actions": jnp.array(td["actions"]),
+        "observations": jnp.asarray(td["obs"]),
+        # "actions": jnp.asarray(td["actions"]),
         "rewards": rewards,
         "returns": returns,
     }

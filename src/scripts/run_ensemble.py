@@ -42,9 +42,8 @@ def main(cfg):
     print_ensemble_cfg(seed, cfg, n_feats=n_feats, length=T)
 
     # * build + run bandit alg
-    key, key_env, key_pipe, key_bma = jr.split(key, 4)
+    key, key_pipe, key_bma = jr.split(key, 3)
     env = DataEnvironment(
-        key_env,
         X=train_prefs.queries_Q2TD,
         Y=jax.nn.one_hot(train_prefs.responses_Q1.squeeze(), num_classes=2),
     )

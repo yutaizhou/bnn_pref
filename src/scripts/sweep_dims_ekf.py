@@ -36,17 +36,15 @@ def run_ekf(key, cfg):
     train_data, test_data = output["train_prefs"], output["test_prefs"]
 
     # * build + run bandit alg
-    key, key1, key2 = jr.split(key, 3)
+    key, key1 = jr.split(key, 2)
     env = DataEnvironment(
-        key1,
         X=train_data.queries_Q2TD,
         Y=jax.nn.one_hot(train_data.responses_Q1.squeeze(), num_classes=2),
     )
 
-    bel_trace, bandit = alg_pipeline(key2, SubspaceNeuralEKF, env, ekf_cfg, data_cfg)
+    bel_trace, bandit = alg_pipeline(key1, SubspaceNeuralEKF, env, ekf_cfg, data_cfg)
     bel = jax.tree_util.tree_map(lambda x: x[-1], bel_trace)
 
-    key, key1 = jr.split(key, 2)
     pref_predictor = jax.vmap(partial(bandit.sub2full_predict_logits, bel.mean))
     reward_predictor = jax.vmap(partial(bandit.sub2full_predict_return, bel.mean))
     train_acc = compute_acc_nn(pref_predictor, train_data)

@@ -79,17 +79,20 @@ def main(cfg):
         # * update cfg
         new_cfg = hydra.compose("config", overrides=[f"task={task}"])
         cfg["task"].update(new_cfg["task"])
-        key, key_data, key_env, *key_seeds = jr.split(key, 3 + cfg["seeds"])
+
+        # * create dataset
+        key, key_data, *key_seeds = jr.split(key, 2 + cfg["seeds"])
         start = datetime.now()
         data_dict = dataset_creators[cfg["task"]["ds_type"]](key_data, cfg)
         train_prefs = data_dict["train_prefs"]
         duration = (datetime.now() - start).total_seconds()
         env = DataEnvironment(
-            key_env,
             X=train_prefs.queries_Q2TD,
             Y=jax.nn.one_hot(train_prefs.responses_Q1.squeeze(), num_classes=2),
         )
-        print(train_prefs.queries_Q2TD.shape, duration)
+        # print(train_prefs.queries_Q2TD.shape, duration)
+
+        # * run
         for alg, run_fn in [("ekf", run_ekf), ("sgd", run_ensemble)]:
             for is_al in [False, True]:
                 cfg[alg]["active"] = is_al

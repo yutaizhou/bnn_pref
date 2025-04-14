@@ -21,13 +21,12 @@ def retrieve(data, batch_idx: Float[Array, "B"]):
 
 
 class DataEnvironment:
-    def __init__(self, key, X: Q2TD, Y: Q2):
+    def __init__(self, X: Q2TD, Y: Q2):
         # * Randomise dataset rows
-        self.n_obs, *_, self.n_feats = X.shape  # n_feats not rly used?
+        self.n_obs, *_ = X.shape
         self.n_actions = Y.shape[1]
-        perm_idx = jr.permutation(key, jnp.arange(self.n_obs))
-        X = jnp.asarray(X)[perm_idx]
-        Y = jnp.asarray(Y)[perm_idx]
+        X = jnp.asarray(X)
+        Y = jnp.asarray(Y)
 
         self.contexts = X
         self.labels_onehot = Y
@@ -64,7 +63,8 @@ class DataEnvironment:
         # Create array of round-robin actions: 0, 1, 2, 0, 1, 2,  ...
         # actions = jnp.tile(jnp.arange(self.n_actions), n_warmups)
         idxes = jnp.arange(n_warmups)
-        actions = jr.randint(key, shape=(n_warmups,), minval=0, maxval=self.n_actions)
+        # actions = jr.randint(key, shape=(n_warmups,), minval=0, maxval=self.n_actions)
+        actions = jnp.ones_like(idxes)
 
         @partial(jax.vmap, in_axes=(0, 0))
         def get(idx: int, action: int):

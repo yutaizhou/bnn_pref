@@ -112,11 +112,10 @@ def main(cfg):
 
     for task in tasks:
         print(f"{task}: ")
-        key, key_data, key_env, *key_seeds = jr.split(key, 3 + cfg["seeds"])
+        key, key_data, *key_seeds = jr.split(key, 2 + cfg["seeds"])
         data_dict = dataset_creators[cfg["task"]["ds_type"]](key_data, cfg)
         train_prefs = data_dict["train_prefs"]
         env = DataEnvironment(
-            key_env,
             X=train_prefs.queries_Q2TD,
             Y=jax.nn.one_hot(train_prefs.responses_Q1.squeeze(), num_classes=2),
         )
