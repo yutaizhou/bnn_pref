@@ -194,7 +194,7 @@ def main(cfg):
         ["EKF (Random)", "EKF (Active)", "Ensemble (Random)", "Ensemble (Active)"],
         loc="center right",
     )
-    fig.suptitle(f"log PDF vs. num queries ({nq_train}")
+    fig.suptitle(f"log PDF vs. num queries ({nq_train})")
     plt.tight_layout(rect=[0, 0, 0.9, 1])  # [left, bottom, right, top]
     # plt.show()
     plt.savefig(f"{cfg.paths.output_dir}/logpdf_vs_queries.png")
