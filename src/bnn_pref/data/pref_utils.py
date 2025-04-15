@@ -1,16 +1,15 @@
 import itertools as it
 import math
-from dataclasses import dataclass
 from typing import Callable, Tuple
 
 import jax
 import jax.numpy as jnp
 import jax.random as jr
 
-from bnn_pref.utils.type import NTD, Q1, Q2, Q2TD, D, N
+from bnn_pref.utils.type import CARL, NTD, Q1, Q2, Q2TD, D, N, unpackable_dataclass
 
 
-@dataclass
+@unpackable_dataclass
 class QueryWithResponse:
     queries_Q2TD: Q2TD
     responses_Q1: Q1

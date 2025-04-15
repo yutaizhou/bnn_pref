@@ -98,10 +98,13 @@ def main(cfg):
 
                 # * run
                 seeds = jnp.array(key_seeds)
-                run_vmap = jax.vmap(run_fn, in_axes=(0, None, None, None))
-                start_time = datetime.now()
-                res_m, metadata_m = run_vmap(seeds, cfg, data_dict, env)
-                duration = (datetime.now() - start_time).total_seconds()
+                # run_vmap = jax.vmap(run_fn, in_axes=(0, None, None, None))
+                # res_m, metadata_m = run_vmap(seeds, cfg, data_dict, env)
+                # run_fn_jit = jax.jit(run_fn, static_argnames=["env"])
+                res_m, metadata_m = jax.lax.map(
+                    lambda seed: run_fn(seed, cfg, data_dict, env),
+                    seeds,
+                )
 
                 res = {
                     "task": task,
@@ -131,7 +134,6 @@ def main(cfg):
                     # f"acc: {res['test_acc_warm']:.2%} ± {res['test_acc_warm_std']:.2%} -> {res['test_acc']:.2%} ± {res['test_acc_std']:.2%}, "
                     f"logpdf: {res['test_logpdf'].mean:.2f} ± {res['test_logpdf'].std:.2f}, "
                     # f"({metadata_m['full_param_count'][0]:,d} -> {metadata_m['subspace_param_count'][0]:,d}) "
-                    f"({duration:.1f}s)"
                     # f", bma_acc: {res['test_acc_bma'].mean:.2%} ± {res['test_acc_bma'].std:.2%}"
                 )
 
@@ -192,10 +194,10 @@ def main(cfg):
         ["EKF (Random)", "EKF (Active)", "Ensemble (Random)", "Ensemble (Active)"],
         loc="center right",
     )
-    fig.suptitle("log PDF vs. num queries ")
+    fig.suptitle(f"log PDF vs. num queries ({nq_train}")
     plt.tight_layout(rect=[0, 0, 0.9, 1])  # [left, bottom, right, top]
-    plt.show()
-    # plt.savefig(f"logpdf_vs_queries_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
+    # plt.show()
+    plt.savefig(f"{cfg.paths.output_dir}/logpdf_vs_queries.png")
 
     # * plot acc learning curve
     fig, axs = plt.subplots(4, 4, figsize=(12, 8))  # 13 tasks total
@@ -229,10 +231,10 @@ def main(cfg):
         ["EKF (Random)", "EKF (Active)", "Ensemble (Random)", "Ensemble (Active)"],
         loc="center right",
     )
-    fig.suptitle("Accuracy vs. num queries")
+    fig.suptitle(f"Accuracy vs. num queries ({nq_train})")
     plt.tight_layout(rect=[0, 0, 0.9, 1])  # [left, bottom, right, top]
-    plt.show()
-    # plt.savefig(f"acc_vs_queries_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
+    # plt.show()
+    plt.savefig(f"{cfg.paths.output_dir}/acc_vs_queries.png")
 
 
 if __name__ == "__main__":

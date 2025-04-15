@@ -26,7 +26,6 @@ from bnn_pref.alg.agent_utils import (
 )
 from bnn_pref.utils.network import count_params
 from bnn_pref.utils.type import CARL, unpackable_dataclass
-from bnn_pref.utils.utils import vmap_chunked
 
 tfd = tfp.distributions
 
@@ -102,6 +101,7 @@ class SubspaceNeuralEKF(Agent):
             n_eff_iterates = (niters - warm_burns) // thinning
             assert n_eff_iterates >= sub_dim, f"{n_eff_iterates=} < {sub_dim=}"
 
+    # @partial(jax.jit, static_argnames=["self"])
     def init_bel(self, key, warmup_data: CARL) -> EKFBeliefState:
         """
         Run SGD on warmup data, get subspace projection matrix, initialize EKF
@@ -116,6 +116,7 @@ class SubspaceNeuralEKF(Agent):
         dummy_context = rearrange(jnp.ones_like(contexts[0]), "K T D  -> 1 K T D", K=2)
         initial_params = self.model.init(model_key, dummy_context)["params"]
         # print(nn.tabulate(self.model, model_key)(dummy_context))
+        # print(count_params(initial_params))
 
         ts = TrainState.create(
             apply_fn=self.model.apply, params=initial_params, tx=self.opt
@@ -255,6 +256,7 @@ class SubspaceNeuralEKF(Agent):
         bel = EKFBeliefState(mean=init_mean, cov=S, t=0)
         return bel
 
+    @partial(jax.jit, static_argnames=["self"])
     def update_bel(
         self,
         bel: EKFBeliefState,
@@ -316,7 +318,7 @@ class SubspaceNeuralEKF(Agent):
         params = distr.sample(seed=key)
         return params
 
-    # @partial(jax.jit, static_argnames=["self"])
+    @partial(jax.jit, static_argnames=["self"])
     def acquire_next_query(self, key, bel: EKFBeliefState, contexts_N2TD) -> int:
         """
         active learning: greedily compute query that maximizes InfoGain acquisition fn
@@ -337,43 +339,23 @@ class SubspaceNeuralEKF(Agent):
             mi = jnp.sum(mi) / M
             return mi
 
-        # logits_NM2 = vmap_chunked(
-        #     jax.vmap(partial(fn, ss_params)),
-        #     contexts_N2TD,
-        #     size=self.chunk_size,
-        #     fout_shape=(M, 2),
-        # )
+        # * using lax.scan
+        # def scan_step(carry, context_2TD):
+        #     logits_M2 = fn(ss_params, context_2TD)
+        #     probs_M2 = jax.nn.softmax(logits_M2, axis=1)
+        #     value = compute_info_gain(probs_M2)
+        #     return carry, value
 
-        # todo: verified
-        # logits_NM2 = jax.lax.map(
-        #     partial(fn, ss_params),
-        #     contexts_N2TD,
-        #     batch_size=self.chunk_size,
-        # )
+        # _, values_N = jax.lax.scan(scan_step, None, contexts_N2TD)
 
-        def scan_step(carry, context_2TD):
+        # * using lax.map
+        def map_step(context_2TD):
             logits_M2 = fn(ss_params, context_2TD)
             probs_M2 = jax.nn.softmax(logits_M2, axis=1)
             value = compute_info_gain(probs_M2)
-            return carry, value
+            return value
 
-        _, values_N = jax.lax.scan(scan_step, None, contexts_N2TD)
-
-        # probs_NM2 = jax.nn.softmax(logits_NM2, axis=2)
-
-        # values_N = vmap_chunked(
-        #     jax.vmap(compute_info_gain),
-        #     probs_NM2,
-        #     size=self.chunk_size,
-        #     fout_shape=(),
-        # )
-
-        # todo: verified
-        # values_N = jax.lax.map(
-        #     compute_info_gain,
-        #     probs_NM2,
-        #     batch_size=self.chunk_size,
-        # )
+        values_N = jax.lax.map(map_step, contexts_N2TD, batch_size=self.chunk_size)
 
         query_idx = jnp.argmax(values_N)
         return query_idx

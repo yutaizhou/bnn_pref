@@ -17,7 +17,6 @@ from tensorflow_probability.substrates import jax as tfp
 from bnn_pref.alg.agent_utils import Agent, bt_loss_fn, run_gradient_descent
 from bnn_pref.utils.network import RewardNet, count_params
 from bnn_pref.utils.type import CARL
-from bnn_pref.utils.utils import vmap_chunked
 
 
 def init_model(key, model, input_shape, tx):
@@ -46,6 +45,7 @@ class DeepEnsemble(Agent):
         self.batch_size = batch_size
         self.chunk_size = chunk_size
 
+    @partial(jax.jit, static_argnames=["self"])
     def init_bel(self, key, warmup_data: CARL) -> TrainState:
         key, *keys_init = jr.split(key, 1 + self.n_models)
         ts = jax.vmap(init_model, in_axes=(0, None, None, None))(
@@ -76,6 +76,7 @@ class DeepEnsemble(Agent):
 
         return warm_ts
 
+    @partial(jax.jit, static_argnames=["self"])
     def update_bel(self, ts: TrainState, batch: CARL) -> TrainState:
         """
         flax nn needs batch of shape (1, N, ...), hence expand_dims
@@ -92,6 +93,7 @@ class DeepEnsemble(Agent):
         ts, loss = grad_fn(ts, batch)
         return ts
 
+    @partial(jax.jit, static_argnames=["self"])
     def acquire_next_query(self, key, ts: TrainState, contexts_N2TD) -> int:
         """
         active learning: greedily compute query that maximizes ensemble prediction var
@@ -103,16 +105,27 @@ class DeepEnsemble(Agent):
             return logits_2
 
         fn = jax.vmap(predict_fn, in_axes=(0, None))  # over ts
-        logits_NM2 = vmap_chunked(
-            jax.vmap(partial(fn, ts)),
-            contexts_N2TD,
-            size=self.chunk_size,
-            fout_shape=(self.n_models, 2),
-        )
 
-        probs_NM2 = jax.nn.softmax(logits_NM2, axis=2)
-        pred_NM = jnp.argmax(probs_NM2, axis=2)
-        values_N = jnp.var(pred_NM, axis=1)
+        # * using lax.scan
+        # def scan_step(carry, context_2TD):
+        #     logits_M2 = fn(ts, context_2TD)
+        #     probs_M2 = jax.nn.softmax(logits_M2, axis=1)
+        #     pred_M = jnp.argmax(probs_M2, axis=1)
+        #     value = jnp.var(pred_M, axis=0)
+        #     return carry, value
+
+        # _, values_N = jax.lax.scan(scan_step, None, contexts_N2TD)
+
+        # * using lax.map
+        def map_step(context_2TD):
+            logits_M2 = fn(ts, context_2TD)
+            probs_M2 = jax.nn.softmax(logits_M2, axis=1)
+            pred_M = jnp.argmax(probs_M2, axis=1)
+            value = jnp.var(pred_M, axis=0)
+            return value
+
+        values_N = jax.lax.map(map_step, contexts_N2TD, batch_size=self.chunk_size)
+
         query_idx = jnp.argmax(values_N)
         return query_idx
 

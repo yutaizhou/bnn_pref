@@ -1,3 +1,4 @@
+import itertools as it
 from typing import List
 
 import einops
@@ -25,50 +26,54 @@ def count_params(params_dict: dict) -> int:
     return sum(x.size for x in jax.tree.leaves(params_dict))
 
 
+class MLPBlock(nn.Module):
+    hidden_sizes: List[int]
+
+    @nn.compact
+    def __call__(self, c, x):
+        for hidden_size in self.hidden_sizes:
+            x = nn.Dense(hidden_size)(x)
+            x = nn.leaky_relu(x)
+        x = nn.Dense(1)(x)
+        x = rearrange(x, "B 1 -> B")
+        return c, x
+
+
 class RewardNet(nn.Module):
     hidden_sizes: List[int]
 
     def setup(self):
-        self.layers = [nn.Dense(size) for size in self.hidden_sizes] + [nn.Dense(1)]
-        self.net = nn.Sequential(
-            [
-                nn.Dense(self.hidden_sizes[0]),
-                nn.leaky_relu,
-                nn.Dense(self.hidden_sizes[1]),
-                nn.leaky_relu,
-                nn.Dense(1),
-            ]
-        )
+        layers = [[nn.Dense(size), nn.leaky_relu] for size in self.hidden_sizes]
+        layers += [[nn.Dense(1)]]
+        layers = list(it.chain.from_iterable(layers))
+        self.layers = nn.Sequential(layers)
+
+        self.scanned_net = nn.scan(
+            MLPBlock,
+            variable_broadcast="params",
+            split_rngs={"params": False},
+            in_axes=1,  # scan over axis 1 (T)
+            out_axes=1,  # output has axis 1 (T)
+            length=None,
+        )(self.hidden_sizes)
 
     def __call__(self, x: B2TD) -> B2:
         r1 = self.predict_traj_return(x[:, 0])  # B
         r2 = self.predict_traj_return(x[:, 1])  # B
         logits = rearrange([r1, r2], "K B -> B K", K=2)  # B 2
-        # todo: stability trick
-        # logits = nn.tanh(logits) * 5.0
-        # logits = jnp.clip(logits, -5, 5)
         return logits
 
     def predict_traj_rewards(self, x: BTD) -> BT:
-        for layer in self.layers:
-            x = layer(x)
-            if layer != self.layers[-1]:  # not last layer
-                x = nn.leaky_relu(x)
+        x = self.layers(x)  # (B,T,D) -> (B,T,1)
+
         # todo: stability trick
         # if T > 1:
         #     x = nn.tanh(x) * 1.0
         return rearrange(x, "B T 1 -> B T")
 
-    # def predict_traj_rewards(self, x: BTD) -> BT:
-    #     chunks = []
-    #     for chunk in jnp.split(x, 2, axis=1):
-    #         for layer in self.layers:
-    #             chunk = layer(chunk)
-    #             if layer != self.layers[-1]:  # not last layer
-    #                 chunk = nn.leaky_relu(chunk)
-    #         chunks.append(chunk)
-    #     out = jnp.concatenate(chunks, axis=1).squeeze(-1)
-    #     return out
+    def predict_traj_rewards_scan(self, x: BTD) -> B:
+        _, rewards = self.scanned_net(None, x)
+        return rewards
 
     def predict_traj_return(self, x: BTD) -> B:
         B, T, D = x.shape
@@ -109,3 +114,96 @@ class LeNet5(nn.Module):
         x = nn.relu(x)
         x = nn.Dense(features=self.num_arms)(x)
         return x.squeeze()
+
+
+if __name__ == "__main__":
+    import jax.random as jr
+    from flax import linen as nn
+    from flax.core import Array, Scope, init, lift, unfreeze
+    from jax import random
+
+    # * https://github.com/google/flax/discussions/2067
+    class MLPBlock2(nn.Module):
+        @nn.compact
+        def __call__(self, c, x):
+            h = nn.Dense(features=10)(x)
+            y = nn.Dense(features=1)(h)
+            return c, y
+
+    class ScanMLP(nn.Module):
+        @nn.compact
+        def __call__(self, c, xs):
+            axis = 1
+            scan = nn.scan(
+                MLPBlock2,
+                variable_broadcast="params",
+                split_rngs={"params": False},
+                in_axes=axis,
+                out_axes=axis,
+            )
+            return scan(name="MLP")(c, xs)
+
+    class TwoMLP(nn.Module):
+        @nn.compact
+        def __call__(self, c, xs):
+            mlp1 = ScanMLP()
+            mlp2 = ScanMLP()
+            return mlp1(c, xs), mlp2(c, xs)
+
+    # xs = jnp.ones((4, 10, 2))
+    # scan_mlp = ScanMLP()
+    # params_vars = scan_mlp.init(random.PRNGKey(1), (), xs)
+
+    # cs, ys = scan_mlp.apply(params_vars, (), xs)
+    # print(xs.shape)
+    # print(ys.shape)
+
+    # print(jax.tree.map(lambda x: x.shape, params_vars))
+    # two_mlp = TwoMLP()
+    # params_vars = two_mlp.init(random.PRNGKey(1), (), xs)
+    # cs, ys = two_mlp.apply(params_vars, (), xs)
+
+    # # * lifted tutorial
+    # key = jr.key(0)
+    # BatchDense = nn.vmap(
+    #     nn.Dense,
+    #     in_axes=0,
+    #     out_axes=0,
+    #     variable_axes={"params": 0},
+    #     split_rngs={"params": True},
+    # )
+
+    # batch_dense = BatchDense(features=10)
+    # # batch_dense = nn.Dense(features=10)
+    # dummy = jnp.ones((1, 10))
+    # key, *keys_init = jr.split(key, 5)
+    # params_vars = batch_dense.init(jnp.array(keys_init), dummy)
+    # ys = batch_dense.apply(params_vars, dummy)
+    # print(ys.shape)
+    # # import ipdb
+
+    # ipdb.set_trace()
+    import itertools as it
+
+    key = jr.key(0)
+    sizes = [32, 32]
+    dummy = jnp.ones((1, 10))
+
+    class MLPContainer(nn.Module):
+        def setup(self):
+            l = [[nn.Dense(size), nn.leaky_relu] for size in sizes] + [[nn.Dense(1)]]
+            self.seq = nn.Sequential(list(it.chain.from_iterable(l)))
+            print(self.seq)
+
+        def __call__(self, x):
+            return self.seq(x)
+
+    mlp_container = MLPContainer()
+    params_vars = mlp_container.init(key, dummy)
+    ys = mlp_container.apply(params_vars, dummy)
+
+    print(ys.shape)
+    print(jax.tree.map(lambda x: x.shape, params_vars))
+    print(nn.tabulate(mlp_container, key)(dummy))
+    print(mlp_container)
+    print(ys)
