@@ -50,23 +50,23 @@ def run_ekf(key, cfg, data_dict, env):
     def eval_bel(_, bel):
         mean, cov, t = bel
         key = jr.fold_in(key_bma, t)
-        fn = jax.vmap(partial(sub2full_logits_fn, mean))
-        train_logpdf = compute_logpdf_nn(fn, train_prefs)
+        fn = partial(sub2full_logits_fn, mean)
+        # train_logpdf = compute_logpdf_nn(fn, train_prefs)
         test_logpdf = compute_logpdf_nn(fn, test_prefs)
-        train_acc = compute_acc_nn(fn, train_prefs)
+        # train_acc = compute_acc_nn(fn, train_prefs)
         test_acc = compute_acc_nn(fn, test_prefs)
-        train_acc_bma = compute_acc_nn_bma(key, sub2full_logits_fn, bel, train_prefs)
+        # train_acc_bma = compute_acc_nn_bma(key, sub2full_logits_fn, bel, train_prefs)
         test_acc_bma = compute_acc_nn_bma(key, sub2full_logits_fn, bel, test_prefs)
 
         # all arrays of (1 + nq_updates, )
         result = {
             # * logpdf
-            "train_logpdf": train_logpdf,
+            # "train_logpdf": train_logpdf,
             "test_logpdf": test_logpdf,
             # * acc
-            "train_acc": train_acc,
+            # "train_acc": train_acc,
             "test_acc": test_acc,
-            "train_acc_bma": train_acc_bma,
+            # "train_acc_bma": train_acc_bma,
             "test_acc_bma": test_acc_bma,
         }
         return (), result
@@ -155,14 +155,14 @@ def main(cfg):
                 "test_logpdf_all": res_m["test_logpdf"],
                 "test_acc_all": res_m["test_acc"],
                 # acc
-                "train_acc_warm": MeanStd(res_m["train_acc"][:, 0]),
-                "train_acc": MeanStd(res_m["train_acc"][:, -1]),
+                # "train_acc_warm": MeanStd(res_m["train_acc"][:, 0]),
+                # "train_acc": MeanStd(res_m["train_acc"][:, -1]),
                 "test_acc_warm": MeanStd(res_m["test_acc"][:, 0]),
                 "test_acc": MeanStd(res_m["test_acc"][:, -1]),
                 "test_acc_bma": MeanStd(res_m["test_acc_bma"][:, -1]),
                 # logpdf
-                "train_logpdf_warm": MeanStd(res_m["train_logpdf"][:, 0]),
-                "train_logpdf": MeanStd(res_m["train_logpdf"][:, -1]),
+                # "train_logpdf_warm": MeanStd(res_m["train_logpdf"][:, 0]),
+                # "train_logpdf": MeanStd(res_m["train_logpdf"][:, -1]),
                 "test_logpdf_warm": MeanStd(res_m["test_logpdf"][:, 0]),
                 "test_logpdf": MeanStd(res_m["test_logpdf"][:, -1]),
             }

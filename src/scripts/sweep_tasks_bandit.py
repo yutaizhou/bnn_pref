@@ -112,16 +112,16 @@ def main(cfg):
                     "test_logpdf_all": res_m["test_logpdf"],
                     "test_acc_all": res_m["test_acc"],
                     # acc
-                    "train_acc_warm": MeanStd(res_m["train_acc"][:, 0]),
-                    "train_acc": MeanStd(res_m["train_acc"][:, -1]),
+                    # "train_acc_warm": MeanStd(res_m["train_acc"][:, 0]),
+                    # "train_acc": MeanStd(res_m["train_acc"][:, -1]),
                     "test_acc_warm": MeanStd(res_m["test_acc"][:, 0]),
                     "test_acc": MeanStd(res_m["test_acc"][:, -1]),
                     "test_acc_bma": MeanStd(res_m["test_acc_bma"][:, -1])
                     if alg == "ekf"
                     else None,
                     # logpdf
-                    "train_logpdf_warm": MeanStd(res_m["train_logpdf"][:, 0]),
-                    "train_logpdf": MeanStd(res_m["train_logpdf"][:, -1]),
+                    # "train_logpdf_warm": MeanStd(res_m["train_logpdf"][:, 0]),
+                    # "train_logpdf": MeanStd(res_m["train_logpdf"][:, -1]),
                     "test_logpdf_warm": MeanStd(res_m["test_logpdf"][:, 0]),
                     "test_logpdf": MeanStd(res_m["test_logpdf"][:, -1]),
                 }

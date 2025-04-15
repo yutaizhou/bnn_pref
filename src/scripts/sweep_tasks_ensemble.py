@@ -46,18 +46,18 @@ def run_ensemble(key, cfg, data_dict, env):
     def eval_bel(carry, ts: TrainState):
         fn = jax.vmap(ts.apply_fn, in_axes=(0, None), out_axes=1)  # fn(param, input)
         fn = partial(fn, {"params": ts.params})
-        train_logpdf = compute_logpdf_ensemble(fn, train_prefs)
+        # train_logpdf = compute_logpdf_ensemble(fn, train_prefs)
         test_logpdf = compute_logpdf_ensemble(fn, test_prefs)
 
-        train_acc = compute_acc_ensemble(fn, train_prefs)
+        # train_acc = compute_acc_ensemble(fn, train_prefs)
         test_acc = compute_acc_ensemble(fn, test_prefs)
 
         result = {
             # * logpdf
-            "train_logpdf": train_logpdf,
+            # "train_logpdf": train_logpdf,
             "test_logpdf": test_logpdf,
             # * acc
-            "train_acc": train_acc,
+            # "train_acc": train_acc,
             "test_acc": test_acc,
         }
         return (), result
@@ -138,13 +138,13 @@ def main(cfg):
                 "test_logpdf_all": res_m["test_logpdf"],
                 "test_acc_all": res_m["test_acc"],
                 # acc
-                "train_acc_warm": MeanStd(res_m["train_acc"][:, 0]),
-                "train_acc": MeanStd(res_m["train_acc"][:, -1]),
+                # "train_acc_warm": MeanStd(res_m["train_acc"][:, 0]),
+                # "train_acc": MeanStd(res_m["train_acc"][:, -1]),
                 "test_acc_warm": MeanStd(res_m["test_acc"][:, 0]),
                 "test_acc": MeanStd(res_m["test_acc"][:, -1]),
                 # logpdf
-                "train_logpdf_warm": MeanStd(res_m["train_logpdf"][:, 0]),
-                "train_logpdf": MeanStd(res_m["train_logpdf"][:, -1]),
+                # "train_logpdf_warm": MeanStd(res_m["train_logpdf"][:, 0]),
+                # "train_logpdf": MeanStd(res_m["train_logpdf"][:, -1]),
                 "test_logpdf_warm": MeanStd(res_m["test_logpdf"][:, 0]),
                 "test_logpdf": MeanStd(res_m["test_logpdf"][:, -1]),
             }

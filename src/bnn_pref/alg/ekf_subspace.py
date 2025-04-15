@@ -175,7 +175,7 @@ class SubspaceNeuralEKF(Agent):
 
         def sub2full_predict_logits(
             params_subspace,
-            context: Float[Array, "2 T D"],
+            inputs: Float[Array, "2 T D"],
         ) -> Float[Array, "2"]:
             """
             Project params from subspace to full space, then apply model
@@ -186,8 +186,8 @@ class SubspaceNeuralEKF(Agent):
             )
             params = reconstruct_tree_params(params_full)
 
-            context = rearrange(context, "K T D -> 1 K T D", K=2)
-            outputs = self.model.apply({"params": params}, context)
+            inputs = rearrange(inputs, "K T D -> 1 K T D", K=2)
+            outputs = self.model.apply({"params": params}, inputs)
             outputs = rearrange(outputs, "1 K -> K", K=2)
             return outputs
 
@@ -200,6 +200,9 @@ class SubspaceNeuralEKF(Agent):
                 inputs: (2 * T * D,) query features -> (2,) traj rewards as logits
                 predicted measurement: (2,) # probabilities of traj 2 > traj 1
                 gt measurement: (2,) # one hot labels
+
+            params: (sub_dim,)
+            inputs: (2 * T * D,)
             """
             context = inputs.reshape(2, -1, self.n_feats)
             logits = sub2full_predict_logits(params, context)  # (2,)

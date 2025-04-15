@@ -89,7 +89,7 @@ class DeepEnsemble(Agent):
             (loss, _), grads = grad_fn(ts.params, ts, batch, self.l2_reg)
             return ts.apply_gradients(grads=grads), loss
 
-        grad_fn = jax.vmap(train_step, in_axes=(0, None))
+        grad_fn = jax.vmap(train_step, in_axes=(0, None))  # over ts
         ts, loss = grad_fn(ts, batch)
         return ts
 

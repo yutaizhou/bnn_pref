@@ -35,10 +35,11 @@ def compute_reward_nn(fn: Callable, demos_NTD: NTD):
 
 def compute_acc_nn(fn: Callable, data: QueryWithResponse):
     """
-    fn: (N2TD) -> (N2) logits of both items in a pairwise query
+    fn: (2TD) -> (2,) logits of both items in a pairwise query
     """
     features_Q2TD, responses_Q1 = data.queries_Q2TD, data.responses_Q1
-    logits_Q2 = fn(features_Q2TD)
+    # logits_Q2 = fn(features_Q2TD)
+    logits_Q2 = jax.lax.map(fn, features_Q2TD, batch_size=32)
     pred_response_Q = logits_Q2.argmax(axis=1)
     acc = jnp.mean(pred_response_Q == responses_Q1.squeeze())
     return acc
@@ -48,19 +49,20 @@ def compute_acc_nn_bma(
     key, sub2full_fn: Callable, bel: EKFBeliefState, data: QueryWithResponse
 ):
     """
-    sub2full_fn: (params, N2TD) -> (N2) logits of both items in a pairwise query
+    sub2full_fn: (params, 2TD) -> (2,) logits of both items in a pairwise query
     """
-    queries_Q2TD, responses_Q1 = data.queries_Q2TD, data.responses_Q1
+    features_Q2TD, responses_Q1 = data.queries_Q2TD, data.responses_Q1
     n_models = 10
     mean, cov = bel.mean, bel.cov
     dist = distrax.MultivariateNormalFullCovariance(mean, cov)
     ss_params = dist.sample(seed=key, sample_shape=(n_models,))
 
-    sub2full_fn = jax.vmap(sub2full_fn, in_axes=(None, 0))  # input: param, context
-    sub2full_fn = jax.vmap(sub2full_fn, in_axes=(0, None))
-    logits_MQ2 = sub2full_fn(ss_params, queries_Q2TD)
-    probs_MQ2 = jax.nn.softmax(logits_MQ2, axis=2)
-    probs_Q2 = probs_MQ2.mean(0)
+    sub2full_fn = jax.vmap(sub2full_fn, in_axes=(0, None))  # over params
+    sub2full_fn = partial(sub2full_fn, ss_params)
+
+    logits_QM2 = jax.lax.map(sub2full_fn, features_Q2TD, batch_size=32)
+    probs_QM2 = jax.nn.softmax(logits_QM2, axis=2)
+    probs_Q2 = probs_QM2.mean(1)
 
     pred_response_Q = probs_Q2.argmax(axis=1)
     acc = jnp.mean(pred_response_Q == responses_Q1.squeeze())
@@ -69,10 +71,11 @@ def compute_acc_nn_bma(
 
 def compute_logpdf_nn(fn: Callable, data: QueryWithResponse):
     """
-    fn: (N2TD) -> (N2) logits of both items in a pairwise query
+    fn: (2TD) -> (2,) logits of both items in a pairwise query
     """
     features_Q2TD, responses_Q1 = data.queries_Q2TD, data.responses_Q1
-    logits_Q2 = fn(features_Q2TD)
+    # logits_Q2 = fn(features_Q2TD)
+    logits_Q2 = jax.lax.map(fn, features_Q2TD, batch_size=32)
     logits_Q1 = jnp.take_along_axis(logits_Q2, responses_Q1, axis=1)
     ll_Q1 = logits_Q1 - jax.nn.logsumexp(logits_Q2, axis=1, keepdims=True)
     avg_ll = ll_Q1.mean()
@@ -91,7 +94,10 @@ def compute_logpdf_ensemble(fn: Callable, data: QueryWithResponse):
     fn: (N2TD) -> (NM2) logits of both items in a pairwise query, across M models
     """
     features_Q2TD, responses_Q1 = data.queries_Q2TD, data.responses_Q1
-    logits_QM2 = fn(features_Q2TD)
+    # logits_QM2 = fn(features_Q2TD)
+    logits_QM2 = jax.lax.map(
+        fn, jnp.expand_dims(features_Q2TD, axis=1), batch_size=32
+    ).squeeze(1)
     probs_QM2 = jax.nn.softmax(logits_QM2, axis=2)
     probs_Q2 = probs_QM2.mean(1)
 
@@ -106,35 +112,16 @@ def compute_acc_ensemble(fn: Callable, data: QueryWithResponse):
     fn: (N2TD) -> (NM2) logits of both items in a pairwise query, across M models
     """
     features_Q2TD, responses_Q1 = data.queries_Q2TD, data.responses_Q1
-    logits_QM2 = fn(features_Q2TD)
+    # logits_QM2 = fn(features_Q2TD)
+    logits_QM2 = jax.lax.map(
+        fn, jnp.expand_dims(features_Q2TD, axis=1), batch_size=32
+    ).squeeze(1)
     probs_QM2 = jax.nn.softmax(logits_QM2, axis=2)
     probs_Q2 = probs_QM2.mean(1)
 
     pred_response_Q = probs_Q2.argmax(axis=1)
     acc = jnp.mean(pred_response_Q == responses_Q1.squeeze())
     return acc
-
-
-def compute_logpdf_nn_bel(
-    key, sub2full_predict_logits: Callable, bel: EKFBeliefState, data: QueryWithResponse
-):
-    # todo: this is not used anywhere. need to debug
-    n_models = 10
-    mean, cov = bel.mean, bel.cov
-    dist = distrax.MultivariateNormalFullCovariance(mean, cov)
-    ss_params = dist.sample(seed=key, sample_shape=(n_models,))
-    blah = jax.vmap(sub2full_predict_logits, in_axes=(None, 0))  # input: param, context
-    blah = jax.vmap(blah, in_axes=(0, None))
-    logits_MQ2 = blah(ss_params, data.queries_Q2TD)
-
-    def compute_ll(logits_Q2):
-        return -optax.losses.softmax_cross_entropy(
-            logits_Q2,
-            jax.nn.one_hot(data.responses_Q1.squeeze(), 2),
-        ).mean()
-
-    avg_ll = jax.vmap(compute_ll)(logits_MQ2).mean()
-    return avg_ll
 
 
 def compute_pref_ranking_acc(reward_predictor: Callable, data: QueryWithResponse):
