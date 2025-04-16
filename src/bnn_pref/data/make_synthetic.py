@@ -4,13 +4,17 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 
-from bnn_pref.data.pref_utils import QueryWithResponse, create_pref_data_jit
+from bnn_pref.data.pref_utils import (
+    QueryData,
+    QueryFeaturesAndResponses,
+    create_pref_data,
+)
 from bnn_pref.utils.test_functions import test_functions_dict
 from bnn_pref.utils.type import NTD, N
 from bnn_pref.utils.utils import get_gaussian_vector
 
 
-def make_synthetic_data(key, cfg) -> Tuple[NTD, N, QueryWithResponse]:
+def make_synthetic_data(key, cfg) -> Tuple[NTD, N, QueryFeaturesAndResponses]:
     data_cfg = cfg["data"]
     task_cfg = cfg["task"]
     n_feats = task_cfg["n_feats"]
@@ -31,17 +35,17 @@ def make_synthetic_data(key, cfg) -> Tuple[NTD, N, QueryWithResponse]:
         train_frac=demo_train_frac,
     )
 
-    train_prefs, _ = create_pref_data_jit(
+    train_prefs: QueryData = create_pref_data(
         key3,
         ranked_returns=train_trajs["returns"],
-        traj_obs=train_trajs["observations"],
+        # traj_obs=train_trajs["observations"],
         n_queries=nq_train,
     )
 
-    test_prefs, _ = create_pref_data_jit(
+    test_prefs: QueryData = create_pref_data(
         key4,
         ranked_returns=test_trajs["returns"],
-        traj_obs=test_trajs["observations"],
+        # traj_obs=test_trajs["observations"],
         n_queries=nq_test,
     )
 

@@ -10,7 +10,7 @@ import jax.numpy.linalg as jnpl
 import optax
 
 from bnn_pref.alg.ekf_subspace import EKFBeliefState
-from bnn_pref.data.pref_utils import QueryWithResponse
+from bnn_pref.data.pref_utils import QueryFeaturesAndResponses
 from bnn_pref.utils.type import NTD, SD, D
 
 
@@ -33,7 +33,7 @@ def compute_reward_nn(fn: Callable, demos_NTD: NTD):
     return rewards_N
 
 
-def compute_acc_nn(fn: Callable, data: QueryWithResponse):
+def compute_acc_nn(fn: Callable, data: QueryFeaturesAndResponses):
     """
     fn: (2TD) -> (2,) logits of both items in a pairwise query
     """
@@ -46,7 +46,7 @@ def compute_acc_nn(fn: Callable, data: QueryWithResponse):
 
 
 def compute_acc_nn_bma(
-    key, sub2full_fn: Callable, bel: EKFBeliefState, data: QueryWithResponse
+    key, sub2full_fn: Callable, bel: EKFBeliefState, data: QueryFeaturesAndResponses
 ):
     """
     sub2full_fn: (params, 2TD) -> (2,) logits of both items in a pairwise query
@@ -69,7 +69,7 @@ def compute_acc_nn_bma(
     return acc
 
 
-def compute_logpdf_nn(fn: Callable, data: QueryWithResponse):
+def compute_logpdf_nn(fn: Callable, data: QueryFeaturesAndResponses):
     """
     fn: (2TD) -> (2,) logits of both items in a pairwise query
     """
@@ -89,7 +89,7 @@ def compute_logpdf_nn(fn: Callable, data: QueryWithResponse):
     return avg_ll
 
 
-def compute_logpdf_ensemble(fn: Callable, data: QueryWithResponse):
+def compute_logpdf_ensemble(fn: Callable, data: QueryFeaturesAndResponses):
     """
     fn: (N2TD) -> (NM2) logits of both items in a pairwise query, across M models
     """
@@ -107,7 +107,7 @@ def compute_logpdf_ensemble(fn: Callable, data: QueryWithResponse):
     return avg_ll
 
 
-def compute_acc_ensemble(fn: Callable, data: QueryWithResponse):
+def compute_acc_ensemble(fn: Callable, data: QueryFeaturesAndResponses):
     """
     fn: (N2TD) -> (NM2) logits of both items in a pairwise query, across M models
     """
@@ -124,7 +124,9 @@ def compute_acc_ensemble(fn: Callable, data: QueryWithResponse):
     return acc
 
 
-def compute_pref_ranking_acc(reward_predictor: Callable, data: QueryWithResponse):
+def compute_pref_ranking_acc(
+    reward_predictor: Callable, data: QueryFeaturesAndResponses
+):
     # todo why same output as compute_accuracy_nn?
     features_Q2TD, responses_Q1 = data.queries_Q2TD, data.responses_Q1
     left_rewards_Q = reward_predictor(features_Q2TD[:, 0]).squeeze()
@@ -133,7 +135,9 @@ def compute_pref_ranking_acc(reward_predictor: Callable, data: QueryWithResponse
     return jnp.mean(pred_prefs_Q == responses_Q1.squeeze())
 
 
-def compute_accuracy1_mcmc(samples_SD, data: QueryWithResponse, reward_fn: Callable):
+def compute_accuracy1_mcmc(
+    samples_SD, data: QueryFeaturesAndResponses, reward_fn: Callable
+):
     features_Q2TD, responses_Q1 = data.queries_Q2TD, data.responses_Q1
     # * approach 1: mean sample from posterior
     mean_weight_D = samples_SD.mean(axis=0)
@@ -146,7 +150,9 @@ def compute_accuracy1_mcmc(samples_SD, data: QueryWithResponse, reward_fn: Calla
     return acc
 
 
-def compute_accuracy2_mcmc(samples_SD, data: QueryWithResponse, reward_fn: Callable):
+def compute_accuracy2_mcmc(
+    samples_SD, data: QueryFeaturesAndResponses, reward_fn: Callable
+):
     features_Q2TD, responses_Q1 = data.queries_Q2TD, data.responses_Q1
 
     # * approach 2: mean predictive probability from posterior

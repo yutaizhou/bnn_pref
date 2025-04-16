@@ -6,7 +6,7 @@ import jax.random as jr
 import numpy as np
 
 import ogbench
-from bnn_pref.data.pref_utils import create_pref_data_jit
+from bnn_pref.data.pref_utils import QueryData, create_pref_data
 from bnn_pref.utils.utils import get_random_seed
 
 
@@ -30,17 +30,17 @@ def make_ogbench_data(key, cfg):
 
     # * create preference data
     key, key1, key2 = jr.split(key, 3)
-    train_prefs, _ = create_pref_data_jit(
+    train_prefs: QueryData = create_pref_data(
         key1,
         ranked_returns=train_trajs["returns"],
-        traj_obs=train_trajs["observations"],
+        # traj_obs=train_trajs["observations"],
         n_queries=nq_train,
     )
 
-    test_prefs, _ = create_pref_data_jit(
+    test_prefs: QueryData = create_pref_data(
         key2,
         ranked_returns=test_trajs["returns"],
-        traj_obs=test_trajs["observations"],
+        # traj_obs=test_trajs["observations"],
         n_queries=nq_test,
     )
 

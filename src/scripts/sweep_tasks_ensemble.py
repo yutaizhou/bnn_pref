@@ -20,7 +20,8 @@ from hydra.core.hydra_config import HydraConfig
 from bnn_pref.alg.ensemble import DeepEnsemble
 from bnn_pref.alg.trainer import alg_pipeline
 from bnn_pref.data import dataset_creators
-from bnn_pref.data.data_env import DataEnvironment
+from bnn_pref.data.data_env import PreferenceEnv
+from bnn_pref.data.pref_utils import query_indices_to_features
 from bnn_pref.utils.hydra_resolvers import *
 from bnn_pref.utils.metrics import (
     MeanStd,
@@ -37,6 +38,7 @@ def run_ensemble(key, cfg, data_dict, env):
     data_cfg = cfg["data"]
     alg_cfg = cfg["sgd"]
     train_prefs, test_prefs = data_dict["train_prefs"], data_dict["test_prefs"]
+    test_prefs = query_indices_to_features(test_prefs, data_dict["test_trajs"])
 
     # * build + run ensemble alg
     key, key_pipe = jr.split(key, 2)
@@ -115,7 +117,7 @@ def main(cfg):
         key, key_data, *key_seeds = jr.split(key, 2 + cfg["seeds"])
         data_dict = dataset_creators[cfg["task"]["ds_type"]](key_data, cfg)
         train_prefs = data_dict["train_prefs"]
-        env = DataEnvironment(
+        env = PreferenceEnv(
             X=train_prefs.queries_Q2TD,
             Y=jax.nn.one_hot(train_prefs.responses_Q1.squeeze(), num_classes=2),
         )

@@ -15,6 +15,7 @@ from sklearn.decomposition import PCA
 from tensorflow_probability.substrates import jax as tfp
 
 from bnn_pref.alg.agent_utils import Agent, bt_loss_fn, run_gradient_descent
+from bnn_pref.data.data_env import PreferenceEnv
 from bnn_pref.utils.network import RewardNet, count_params
 from bnn_pref.utils.type import CARL
 
@@ -93,8 +94,10 @@ class DeepEnsemble(Agent):
         ts, loss = grad_fn(ts, batch)
         return ts
 
-    @partial(jax.jit, static_argnames=["self"])
-    def acquire_next_query(self, key, ts: TrainState, contexts_N2TD) -> int:
+    @partial(jax.jit, static_argnames=["self", "env"])
+    def acquire_next_query(
+        self, key, ts: TrainState, env: PreferenceEnv, pool_idxes_N: Array
+    ) -> int:
         """
         active learning: greedily compute query that maximizes ensemble prediction var
         """
@@ -117,14 +120,15 @@ class DeepEnsemble(Agent):
         # _, values_N = jax.lax.scan(scan_step, None, contexts_N2TD)
 
         # * using lax.map
-        def map_step(context_2TD):
+        def map_step(idx):
+            context_2TD = env.get_context(idx)
             logits_M2 = fn(ts, context_2TD)
             probs_M2 = jax.nn.softmax(logits_M2, axis=1)
             pred_M = jnp.argmax(probs_M2, axis=1)
             value = jnp.var(pred_M, axis=0)
             return value
 
-        values_N = jax.lax.map(map_step, contexts_N2TD, batch_size=self.chunk_size)
+        values_N = jax.lax.map(map_step, pool_idxes_N, batch_size=self.chunk_size)
 
         query_idx = jnp.argmax(values_N)
         return query_idx

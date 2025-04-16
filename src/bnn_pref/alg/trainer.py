@@ -5,26 +5,29 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 import optax
+from flax.training.train_state import TrainState
 from jax.lax import scan
 from jax.random import split
 from jaxtyping import Key
 
-from bnn_pref.alg.ekf_subspace import EKFBeliefState, SubspaceNeuralEKF
-from bnn_pref.alg.ensemble import DeepEnsemble
-from bnn_pref.data.data_env import DataEnvironment
+from bnn_pref.alg.agent_utils import Agent
+from bnn_pref.alg.ekf_subspace import EKFBeliefState
+from bnn_pref.data.data_env import PreferenceEnv
 from bnn_pref.utils.network import RewardNet
-from bnn_pref.utils.type import CAR, CARL
+from bnn_pref.utils.type import CARL
 
 warnings.filterwarnings("ignore")
+
+AgentState = Union[TrainState, EKFBeliefState]
 
 
 def alg_pipeline(
     key,
-    alg_cls: Union[SubspaceNeuralEKF, DeepEnsemble],
-    env: DataEnvironment,
+    alg_cls: Agent,
+    env: PreferenceEnv,
     alg_cfg: Dict,
     data_cfg: Dict,
-):
+) -> Tuple[AgentState, Agent]:
     nq_init, nsteps = data_cfg["nq_init"], data_cfg["nsteps"]
     bs = alg_cfg["cls"]["batch_size"]
     if nq_init < bs:
@@ -39,7 +42,7 @@ def alg_pipeline(
     warmup_data = env.warmup(key_warm, nq_init)
     bel_init = bandit.init_bel(key_bel_init, warmup_data)
     bel_trace = run_bandit(
-        key_run, bandit, bel_init, env, warmup_data, nsteps, active=alg_cfg["active"]
+        key_run, bandit, bel_init, env, nq_init, nsteps, active=alg_cfg["active"]
     )
 
     # * prepend initial belief (zero vector in subspace) to bel_trace
@@ -54,28 +57,28 @@ def alg_pipeline(
 
 def run_bandit(
     key,
-    bandit: SubspaceNeuralEKF,
-    bel: EKFBeliefState,
-    env: DataEnvironment,
-    warmup_data: CARL,
+    bandit: Agent,
+    bel: AgentState,
+    env: PreferenceEnv,
+    nq_init: int,
     nsteps: int,  # either len(env) - nq_init or nq_update
     active: bool = False,
-) -> Tuple[EKFBeliefState, CAR]:
+) -> AgentState:
     """
     Run the bandit algorithm on the environment.
     Given `nq_train` queries, warmup sgd took `nq_init` queries
     Run EKF filtering on the remaining `nsteps` queries
     """
     # index into the dataset, get what's remaining after warmup
-    nq_init = len(warmup_data.rewards)
     pool_size = len(env) - nq_init  # active learning
-    contexts_pool, _ = env.get_n(jnp.arange(nq_init, len(env)))
-    assert pool_size == len(contexts_pool)
+    # contexts_pool, _ = env.get_n(jnp.arange(nq_init, len(env)))
+    # assert pool_size == len(contexts_pool)
+    pool_idxes = jnp.arange(nq_init, len(env))
 
     def filter_onestep(
-        curr: Tuple[EKFBeliefState, int],
+        curr: Tuple[AgentState, int],
         key: Key,
-    ) -> Tuple[EKFBeliefState, CAR]:
+    ) -> Tuple[AgentState, int]:
         bel, t = curr
         t_offset = t + nq_init  # offset by nq_init
 
@@ -89,7 +92,7 @@ def run_bandit(
             # t_next = t + 1
             t_next = jr.randint(subkey, (), 0, pool_size)
         else:  # get a query that maximizes acquisition fn
-            t_next = bandit.acquire_next_query(subkey, bel, contexts_pool)
+            t_next = bandit.acquire_next_query(subkey, bel, env, pool_idxes)
 
         return (bel, t_next), (bel, t, batch)
 

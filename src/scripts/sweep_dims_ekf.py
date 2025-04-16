@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 from bnn_pref.alg.ekf_subspace import SubspaceNeuralEKF
 from bnn_pref.alg.trainer import alg_pipeline
 from bnn_pref.data import make_synthetic_data
-from bnn_pref.data.data_env import DataEnvironment
+from bnn_pref.data.data_env import PreferenceEnv
 from bnn_pref.utils.hydra_resolvers import *
 from bnn_pref.utils.metrics import (
     MeanStd,
@@ -37,7 +37,7 @@ def run_ekf(key, cfg):
 
     # * build + run bandit alg
     key, key1 = jr.split(key, 2)
-    env = DataEnvironment(
+    env = PreferenceEnv(
         X=train_data.queries_Q2TD,
         Y=jax.nn.one_hot(train_data.responses_Q1.squeeze(), num_classes=2),
     )

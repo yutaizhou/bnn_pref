@@ -24,7 +24,7 @@ class Agent(ABC):
         pass
 
     @abstractmethod
-    def acquire_next_query(self, key, bel, context: Float[Array, "2 T D"]) -> int:
+    def acquire_next_query(self, key, bel, env, pool_idxes_N: Array) -> int:
         pass
 
 

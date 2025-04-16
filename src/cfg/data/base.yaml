@@ -7,7 +7,7 @@ demo_train_frac: 0.8
 # * preference queries
 # take nq_train / nq_test from the already split train/test trajs
 nq_train: 200
-nq_test: 200
+nq_test: 500
 
 # * Data partitioning for streaming algs: EKF, Ensemble, etc.
 nq_init: 5 

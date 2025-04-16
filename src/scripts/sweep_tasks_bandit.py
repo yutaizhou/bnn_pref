@@ -15,7 +15,8 @@ import matplotlib.pyplot as plt
 from hydra.core.hydra_config import HydraConfig
 
 from bnn_pref.data import dataset_creators
-from bnn_pref.data.data_env import DataEnvironment
+from bnn_pref.data.data_env import PreferenceEnv
+from bnn_pref.data.pref_utils import QueryData
 from bnn_pref.utils.hydra_resolvers import *
 from bnn_pref.utils.metrics import MeanStd
 from bnn_pref.utils.utils import get_random_seed
@@ -83,13 +84,17 @@ def main(cfg):
         key, key_data, *key_seeds = jr.split(key, 2 + cfg["seeds"])
         start = datetime.now()
         data_dict = dataset_creators[cfg["task"]["ds_type"]](key_data, cfg)
-        train_prefs = data_dict["train_prefs"]
         duration = (datetime.now() - start).total_seconds()
-        env = DataEnvironment(
-            X=train_prefs.queries_Q2TD,
+        train_trajs_obs = data_dict["train_trajs"]["observations"]  # (N, T, D)
+        train_prefs: QueryData = data_dict["train_prefs"]
+        N, T, D = train_trajs_obs.shape
+        print(f"{task}: ({nq_train}, 2, {T}, {D}) {duration:.1f}s")
+
+        env = PreferenceEnv(
+            items=train_trajs_obs,
+            X=train_prefs.queries_Q2,
             Y=jax.nn.one_hot(train_prefs.responses_Q1.squeeze(), num_classes=2),
         )
-        print(f"{task}: {train_prefs.queries_Q2TD.shape} {duration:.1f}s")
 
         # * run
         for alg, run_fn in [("ekf", run_ekf), ("sgd", run_ensemble)]:

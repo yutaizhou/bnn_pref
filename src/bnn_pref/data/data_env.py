@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import jax.random as jr
 from jaxtyping import Array, Float
 
-from bnn_pref.utils.type import CARL, Q2, Q2TD
+from bnn_pref.utils.type import CARL, NTD, Q2, Q2TD
 
 
 def retrieve(data, batch_idx: Float[Array, "B"]):
@@ -20,22 +20,26 @@ def retrieve(data, batch_idx: Float[Array, "B"]):
     return retrieve_fn(data, batch_idx)
 
 
-class DataEnvironment:
-    def __init__(self, X: Q2TD, Y: Q2):
-        # * Randomise dataset rows
-        self.n_obs, *_ = X.shape
+class PreferenceEnv:
+    def __init__(self, items: NTD, X: Q2, Y: Q2):
+        """
+        Args:
+            items: (N, T, D)
+            X: (Q, 2) query indices
+            Y: (Q, 2) preference labels (one-hot)
+        """
+        self.n_queries, *_ = X.shape
         self.n_actions = Y.shape[1]
-        X = jnp.asarray(X)
-        Y = jnp.asarray(Y)
 
-        self.contexts = X
+        self.items_NTD = items
+        self.queries_Q2 = X
         self.labels_onehot = Y
 
     def __len__(self):
-        return self.n_obs
+        return self.n_queries
 
-    def get_context(self, t) -> Float[Array, "2 D"]:
-        return self.contexts[t]
+    def get_context(self, t) -> Float[Array, "2 *"]:
+        return self.items_NTD[self.queries_Q2[t]]
 
     def get_label(self, t) -> Float[Array, "n_actions"]:
         return self.labels_onehot[t]
@@ -59,7 +63,7 @@ class DataEnvironment:
             labels: jnp.ndarray
                 (n_warmups, n_actions), one-hot
         """
-        assert n_warmups <= self.n_obs, "more warmups than dataset size"
+        assert n_warmups <= self.n_queries, "more warmups than dataset size"
         # Create array of round-robin actions: 0, 1, 2, 0, 1, 2,  ...
         # actions = jnp.tile(jnp.arange(self.n_actions), n_warmups)
         idxes = jnp.arange(n_warmups)

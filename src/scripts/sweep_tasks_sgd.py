@@ -19,7 +19,7 @@ from flax.training.train_state import TrainState
 
 from bnn_pref.alg.agent_utils import bt_loss_fn, run_gradient_descent
 from bnn_pref.data import dataset_creators
-from bnn_pref.data.data_env import CARL, DataEnvironment
+from bnn_pref.data.data_env import CARL, PreferenceEnv
 from bnn_pref.utils.hydra_resolvers import *
 from bnn_pref.utils.metrics import MeanStd, compute_acc_nn, compute_logpdf_nn
 from bnn_pref.utils.network import RewardNet, count_params
@@ -129,7 +129,7 @@ def main(cfg):
         key, key_data, *key_seeds = jr.split(key, 2 + cfg["seeds"])
         data_dict = dataset_creators[cfg["task"]["ds_type"]](key_data, cfg)
         train_prefs = data_dict["train_prefs"]
-        env = DataEnvironment(
+        env = PreferenceEnv(
             X=train_prefs.queries_Q2TD,
             Y=jax.nn.one_hot(train_prefs.responses_Q1.squeeze(), num_classes=2),
         )

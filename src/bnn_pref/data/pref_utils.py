@@ -1,6 +1,6 @@
 import itertools as it
 import math
-from typing import Callable, Tuple
+from typing import Callable, Dict, Optional, Union
 
 import jax
 import jax.numpy as jnp
@@ -10,16 +10,43 @@ from bnn_pref.utils.type import CARL, NTD, Q1, Q2, Q2TD, D, N, unpackable_datacl
 
 
 @unpackable_dataclass
-class QueryWithResponse:
+class QueryFeaturesAndResponses:
     queries_Q2TD: Q2TD
     responses_Q1: Q1
+    num_mislabels: int
+
+
+@unpackable_dataclass
+class QueryIndexAndResponses:
+    queries_Q2: Q2
+    responses_Q1: Q1
+    num_mislabels: int
+
+
+def query_indices_to_features(
+    queries: QueryIndexAndResponses,
+    trajs: Dict[str, jax.Array],
+) -> QueryFeaturesAndResponses:
+    """
+    Convert a QueryIndexAndResponses object to a QueryFeaturesAndResponses object.
+    """
+    traj_obs = trajs["observations"]
+    features_Q2TD = traj_obs[queries.queries_Q2]
+    return QueryFeaturesAndResponses(
+        features_Q2TD,
+        queries.responses_Q1,
+        queries.num_mislabels,
+    )
+
+
+QueryData = Union[QueryFeaturesAndResponses, QueryIndexAndResponses]
 
 
 class BradleyTerry:
     @staticmethod
     def logpdf(
         params_D: D,
-        data: QueryWithResponse,
+        data: QueryFeaturesAndResponses,
         reward_fn: Callable,
         beta: float = 1.0,  # rationality constant
     ) -> Q1:
@@ -29,7 +56,9 @@ class BradleyTerry:
         return returns_Q1 - jax.nn.logsumexp(returns_Q2, axis=1, keepdims=True)
 
     @staticmethod
-    def potential(params: D, reward_fn: Callable, data: QueryWithResponse) -> float:
+    def potential(
+        params: D, reward_fn: Callable, data: QueryFeaturesAndResponses
+    ) -> float:
         ll_Q = BradleyTerry.logpdf(
             params_D=params,
             data=data,
@@ -75,7 +104,7 @@ def random_query_iterator_perm(key, n: int, n_queries: int):
 def create_pref_data(
     key,
     ranked_returns: N,
-    traj_obs: NTD = None,
+    traj_obs: Optional[NTD] = None,
     n_queries: int = -1,
     use_delta: bool = False,
     delta_rank: int = 1,
@@ -84,7 +113,7 @@ def create_pref_data(
     bt_beta: float = 1.0,
     skip_threshold: float = -jnp.inf,
     mistake_prob: float = 0.0,
-) -> Tuple[Q2, Q1, int]:
+) -> Union[QueryIndexAndResponses, QueryFeaturesAndResponses]:
     """
     Args:
         num_queries (int): specifies the number of pairwise comparisons between trajectories
@@ -140,18 +169,18 @@ def create_pref_data(
     queries_Q2 = jnp.asarray(queries).astype(jnp.int32)
     labels_Q1 = jnp.expand_dims(jnp.asarray(labels), 1).astype(jnp.int32)
 
-    if traj_obs is not None:
-        queries_Q2TD = traj_obs[queries_Q2]  # index into (N, T, D) using (Q, 2)
-        pref_data = QueryWithResponse(queries_Q2TD, labels_Q1)
-        return pref_data, num_mislabels
+    if traj_obs is None:
+        return QueryIndexAndResponses(queries_Q2, labels_Q1, num_mislabels)
     else:
-        return queries_Q2, labels_Q1, num_mislabels
+        features_Q2TD = traj_obs[queries_Q2]  # index into (N, T, D) using (Q, 2)
+        pref_data = QueryFeaturesAndResponses(features_Q2TD, labels_Q1, num_mislabels)
+        return pref_data
 
 
 def create_pref_data_jit(
     key,
     ranked_returns: N,
-    traj_obs: NTD = None,
+    traj_obs: Optional[NTD] = None,
     n_queries: int = -1,
     use_delta: bool = False,
     delta_rank: int = 1,
@@ -160,7 +189,7 @@ def create_pref_data_jit(
     bt_beta: float = 1.0,
     skip_threshold: float = -jnp.inf,
     mistake_prob: float = 0.0,
-) -> Tuple[Q2, Q1, int]:
+) -> Union[QueryIndexAndResponses, QueryFeaturesAndResponses]:
     """
     Jit-compatible version of create_pref_data. (thanks Cursor)
     Instead of using Python lists and conditionals, uses jax arrays and jnp.where.
@@ -230,10 +259,9 @@ def create_pref_data_jit(
 
     if traj_obs is not None:
         queries_Q2TD = traj_obs[queries_Q2]  # index into (N, T, D) using (Q, 2)
-        pref_data = QueryWithResponse(queries_Q2TD, labels_Q1)
-        return pref_data, num_mislabels
+        return QueryFeaturesAndResponses(queries_Q2TD, labels_Q1, num_mislabels)
     else:
-        return queries_Q2, labels_Q1, num_mislabels
+        return QueryIndexAndResponses(queries_Q2, labels_Q1, num_mislabels)
 
 
 if __name__ == "__main__":

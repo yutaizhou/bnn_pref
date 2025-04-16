@@ -24,6 +24,7 @@ from bnn_pref.alg.agent_utils import (
     run_gradient_descent,
     subspace2full_params,
 )
+from bnn_pref.data.data_env import PreferenceEnv
 from bnn_pref.utils.network import count_params
 from bnn_pref.utils.type import CARL, unpackable_dataclass
 
@@ -321,8 +322,10 @@ class SubspaceNeuralEKF(Agent):
         params = distr.sample(seed=key)
         return params
 
-    @partial(jax.jit, static_argnames=["self"])
-    def acquire_next_query(self, key, bel: EKFBeliefState, contexts_N2TD) -> int:
+    @partial(jax.jit, static_argnames=["self", "env"])
+    def acquire_next_query(
+        self, key, bel: EKFBeliefState, env: PreferenceEnv, pool_idxes_N: Array
+    ) -> int:
         """
         active learning: greedily compute query that maximizes InfoGain acquisition fn
         """
@@ -352,13 +355,14 @@ class SubspaceNeuralEKF(Agent):
         # _, values_N = jax.lax.scan(scan_step, None, contexts_N2TD)
 
         # * using lax.map
-        def map_step(context_2TD):
+        def map_step(idx):
+            context_2TD = env.get_context(idx)
             logits_M2 = fn(ss_params, context_2TD)
             probs_M2 = jax.nn.softmax(logits_M2, axis=1)
             value = compute_info_gain(probs_M2)
             return value
 
-        values_N = jax.lax.map(map_step, contexts_N2TD, batch_size=self.chunk_size)
+        values_N = jax.lax.map(map_step, pool_idxes_N, batch_size=self.chunk_size)
 
         query_idx = jnp.argmax(values_N)
         return query_idx

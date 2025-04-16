@@ -16,7 +16,7 @@ from hydra.core.hydra_config import HydraConfig
 from bnn_pref.alg.ensemble import DeepEnsemble
 from bnn_pref.alg.trainer import alg_pipeline
 from bnn_pref.data import dataset_creators
-from bnn_pref.data.data_env import DataEnvironment
+from bnn_pref.data.data_env import PreferenceEnv
 from bnn_pref.utils.hydra_resolvers import *
 from bnn_pref.utils.metrics import compute_acc_ensemble, compute_logpdf_ensemble
 from bnn_pref.utils.plotting import plot_reward_heatmap
@@ -43,7 +43,7 @@ def main(cfg):
 
     # * build + run bandit alg
     key, key_pipe, key_bma = jr.split(key, 3)
-    env = DataEnvironment(
+    env = PreferenceEnv(
         X=train_prefs.queries_Q2TD,
         Y=jax.nn.one_hot(train_prefs.responses_Q1.squeeze(), num_classes=2),
     )

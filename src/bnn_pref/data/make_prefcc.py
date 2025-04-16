@@ -7,7 +7,7 @@ import numpy as np
 import torch
 from tensordict import TensorDict
 
-from bnn_pref.data.pref_utils import create_pref_data, create_pref_data_jit
+from bnn_pref.data.pref_utils import QueryData, create_pref_data, create_pref_data_jit
 from bnn_pref.utils.utils import get_random_seed
 
 
@@ -27,16 +27,16 @@ def make_prefcc_data(key, cfg) -> Dict[str, jax.Array]:
 
     # * turn train/test trajs into preference data
     key, key_train, key_test = jr.split(key_split, 3)
-    train_prefs, _ = create_pref_data(
+    train_prefs: QueryData = create_pref_data(
         key_train,
         ranked_returns=train_trajs["returns"],
-        traj_obs=train_trajs["observations"],
+        # traj_obs=train_trajs["observations"],
         n_queries=nq_train,
     )
-    test_prefs, _ = create_pref_data(
+    test_prefs: QueryData = create_pref_data(
         key_test,
         ranked_returns=test_trajs["returns"],
-        traj_obs=test_trajs["observations"],
+        # traj_obs=test_trajs["observations"],
         n_queries=nq_test,
     )
 
