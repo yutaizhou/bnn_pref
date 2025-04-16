@@ -84,7 +84,7 @@ class RewardNet(nn.Module):
 
         # todo: stability trick
         # if T > 1:
-        #     x = nn.tanh(x) * 1.0
+        #     x = nn.tanh(x)
         return rearrange(x, "B T 1 -> B T")
 
     # def predict_traj_rewards_scan(self, x: BTD) -> B:
@@ -94,10 +94,10 @@ class RewardNet(nn.Module):
     def predict_traj_return(self, x: BTD) -> B:
         B, T, D = x.shape
         rewards = self.predict_traj_rewards(x)  # (B,T,D) -> (B,T)
-        traj_return = rewards.sum(axis=1)
+        returns = rewards.sum(axis=1)  # (B,)
         # todo: stability trick
-        traj_return /= T
-        return traj_return
+        returns /= T
+        return returns
 
 
 class MLP(nn.Module):
