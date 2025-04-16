@@ -19,7 +19,7 @@ from bnn_pref.data.data_env import PreferenceEnv
 from bnn_pref.data.pref_utils import QueryData
 from bnn_pref.utils.hydra_resolvers import *
 from bnn_pref.utils.metrics import MeanStd
-from bnn_pref.utils.utils import get_random_seed
+from bnn_pref.utils.utils import get_random_seed, nested_defaultdict
 from scripts.sweep_tasks_ekf import run_ekf
 from scripts.sweep_tasks_ensemble import run_ensemble
 
@@ -47,7 +47,7 @@ def main(cfg):
         "walkerWalk",
         "ogbench",
     ]
-    nested_defaultdict = lambda: defaultdict(nested_defaultdict)
+
     stats = nested_defaultdict()
 
     data_cfg = cfg["data"]

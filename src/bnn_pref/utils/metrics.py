@@ -33,26 +33,30 @@ def compute_reward_nn(fn: Callable, demos_NTD: NTD):
     return rewards_N
 
 
-def compute_acc_nn(fn: Callable, data: QueryFeaturesAndResponses):
+def compute_acc_nn(fn: Callable, data: QueryFeaturesAndResponses, chunk_size: int = 32):
     """
     fn: (2TD) -> (2,) logits of both items in a pairwise query
     """
     features_Q2TD, responses_Q1 = data.queries_Q2TD, data.responses_Q1
     # logits_Q2 = fn(features_Q2TD)
-    logits_Q2 = jax.lax.map(fn, features_Q2TD, batch_size=32)
+    logits_Q2 = jax.lax.map(fn, features_Q2TD, batch_size=chunk_size)
     pred_response_Q = logits_Q2.argmax(axis=1)
     acc = jnp.mean(pred_response_Q == responses_Q1.squeeze())
     return acc
 
 
 def compute_acc_nn_bma(
-    key, sub2full_fn: Callable, bel: EKFBeliefState, data: QueryFeaturesAndResponses
+    key,
+    sub2full_fn: Callable,
+    bel: EKFBeliefState,
+    data: QueryFeaturesAndResponses,
+    n_models: int = 10,
+    chunk_size: int = 32,
 ):
     """
     sub2full_fn: (params, 2TD) -> (2,) logits of both items in a pairwise query
     """
     features_Q2TD, responses_Q1 = data.queries_Q2TD, data.responses_Q1
-    n_models = 10
     mean, cov = bel.mean, bel.cov
     dist = distrax.MultivariateNormalFullCovariance(mean, cov)
     ss_params = dist.sample(seed=key, sample_shape=(n_models,))
@@ -60,7 +64,7 @@ def compute_acc_nn_bma(
     sub2full_fn = jax.vmap(sub2full_fn, in_axes=(0, None))  # over params
     sub2full_fn = partial(sub2full_fn, ss_params)
 
-    logits_QM2 = jax.lax.map(sub2full_fn, features_Q2TD, batch_size=32)
+    logits_QM2 = jax.lax.map(sub2full_fn, features_Q2TD, batch_size=chunk_size)
     probs_QM2 = jax.nn.softmax(logits_QM2, axis=2)
     probs_Q2 = probs_QM2.mean(1)
 
@@ -69,13 +73,15 @@ def compute_acc_nn_bma(
     return acc
 
 
-def compute_logpdf_nn(fn: Callable, data: QueryFeaturesAndResponses):
+def compute_logpdf_nn(
+    fn: Callable, data: QueryFeaturesAndResponses, chunk_size: int = 32
+):
     """
     fn: (2TD) -> (2,) logits of both items in a pairwise query
     """
     features_Q2TD, responses_Q1 = data.queries_Q2TD, data.responses_Q1
     # logits_Q2 = fn(features_Q2TD)
-    logits_Q2 = jax.lax.map(fn, features_Q2TD, batch_size=32)
+    logits_Q2 = jax.lax.map(fn, features_Q2TD, batch_size=chunk_size)
     logits_Q1 = jnp.take_along_axis(logits_Q2, responses_Q1, axis=1)
     ll_Q1 = logits_Q1 - jax.nn.logsumexp(logits_Q2, axis=1, keepdims=True)
     avg_ll = ll_Q1.mean()
@@ -89,14 +95,16 @@ def compute_logpdf_nn(fn: Callable, data: QueryFeaturesAndResponses):
     return avg_ll
 
 
-def compute_logpdf_ensemble(fn: Callable, data: QueryFeaturesAndResponses):
+def compute_logpdf_ensemble(
+    fn: Callable, data: QueryFeaturesAndResponses, chunk_size: int = 32
+):
     """
     fn: (N2TD) -> (NM2) logits of both items in a pairwise query, across M models
     """
     features_Q2TD, responses_Q1 = data.queries_Q2TD, data.responses_Q1
     # logits_QM2 = fn(features_Q2TD)
     logits_QM2 = jax.lax.map(
-        fn, jnp.expand_dims(features_Q2TD, axis=1), batch_size=32
+        fn, jnp.expand_dims(features_Q2TD, axis=1), batch_size=chunk_size
     ).squeeze(1)
     probs_QM2 = jax.nn.softmax(logits_QM2, axis=2)
     probs_Q2 = probs_QM2.mean(1)
@@ -107,14 +115,16 @@ def compute_logpdf_ensemble(fn: Callable, data: QueryFeaturesAndResponses):
     return avg_ll
 
 
-def compute_acc_ensemble(fn: Callable, data: QueryFeaturesAndResponses):
+def compute_acc_ensemble(
+    fn: Callable, data: QueryFeaturesAndResponses, chunk_size: int = 32
+):
     """
     fn: (N2TD) -> (NM2) logits of both items in a pairwise query, across M models
     """
     features_Q2TD, responses_Q1 = data.queries_Q2TD, data.responses_Q1
     # logits_QM2 = fn(features_Q2TD)
     logits_QM2 = jax.lax.map(
-        fn, jnp.expand_dims(features_Q2TD, axis=1), batch_size=32
+        fn, jnp.expand_dims(features_Q2TD, axis=1), batch_size=chunk_size
     ).squeeze(1)
     probs_QM2 = jax.nn.softmax(logits_QM2, axis=2)
     probs_Q2 = probs_QM2.mean(1)

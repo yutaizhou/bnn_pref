@@ -37,6 +37,7 @@ jnp.set_printoptions(precision=2)
 def run_ensemble(key, cfg, data_dict, env):
     data_cfg = cfg["data"]
     alg_cfg = cfg["sgd"]
+    chunk_size = cfg["chunk_size"]
     train_prefs, test_prefs = data_dict["train_prefs"], data_dict["test_prefs"]
     test_prefs = query_indices_to_features(test_prefs, data_dict["test_trajs"])
 
@@ -49,10 +50,10 @@ def run_ensemble(key, cfg, data_dict, env):
         fn = jax.vmap(ts.apply_fn, in_axes=(0, None), out_axes=1)  # fn(param, input)
         fn = partial(fn, {"params": ts.params})
         # train_logpdf = compute_logpdf_ensemble(fn, train_prefs)
-        test_logpdf = compute_logpdf_ensemble(fn, test_prefs)
+        test_logpdf = compute_logpdf_ensemble(fn, test_prefs, chunk_size=chunk_size)
 
         # train_acc = compute_acc_ensemble(fn, train_prefs)
-        test_acc = compute_acc_ensemble(fn, test_prefs)
+        test_acc = compute_acc_ensemble(fn, test_prefs, chunk_size=chunk_size)
 
         result = {
             # * logpdf

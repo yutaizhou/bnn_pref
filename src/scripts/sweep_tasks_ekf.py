@@ -37,7 +37,10 @@ jnp.set_printoptions(precision=2)
 def run_ekf(key, cfg, data_dict, env):
     ekf_cfg = cfg["ekf"]
     data_cfg = cfg["data"]
+    chunk_size = cfg["chunk_size"]
+    n_models = ekf_cfg["M"]
     train_prefs, test_prefs = data_dict["train_prefs"], data_dict["test_prefs"]
+    train_prefs = query_indices_to_features(train_prefs, data_dict["train_trajs"])
     test_prefs = query_indices_to_features(test_prefs, data_dict["test_trajs"])
 
     # * build + run bandit alg
