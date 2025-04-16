@@ -57,11 +57,15 @@ def run_ekf(key, cfg, data_dict, env):
         key = jr.fold_in(key_bma, t)
         fn = partial(sub2full_logits_fn, mean)
         # train_logpdf = compute_logpdf_nn(fn, train_prefs)
-        test_logpdf = compute_logpdf_nn(fn, test_prefs)
+        test_logpdf = compute_logpdf_nn(fn, test_prefs, chunk_size=chunk_size)
         # train_acc = compute_acc_nn(fn, train_prefs)
-        test_acc = compute_acc_nn(fn, test_prefs)
-        # train_acc_bma = compute_acc_nn_bma(key, sub2full_logits_fn, bel, train_prefs)
-        test_acc_bma = compute_acc_nn_bma(key, sub2full_logits_fn, bel, test_prefs)
+        test_acc = compute_acc_nn(fn, test_prefs, chunk_size=chunk_size)
+        # train_acc_bma = compute_acc_nn_bma(
+        #     key, sub2full_logits_fn, bel, train_prefs, n_models, chunk_size
+        # )
+        # test_acc_bma = compute_acc_nn_bma(
+        #     key, sub2full_logits_fn, bel, test_prefs, n_models, chunk_size
+        # )
 
         # all arrays of (1 + nq_updates, )
         result = {
@@ -72,7 +76,7 @@ def run_ekf(key, cfg, data_dict, env):
             # "train_acc": train_acc,
             "test_acc": test_acc,
             # "train_acc_bma": train_acc_bma,
-            "test_acc_bma": test_acc_bma,
+            # "test_acc_bma": test_acc_bma,
         }
         return (), result
 
@@ -164,7 +168,7 @@ def main(cfg):
                 # "train_acc": MeanStd(res_m["train_acc"][:, -1]),
                 "test_acc_warm": MeanStd(res_m["test_acc"][:, 0]),
                 "test_acc": MeanStd(res_m["test_acc"][:, -1]),
-                "test_acc_bma": MeanStd(res_m["test_acc_bma"][:, -1]),
+                # "test_acc_bma": MeanStd(res_m["test_acc_bma"][:, -1]),
                 # logpdf
                 # "train_logpdf_warm": MeanStd(res_m["train_logpdf"][:, 0]),
                 # "train_logpdf": MeanStd(res_m["train_logpdf"][:, -1]),
@@ -181,7 +185,7 @@ def main(cfg):
                 f"logpdf: {res['test_logpdf'].mean:.2f} ± {res['test_logpdf'].std:.2f}, "
                 # f"({metadata_m['full_param_count'][0]:,d} -> {metadata_m['subspace_param_count'][0]:,d}) "
                 f"({duration:.1f}s)"
-                f", bma_acc: {res['test_acc_bma'].mean:.2%} ± {res['test_acc_bma'].std:.2%}, "
+                # f", bma_acc: {res['test_acc_bma'].mean:.2%} ± {res['test_acc_bma'].std:.2%}, "
             )
 
     # print("\n === Printing extra stats ===")

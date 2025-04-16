@@ -47,14 +47,14 @@ class RewardNet(nn.Module):
         layers += [[nn.Dense(1)]]
         self.layers = nn.Sequential(list(it.chain.from_iterable(layers)))
 
-        self.scanned_net = nn.scan(
-            MLPBlock,
-            variable_broadcast="params",
-            split_rngs={"params": False},
-            in_axes=1,  # scan over axis 1 (T)
-            out_axes=1,  # output has axis 1 (T)
-            length=None,
-        )(self.hidden_sizes)
+        # self.scanned_net = nn.scan(
+        #     MLPBlock,
+        #     variable_broadcast="params",
+        #     split_rngs={"params": False},
+        #     in_axes=1,  # scan over axis 1 (T)
+        #     out_axes=1,  # output has axis 1 (T)
+        #     length=None,
+        # )(self.hidden_sizes)
 
     def __call__(self, x: B2TD) -> B2:
         r1 = self.predict_traj_return(x[:, 0])  # B
@@ -87,9 +87,9 @@ class RewardNet(nn.Module):
         #     x = nn.tanh(x) * 1.0
         return rearrange(x, "B T 1 -> B T")
 
-    def predict_traj_rewards_scan(self, x: BTD) -> B:
-        _, rewards = self.scanned_net(None, x)
-        return rewards
+    # def predict_traj_rewards_scan(self, x: BTD) -> B:
+    #     _, rewards = self.scanned_net(None, x)
+    #     return rewards
 
     def predict_traj_return(self, x: BTD) -> B:
         B, T, D = x.shape

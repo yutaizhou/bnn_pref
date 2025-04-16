@@ -33,7 +33,7 @@ class PreferenceEnv:
 
         self.items_NTD = items
         self.queries_Q2 = X
-        self.labels_onehot = Y
+        self.labels_Q2 = Y
 
     def __len__(self):
         return self.n_queries
@@ -42,10 +42,10 @@ class PreferenceEnv:
         return self.items_NTD[self.queries_Q2[t]]
 
     def get_label(self, t) -> Float[Array, "n_actions"]:
-        return self.labels_onehot[t]
+        return self.labels_Q2[t]
 
     def get_reward(self, t, action) -> float:
-        label = self.labels_onehot[t, action]
+        label = self.labels_Q2[t, action]
         return jnp.float32(label)
 
     def warmup(self, key, n_warmups: int) -> CARL:

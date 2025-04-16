@@ -1,5 +1,6 @@
 import os
 from collections import defaultdict
+from functools import partial
 from typing import Dict
 
 os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
@@ -85,31 +86,31 @@ def main(cfg):
         start = datetime.now()
         data_dict = dataset_creators[cfg["task"]["ds_type"]](key_data, cfg)
         duration = (datetime.now() - start).total_seconds()
+
+        # * create env
         train_trajs_obs = data_dict["train_trajs"]["observations"]  # (N, T, D)
         train_prefs: QueryData = data_dict["train_prefs"]
-        N, T, D = train_trajs_obs.shape
-        print(f"{task}: ({nq_train}, 2, {T}, {D}) {duration:.1f}s")
-
         env = PreferenceEnv(
             items=train_trajs_obs,
             X=train_prefs.queries_Q2,
             Y=jax.nn.one_hot(train_prefs.responses_Q1.squeeze(), num_classes=2),
         )
 
+        N, T, D = train_trajs_obs.shape
+        print(f"{task}: ({nq_train}, 2, {T}, {D}) {duration:.1f}s")
         # * run
         for alg, run_fn in [("ekf", run_ekf), ("sgd", run_ensemble)]:
             for is_al in [False, True]:
                 cfg[alg]["active"] = is_al
 
-                # * run
                 seeds = jnp.array(key_seeds)
-                # run_vmap = jax.vmap(run_fn, in_axes=(0, None, None, None))
-                # res_m, metadata_m = run_vmap(seeds, cfg, data_dict, env)
-                # run_fn_jit = jax.jit(run_fn, static_argnames=["env"])
-                res_m, metadata_m = jax.lax.map(
-                    lambda seed: run_fn(seed, cfg, data_dict, env),
-                    seeds,
-                )
+                run_fn = partial(run_fn, cfg=cfg, data_dict=data_dict, env=env)
+
+                # vmap version
+                res_m, metadata_m = jax.vmap(run_fn, in_axes=(0,))(seeds)
+
+                # lax.map version
+                # res_m, metadata_m = jax.lax.map(run_fn, seeds)
 
                 res = {
                     "task": task,
@@ -121,9 +122,9 @@ def main(cfg):
                     # "train_acc": MeanStd(res_m["train_acc"][:, -1]),
                     "test_acc_warm": MeanStd(res_m["test_acc"][:, 0]),
                     "test_acc": MeanStd(res_m["test_acc"][:, -1]),
-                    "test_acc_bma": MeanStd(res_m["test_acc_bma"][:, -1])
-                    if alg == "ekf"
-                    else None,
+                    # "test_acc_bma": MeanStd(res_m["test_acc_bma"][:, -1])
+                    # if alg == "ekf"
+                    # else None,
                     # logpdf
                     # "train_logpdf_warm": MeanStd(res_m["train_logpdf"][:, 0]),
                     # "train_logpdf": MeanStd(res_m["train_logpdf"][:, -1]),

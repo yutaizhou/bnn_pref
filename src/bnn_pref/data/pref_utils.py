@@ -80,7 +80,7 @@ def bt_likelihood(return_i: float, return_j: float, beta: float = 1.0) -> float:
 
 def random_query_iterator_sample(key, n: int, n_queries: int):
     """
-    Note this does not return ti=tj, and migth return duplicates
+    Note this does not return ti=tj, and might return duplicates
     """
     for _ in range(n_queries):
         key, key1, key2 = jr.split(key, 3)
