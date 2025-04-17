@@ -86,6 +86,7 @@ def main(cfg):
         f"  Init/Update: {nq_init}/{nsteps}\n"
         f"EKF:\n"
         f"  n_models={ekf_cfg['M']}, sub_dim={ekf_cfg['sub_dim']}, rnd_proj={ekf_cfg['rnd_proj']}\n"
+        f"  prior_noise={ekf_cfg['prior_noise']}, dynamics_noise={ekf_cfg['dynamics_noise']}, obs_noise={ekf_cfg['obs_noise']}\n"
         f"  init: bs={ekf_cfg['bs']}, niters={ekf_cfg['niters']}[{warm_burns}::{thinning}] ({n_eff_iterates} eff), {sub_dim=}, {rnd_proj=}\n"
         f"Ensemble:\n"
         f"  n_models={sgd_cfg['M']}\n"
