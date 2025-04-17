@@ -27,6 +27,10 @@ class Agent(ABC):
     def acquire_next_query(self, key, bel, env, pool_idxes_N: Array) -> int:
         pass
 
+    @abstractmethod
+    def compute_predictive(self, bel, feats_Q2TD: Float[Array, "Q 2 T D"]):
+        pass
+
 
 def subspace2full_params(
     params_subspace: Float[Array, "sub_dim"],

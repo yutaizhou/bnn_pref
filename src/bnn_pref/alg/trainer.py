@@ -86,6 +86,7 @@ def run_bandit(
         label = env.get_label(t_offset)  # one-hot pref, always [0,1] cuz traj 2 > 1
         batch = CARL(context, None, None, label)
         bel = bandit.update_bel(bel, batch)
+        q = env.get_pref_indices(t_offset)
 
         key, subkey = split(key)
         if not active:  # get a random query
@@ -94,10 +95,10 @@ def run_bandit(
         else:  # get a query that maximizes acquisition fn
             t_next = bandit.acquire_next_query(subkey, bel, env, pool_idxes)
 
-        return (bel, t_next), (bel, t, batch)
+        return (bel, t_next), (bel, t, q)
 
     keys = split(key, nsteps)
-    *_, (bel_trace, ts, _) = scan(filter_onestep, init=(bel, 0), xs=keys)
+    *_, (bel_trace, t_trace, q_trace) = scan(filter_onestep, init=(bel, 0), xs=keys)
 
-    # print(ts)
+    # print(q_trace)
     return bel_trace

@@ -3,7 +3,7 @@ from functools import partial
 import jax
 import jax.numpy as jnp
 import jax.random as jr
-from jaxtyping import Array, Float
+from jaxtyping import Array, Float, Int
 
 from bnn_pref.utils.type import CARL, NTD, Q2, Q2TD
 
@@ -47,6 +47,14 @@ class PreferenceEnv:
     def get_reward(self, t, action) -> float:
         label = self.labels_Q2[t, action]
         return jnp.float32(label)
+
+    def get_pref_indices(self, t) -> Int[Array, "2"]:
+        """
+        Get the indices of the two items in the preference query.
+        Used for debugging acquisition functions where we have duplicate queries in the
+        pool.
+        """
+        return self.queries_Q2[t]
 
     def warmup(self, key, n_warmups: int) -> CARL:
         """
