@@ -7,7 +7,6 @@ os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
 os.environ["DISABLE_CODESIGN_WARNING"] = "1"
 import logging
 from datetime import datetime
-from functools import partial
 
 import hydra
 import jax
@@ -22,12 +21,7 @@ from bnn_pref.data import dataset_creators
 from bnn_pref.data.data_env import PreferenceEnv
 from bnn_pref.data.pref_utils import query_indices_to_features
 from bnn_pref.utils.hydra_resolvers import *
-from bnn_pref.utils.metrics import (
-    MeanStd,
-    compute_acc_nn,
-    compute_acc_nn_bma,
-    compute_logpdf_nn,
-)
+from bnn_pref.utils.metrics import MeanStd
 from bnn_pref.utils.utils import get_random_seed
 
 logging.getLogger("jax._src.xla_bridge").setLevel(logging.ERROR)
@@ -37,10 +31,7 @@ jnp.set_printoptions(precision=2)
 def run_ekf(key, cfg, data_dict, env):
     ekf_cfg = cfg["ekf"]
     data_cfg = cfg["data"]
-    chunk_size = cfg["chunk_size"]
-    n_models = ekf_cfg["M"]
-    train_prefs, test_prefs = data_dict["train_prefs"], data_dict["test_prefs"]
-    train_prefs = query_indices_to_features(train_prefs, data_dict["train_trajs"])
+    test_prefs = data_dict["test_prefs"]
     test_prefs = query_indices_to_features(test_prefs, data_dict["test_trajs"])
 
     # * build + run bandit alg
@@ -50,33 +41,20 @@ def run_ekf(key, cfg, data_dict, env):
     )
 
     # * compute metrics
-    sub2full_logits_fn = bandit.sub2full_predict_logits  # (params, N2TD) -> (N2,)
-
     def eval_bel(_, bel):
-        mean, cov, t = bel
+        # * sample model parameters
+        *_, t = bel
         key = jr.fold_in(key_bma, t)
-        fn = partial(sub2full_logits_fn, mean)
-        # train_logpdf = compute_logpdf_nn(fn, train_prefs)
-        test_logpdf = compute_logpdf_nn(fn, test_prefs, chunk_size=chunk_size)
-        # train_acc = compute_acc_nn(fn, train_prefs)
-        test_acc = compute_acc_nn(fn, test_prefs, chunk_size=chunk_size)
-        # train_acc_bma = compute_acc_nn_bma(
-        #     key, sub2full_logits_fn, bel, train_prefs, n_models, chunk_size
-        # )
-        # test_acc_bma = compute_acc_nn_bma(
-        #     key, sub2full_logits_fn, bel, test_prefs, n_models, chunk_size
-        # )
+        prob_Q2 = bandit.compute_predictive(key, bel, test_prefs.queries_Q2TD)
+        pred_Q = prob_Q2.argmax(axis=1)
+
+        test_acc = jnp.mean(pred_Q == test_prefs.responses_Q1.squeeze())
+        test_logpdf = jnp.log(prob_Q2[:, 1]).mean()
 
         # all arrays of (1 + nq_updates, )
         result = {
-            # * logpdf
-            # "train_logpdf": train_logpdf,
             "test_logpdf": test_logpdf,
-            # * acc
-            # "train_acc": train_acc,
             "test_acc": test_acc,
-            # "train_acc_bma": train_acc_bma,
-            # "test_acc_bma": test_acc_bma,
         }
         return (), result
 
@@ -185,7 +163,6 @@ def main(cfg):
                 f"logpdf: {res['test_logpdf'].mean:.2f} ± {res['test_logpdf'].std:.2f}, "
                 # f"({metadata_m['full_param_count'][0]:,d} -> {metadata_m['subspace_param_count'][0]:,d}) "
                 f"({duration:.1f}s)"
-                # f", bma_acc: {res['test_acc_bma'].mean:.2%} ± {res['test_acc_bma'].std:.2%}, "
             )
 
     # print("\n === Printing extra stats ===")

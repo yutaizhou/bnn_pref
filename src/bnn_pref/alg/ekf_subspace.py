@@ -366,3 +366,23 @@ class SubspaceNeuralEKF(Agent):
 
         query_idx = jnp.argmax(values_N)
         return query_idx
+
+    @partial(jax.jit, static_argnames=["self"])
+    def compute_predictive(
+        self,
+        key,
+        bel: EKFBeliefState,
+        feats_Q2TD: Array,
+    ):
+        # * sample model parameters
+        mean, cov, t = bel
+        dist = tfd.MultivariateNormalFullCovariance(mean, cov)
+        ss_params = dist.sample(seed=key, sample_shape=(self.mi_samples,))
+        fn = jax.vmap(self.sub2full_predict_logits, in_axes=(0, None))  # over params
+        fn = partial(fn, ss_params)
+
+        # * compute predictive distributions
+        logits_QM2 = jax.lax.map(fn, feats_Q2TD, batch_size=self.chunk_size)
+        llik_QM2 = logits_QM2 - jax.nn.logsumexp(logits_QM2, axis=2, keepdims=True)
+        prob_Q2 = jnp.exp(llik_QM2).mean(1)
+        return prob_Q2

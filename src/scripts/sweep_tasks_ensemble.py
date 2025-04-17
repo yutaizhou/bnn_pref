@@ -7,7 +7,6 @@ os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
 os.environ["DISABLE_CODESIGN_WARNING"] = "1"
 import logging
 from datetime import datetime
-from functools import partial
 
 import hydra
 import jax
@@ -23,11 +22,7 @@ from bnn_pref.data import dataset_creators
 from bnn_pref.data.data_env import PreferenceEnv
 from bnn_pref.data.pref_utils import query_indices_to_features
 from bnn_pref.utils.hydra_resolvers import *
-from bnn_pref.utils.metrics import (
-    MeanStd,
-    compute_acc_ensemble,
-    compute_logpdf_ensemble,
-)
+from bnn_pref.utils.metrics import MeanStd
 from bnn_pref.utils.utils import get_random_seed
 
 logging.getLogger("jax._src.xla_bridge").setLevel(logging.ERROR)
@@ -37,8 +32,7 @@ jnp.set_printoptions(precision=2)
 def run_ensemble(key, cfg, data_dict, env):
     data_cfg = cfg["data"]
     alg_cfg = cfg["sgd"]
-    chunk_size = cfg["chunk_size"]
-    train_prefs, test_prefs = data_dict["train_prefs"], data_dict["test_prefs"]
+    test_prefs = data_dict["test_prefs"]
     test_prefs = query_indices_to_features(test_prefs, data_dict["test_trajs"])
 
     # * build + run ensemble alg
@@ -46,21 +40,16 @@ def run_ensemble(key, cfg, data_dict, env):
     ts_trace, bandit = alg_pipeline(key_pipe, DeepEnsemble, env, alg_cfg, data_cfg)
 
     # * compute metrics
-    def eval_bel(carry, ts: TrainState):
-        fn = jax.vmap(ts.apply_fn, in_axes=(0, None), out_axes=1)  # fn(param, input)
-        fn = partial(fn, {"params": ts.params})
-        # train_logpdf = compute_logpdf_ensemble(fn, train_prefs)
-        test_logpdf = compute_logpdf_ensemble(fn, test_prefs, chunk_size=chunk_size)
+    def eval_bel(_, ts: TrainState):
+        prob_Q2 = bandit.compute_predictive(ts, test_prefs.queries_Q2TD)
+        pred_Q = prob_Q2.argmax(axis=1)
 
-        # train_acc = compute_acc_ensemble(fn, train_prefs)
-        test_acc = compute_acc_ensemble(fn, test_prefs, chunk_size=chunk_size)
+        test_acc = jnp.mean(pred_Q == test_prefs.responses_Q1.squeeze())
+        test_logpdf = jnp.log(prob_Q2[:, 1]).mean()
 
+        # all arrays of (1 + nq_updates, )
         result = {
-            # * logpdf
-            # "train_logpdf": train_logpdf,
             "test_logpdf": test_logpdf,
-            # * acc
-            # "train_acc": train_acc,
             "test_acc": test_acc,
         }
         return (), result

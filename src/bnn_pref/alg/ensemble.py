@@ -133,6 +133,26 @@ class DeepEnsemble(Agent):
         query_idx = jnp.argmax(values_N)
         return query_idx
 
+    @partial(jax.jit, static_argnames=["self"])
+    def compute_predictive(
+        self,
+        bel: TrainState,
+        feats_Q2TD: Array,
+    ):
+        # * prepare ensemble predictors
+        fn = jax.vmap(bel.apply_fn, in_axes=(0, None), out_axes=1)  # param, input
+        fn = partial(fn, {"params": bel.params})
+
+        # * compute predictive distributions
+        logits_QM2 = jax.lax.map(
+            fn,
+            jnp.expand_dims(feats_Q2TD, axis=1),
+            batch_size=self.chunk_size,
+        ).squeeze(1)
+        llik_QM2 = logits_QM2 - jax.nn.logsumexp(logits_QM2, axis=2, keepdims=True)
+        prob_Q2 = jnp.exp(llik_QM2).mean(1)
+        return prob_Q2
+
 
 if __name__ == "__main__":
     import ipdb
