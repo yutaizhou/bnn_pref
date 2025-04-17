@@ -69,13 +69,17 @@ class BradleyTerry:
         return joint_ll
 
 
-def bt_likelihood(return_i: float, return_j: float, beta: float = 1.0) -> float:
+def bt_likelihood(r1: float, r2: float, beta: float = 1.0) -> float:
     """
-    computes likelihood of preference tj > ti, given their rewards
+    computes Bernoulli likelihood of the preference relation t2 > t1, given their rewards
     """
-    a = jnp.exp(return_i * beta)
-    b = jnp.exp(return_j * beta)
-    return b / (a + b)
+
+    # a = jnp.exp(return_i * beta)
+    # b = jnp.exp(return_j * beta)
+    # return b / (a + b)
+
+    logits = jnp.asarray([r1 * beta, r2 * beta])
+    return jnp.exp(jax.nn.log_softmax(logits))[1]
 
 
 def random_query_iterator_sample(key, n: int, n_queries: int):
@@ -106,13 +110,13 @@ def create_pref_data(
     ranked_returns: N,
     traj_obs: Optional[NTD] = None,
     n_queries: int = -1,
-    use_delta: bool = False,
+    skip_threshold: float = -jnp.inf,  # skip if both are bad
+    use_delta: bool = False,  # skip by delta_rank or delta_reward
     delta_rank: int = 1,
     delta_reward: float = 0,
-    noisy_prefs: bool = False,
+    noisy_label: bool = False,  # noisy preferences
     bt_beta: float = 1.0,
-    skip_threshold: float = -jnp.inf,
-    mistake_prob: float = 0.0,
+    mistake_prob: float = 0.0,  # label flip mistake (not rly used)
 ) -> Union[QueryIndexAndResponses, QueryFeaturesAndResponses]:
     """
     Args:
@@ -137,6 +141,10 @@ def create_pref_data(
     for ti, tj in random_query_iterator_sample(key, n_demos, n_queries):
         label = 1  # label=1 means tj > ti
 
+        # * skip if both are bad
+        if max(ranked_returns[ti], ranked_returns[tj]) < skip_threshold:
+            continue
+
         # * skip if tj is not better than ti by delta_rank or delta_reward
         if use_delta:
             if delta_rank > 1:
@@ -146,12 +154,8 @@ def create_pref_data(
                 if (ranked_returns[tj] - ranked_returns[ti]) < delta_reward:
                     continue
 
-        # * skip if both are bad
-        if max(ranked_returns[tj], ranked_returns[ti]) < skip_threshold:
-            continue
-
         # * noisily rational prefs (beta=1 in the Bradley-Terry model)
-        if noisy_prefs:
+        if noisy_label:
             prob = bt_likelihood(ranked_returns[ti], ranked_returns[tj], bt_beta)
 
             key, subkey = jr.split(key)
@@ -177,95 +181,7 @@ def create_pref_data(
         return pref_data
 
 
-def create_pref_data_jit(
-    key,
-    ranked_returns: N,
-    traj_obs: Optional[NTD] = None,
-    n_queries: int = -1,
-    use_delta: bool = False,
-    delta_rank: int = 1,
-    delta_reward: float = 0,
-    noisy_prefs: bool = False,
-    bt_beta: float = 1.0,
-    skip_threshold: float = -jnp.inf,
-    mistake_prob: float = 0.0,
-) -> Union[QueryIndexAndResponses, QueryFeaturesAndResponses]:
-    """
-    Jit-compatible version of create_pref_data. (thanks Cursor)
-    Instead of using Python lists and conditionals, uses jax arrays and jnp.where.
-
-    Args and outputs are the same as create_pref_data.
-    """
-    n_demos = len(ranked_returns)
-    n_queries = n_queries if n_queries != -1 else math.comb(n_demos, 2)
-
-    # Pre-allocate arrays
-    queries = jnp.zeros((n_queries, 2), dtype=jnp.int32)
-    labels = jnp.ones(n_queries, dtype=jnp.int32)
-    num_mislabels = jnp.array(0)
-
-    def body_fn(i, state):
-        key, queries, labels, num_mislabels = state
-
-        # Generate random indices
-        key, key1, key2 = jr.split(key, 3)
-        ti = jr.randint(key=key1, shape=(), minval=0, maxval=n_demos - 1)
-        tj = jr.randint(key=key2, shape=(), minval=ti + 1, maxval=n_demos)
-
-        # Delta check
-        delta_mask = jnp.where(
-            use_delta,
-            jnp.where(
-                delta_rank > 1,
-                (tj - ti) >= delta_rank,
-                (ranked_returns[tj] - ranked_returns[ti]) >= delta_reward,
-            ),
-            1,
-        )
-
-        # Skip if both are bad
-        skip_bad = jnp.where(
-            jnp.maximum(ranked_returns[tj], ranked_returns[ti]) < skip_threshold, 0, 1
-        )
-
-        # Noisy preferences
-        prob = bt_likelihood(ranked_returns[ti], ranked_returns[tj], bt_beta)
-        key, subkey = jr.split(key)
-        noisy_label = jnp.where(
-            noisy_prefs, jnp.where(jr.uniform(subkey) > prob, 0, 1), 1
-        )
-
-        # Mistake flips
-        key, subkey = jr.split(key)
-        mistake_flip = jnp.where(jr.uniform(subkey) < mistake_prob, 1, 0)
-
-        # Update label
-        label = jnp.where(mistake_flip, 0, 1) * noisy_label * delta_mask * skip_bad
-
-        # Update arrays
-        queries = queries.at[i].set(jnp.array([ti, tj]))
-        labels = labels.at[i].set(label)
-        num_mislabels += (1 - noisy_label) * noisy_prefs + mistake_flip
-
-        return key, queries, labels, num_mislabels
-
-    # Run the loop
-    init_state = (key, queries, labels, num_mislabels)
-    key, queries_Q2, labels, num_mislabels = jax.lax.fori_loop(
-        0, n_queries, body_fn, init_state
-    )
-
-    labels_Q1 = jnp.expand_dims(labels, 1)
-
-    if traj_obs is not None:
-        queries_Q2TD = traj_obs[queries_Q2]  # index into (N, T, D) using (Q, 2)
-        return QueryFeaturesAndResponses(queries_Q2TD, labels_Q1, num_mislabels)
-    else:
-        return QueryIndexAndResponses(queries_Q2, labels_Q1, num_mislabels)
-
-
 if __name__ == "__main__":
-    """Test that create_pref_data and create_pref_data_jit produce the same output."""
     from bnn_pref.utils.test_functions import test_functions_dict
     from bnn_pref.utils.utils import get_gaussian_vector, get_random_seed
 
@@ -311,18 +227,6 @@ if __name__ == "__main__":
         n_queries=nq_train,
     )
 
-    queries2_Q2, labels2_Q1, mislabels2 = create_pref_data_jit(
-        pref_key,
-        ranked_returns=returns_N,
-        n_queries=nq_train,
-    )
-
     # Compare outputs
-    assert queries1_Q2.shape == queries2_Q2.shape, "Query shapes should match"
-    assert labels1_Q1.shape == labels2_Q1.shape, "Label shapes should match"
-
     queried_returns1_Q2 = returns_N[queries1_Q2]
-    queried_returns2_Q2 = returns_N[queries2_Q2]
-
     assert jnp.all(queried_returns1_Q2[:, 0] < queried_returns1_Q2[:, 1])
-    assert jnp.all(queried_returns2_Q2[:, 0] < queried_returns2_Q2[:, 1])

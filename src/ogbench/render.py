@@ -9,8 +9,6 @@ import numpy as np
 from gymnasium.wrappers import RecordVideo
 
 import ogbench
-from bnn_pref.data.pref_utils import create_pref_data_jit
-from bnn_pref.utils.type import Q1, Q2TD
 from bnn_pref.utils.utils import get_random_seed
 
 seed = get_random_seed()
