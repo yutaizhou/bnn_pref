@@ -14,6 +14,7 @@ import jax.numpy as jnp
 import jax.random as jr
 import matplotlib.pyplot as plt
 from hydra.core.hydra_config import HydraConfig
+from jaxtyping import Array, Float
 
 from bnn_pref.data import dataset_creators
 from bnn_pref.data.data_env import PreferenceEnv
@@ -26,6 +27,21 @@ from scripts.sweep_tasks_ensemble import run_ensemble
 
 logging.getLogger("jax._src.xla_bridge").setLevel(logging.ERROR)
 jnp.set_printoptions(precision=2)
+
+
+def modify_queries(
+    queries_Q2: Float[Array, "Q 2"], real_frac: float, nq_train: int, nq_init: int
+) -> Float[Array, "Q 2"]:
+    """
+    sanity check for active learning acquisition functions
+    modify all queries past nq_init: 5% real, and rest duplicate.
+    """
+    pool_size = nq_train - nq_init
+    n_dups = int(pool_size * (1 - real_frac))
+    n_reals = pool_size - n_dups
+    dup_queries = jnp.tile(queries_Q2[nq_init + n_reals], (n_dups, 1))
+    new_queries_Q2 = queries_Q2.at[-n_dups:].set(dup_queries)
+    return new_queries_Q2
 
 
 @hydra.main(version_base=None, config_name="config", config_path="../cfg")
@@ -90,6 +106,16 @@ def main(cfg):
         # * create env
         train_trajs_obs = data_dict["train_trajs"]["observations"]  # (N, T, D)
         train_prefs: QueryData = data_dict["train_prefs"]
+
+        if cfg["sanity"]:
+            modified_queries = modify_queries(
+                train_prefs.queries_Q2,
+                real_frac=cfg["sanity_frac"],
+                nq_train=nq_train,
+                nq_init=nq_init,
+            )
+            train_prefs = train_prefs.replace(queries_Q2=modified_queries)
+
         env = PreferenceEnv(
             items=train_trajs_obs,
             X=train_prefs.queries_Q2,
