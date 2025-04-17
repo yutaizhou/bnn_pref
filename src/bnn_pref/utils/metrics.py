@@ -65,7 +65,8 @@ def compute_acc_nn_bma(
     sub2full_fn = partial(sub2full_fn, ss_params)
 
     logits_QM2 = jax.lax.map(sub2full_fn, features_Q2TD, batch_size=chunk_size)
-    probs_QM2 = jax.nn.softmax(logits_QM2, axis=2)
+    # probs_QM2 = jax.nn.softmax(logits_QM2, axis=2)
+    probs_QM2 = jnp.exp(jax.nn.log_softmax(logits_QM2, axis=2))
     probs_Q2 = probs_QM2.mean(1)
 
     pred_response_Q = probs_Q2.argmax(axis=1)
@@ -83,8 +84,8 @@ def compute_logpdf_nn(
     # logits_Q2 = fn(features_Q2TD)
     logits_Q2 = jax.lax.map(fn, features_Q2TD, batch_size=chunk_size)
     logits_Q1 = jnp.take_along_axis(logits_Q2, responses_Q1, axis=1)
-    ll_Q1 = logits_Q1 - jax.nn.logsumexp(logits_Q2, axis=1, keepdims=True)
-    avg_ll = ll_Q1.mean()
+    llik_Q1 = logits_Q1 - jax.nn.logsumexp(logits_Q2, axis=1, keepdims=True)
+    avg_ll = llik_Q1.mean()
 
     # * CE is just Negative LL, so this should be equivalent
     # avg_ll2 = -optax.losses.softmax_cross_entropy(
@@ -106,7 +107,8 @@ def compute_logpdf_ensemble(
     logits_QM2 = jax.lax.map(
         fn, jnp.expand_dims(features_Q2TD, axis=1), batch_size=chunk_size
     ).squeeze(1)
-    probs_QM2 = jax.nn.softmax(logits_QM2, axis=2)
+    # probs_QM2 = jax.nn.softmax(logits_QM2, axis=2)
+    probs_QM2 = jnp.exp(jax.nn.log_softmax(logits_QM2, axis=2))
     probs_Q2 = probs_QM2.mean(1)
 
     llik_Q1 = jnp.log(jnp.take_along_axis(probs_Q2, responses_Q1, axis=1))
@@ -126,7 +128,8 @@ def compute_acc_ensemble(
     logits_QM2 = jax.lax.map(
         fn, jnp.expand_dims(features_Q2TD, axis=1), batch_size=chunk_size
     ).squeeze(1)
-    probs_QM2 = jax.nn.softmax(logits_QM2, axis=2)
+    # probs_QM2 = jax.nn.softmax(logits_QM2, axis=2)
+    probs_QM2 = jnp.exp(jax.nn.log_softmax(logits_QM2, axis=2))
     probs_Q2 = probs_QM2.mean(1)
 
     pred_response_Q = probs_Q2.argmax(axis=1)
@@ -152,7 +155,10 @@ def compute_accuracy1_mcmc(
     # * approach 1: mean sample from posterior
     mean_weight_D = samples_SD.mean(axis=0)
     mean_weight_D /= jnpl.norm(mean_weight_D)
-    probs_Q2 = jax.nn.softmax(reward_fn(features_Q2TD, mean_weight_D), axis=1)
+    # probs_Q2 = jax.nn.softmax(reward_fn(features_Q2TD, mean_weight_D), axis=1)
+    probs_Q2 = jnp.exp(
+        jax.nn.log_softmax(reward_fn(features_Q2TD, mean_weight_D), axis=1)
+    )
 
     pred_response_Q = probs_Q2.argmax(axis=1)
     # pred_response_Q = jnp.exp(reward_fn(features_Q2TD, mean_weight_D).argmax(axis=1) # approach 0
@@ -169,7 +175,8 @@ def compute_accuracy2_mcmc(
     @partial(jax.vmap, in_axes=(None, 0))
     def compute_postpred_mean(params_SD, features_2TD):
         returns_S2 = reward_fn(features_2TD, params_SD.T).T  # todo make this robust
-        probs_S2 = jax.nn.softmax(returns_S2, axis=1)  # BT model
+        # probs_S2 = jax.nn.softmax(returns_S2, axis=1)  # BT model
+        probs_S2 = jnp.exp(jax.nn.log_softmax(returns_S2, axis=1))
         postpred_mean_prob_2 = probs_S2.mean(0)
         return postpred_mean_prob_2
 

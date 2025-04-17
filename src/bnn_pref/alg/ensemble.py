@@ -123,7 +123,8 @@ class DeepEnsemble(Agent):
         def map_step(idx):
             context_2TD = env.get_context(idx)
             logits_M2 = fn(ts, context_2TD)
-            probs_M2 = jax.nn.softmax(logits_M2, axis=1)
+            # probs_M2 = jax.nn.softmax(logits_M2, axis=1)
+            probs_M2 = jnp.exp(jax.nn.log_softmax(logits_M2, axis=1))
             pred_M = jnp.argmax(probs_M2, axis=1)
             value = jnp.var(pred_M, axis=0)
             return value
@@ -137,8 +138,8 @@ class DeepEnsemble(Agent):
     def compute_predictive(
         self,
         bel: TrainState,
-        feats_Q2TD: Array,
-    ):
+        feats_Q2TD: Float[Array, "Q 2 T D"],
+    ) -> Float[Array, "Q 2"]:
         # * prepare ensemble predictors
         fn = jax.vmap(bel.apply_fn, in_axes=(0, None), out_axes=1)  # param, input
         fn = partial(fn, {"params": bel.params})
@@ -149,7 +150,8 @@ class DeepEnsemble(Agent):
             jnp.expand_dims(feats_Q2TD, axis=1),
             batch_size=self.chunk_size,
         ).squeeze(1)
-        llik_QM2 = logits_QM2 - jax.nn.logsumexp(logits_QM2, axis=2, keepdims=True)
+        # llik_QM2 = logits_QM2 - jax.nn.logsumexp(logits_QM2, axis=2, keepdims=True)
+        llik_QM2 = jax.nn.log_softmax(logits_QM2, axis=2)
         prob_Q2 = jnp.exp(llik_QM2).mean(1)
         return prob_Q2
 

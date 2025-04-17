@@ -162,7 +162,7 @@ class SubspaceNeuralEKF(Agent):
         def sub2full_predict_return(
             params_subspace,
             traj: Float[Array, "T D"],
-        ) -> Scalar:
+        ) -> Float[Array, ""]:
             params_full = subspace2full_params(
                 params_subspace, proj_matrix, params_full_init
             )
@@ -195,7 +195,10 @@ class SubspaceNeuralEKF(Agent):
         self.sub2full_predict_return = sub2full_predict_return
         self.sub2full_predict_logits = sub2full_predict_logits
 
-        def emission_fn(params, inputs):
+        def emission_fn(
+            params,
+            inputs: Float[Array, "2 T D"],
+        ) -> Float[Array, "2"]:
             """
             emission model where
                 inputs: (2 * T * D,) query features -> (2,) traj rewards as logits
@@ -205,10 +208,13 @@ class SubspaceNeuralEKF(Agent):
             params: (sub_dim,)
             inputs: (2 * T * D,)
             """
-            context = inputs.reshape(2, -1, self.n_feats)
-            logits = sub2full_predict_logits(params, context)  # (2,)
-            probs = jax.nn.softmax(logits, axis=0)
-            return probs
+            inputs = rearrange(inputs, "(K T D) -> K T D", K=2, D=self.n_feats)
+            logits = sub2full_predict_logits(params, inputs)  # (2,)
+
+            probs_2 = jnp.exp(jax.nn.log_softmax(logits))
+            return probs_2
+
+            # return rearrange(probs_2[1], " -> 1")
 
         # def emission_mean_cmgf(params, inputs):
         #     """
@@ -271,6 +277,7 @@ class SubspaceNeuralEKF(Agent):
 
         inputs = rearrange(context, "K T D -> 1 (K T D)", K=2)
         emissions = rearrange(label, "K -> 1 K", K=2)  # (1,2)
+        # emissions = rearrange(label[1], " -> 1")
 
         self.ekf_params = self.ekf_params._replace(
             initial_mean=prior_mean,
@@ -358,7 +365,8 @@ class SubspaceNeuralEKF(Agent):
         def map_step(idx):
             context_2TD = env.get_context(idx)
             logits_M2 = fn(ss_params, context_2TD)
-            probs_M2 = jax.nn.softmax(logits_M2, axis=1)
+            # probs_M2 = jax.nn.softmax(logits_M2, axis=1)
+            probs_M2 = jnp.exp(jax.nn.log_softmax(logits_M2, axis=1))
             value = compute_info_gain(probs_M2)
             return value
 
@@ -372,8 +380,8 @@ class SubspaceNeuralEKF(Agent):
         self,
         key,
         bel: EKFBeliefState,
-        feats_Q2TD: Array,
-    ):
+        feats_Q2TD: Float[Array, "Q 2 T D"],
+    ) -> Float[Array, "Q 2"]:
         # * sample model parameters
         mean, cov, t = bel
         dist = tfd.MultivariateNormalFullCovariance(mean, cov)
@@ -383,6 +391,7 @@ class SubspaceNeuralEKF(Agent):
 
         # * compute predictive distributions
         logits_QM2 = jax.lax.map(fn, feats_Q2TD, batch_size=self.chunk_size)
-        llik_QM2 = logits_QM2 - jax.nn.logsumexp(logits_QM2, axis=2, keepdims=True)
+        # llik_QM2 = logits_QM2 - jax.nn.logsumexp(logits_QM2, axis=2, keepdims=True)
+        llik_QM2 = jax.nn.log_softmax(logits_QM2, axis=2)
         prob_Q2 = jnp.exp(llik_QM2).mean(1)
         return prob_Q2
