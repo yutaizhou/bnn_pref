@@ -40,6 +40,8 @@ def make_synthetic_data(key, cfg) -> Tuple[NTD, N, QueryFeaturesAndResponses]:
         ranked_returns=train_trajs["returns"],
         # traj_obs=train_trajs["observations"],
         n_queries=nq_train,
+        noisy_label=data_cfg["noisy_label"],
+        bt_beta=data_cfg["bt_beta"],
     )
 
     test_prefs: QueryData = create_pref_data(

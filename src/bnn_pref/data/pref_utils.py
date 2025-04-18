@@ -13,14 +13,14 @@ from bnn_pref.utils.type import CARL, NTD, Q1, Q2, Q2TD, D, N, unpackable_datacl
 class QueryFeaturesAndResponses:
     queries_Q2TD: Q2TD
     responses_Q1: Q1
-    num_mislabels: int
+    n_mislabels: int
 
 
 @unpackable_dataclass
 class QueryIndexAndResponses:
     queries_Q2: Q2
     responses_Q1: Q1
-    num_mislabels: int
+    n_mislabels: int
 
 
 def query_indices_to_features(
@@ -35,7 +35,7 @@ def query_indices_to_features(
     return QueryFeaturesAndResponses(
         features_Q2TD,
         queries.responses_Q1,
-        queries.num_mislabels,
+        queries.n_mislabels,
     )
 
 
@@ -136,7 +136,7 @@ def create_pref_data(
 
     queries = []
     labels = []
-    num_mislabels = 0
+    n_mislabels = 0
 
     for ti, tj in random_query_iterator_sample(key, n_demos, n_queries):
         label = 1  # label=1 means tj > ti
@@ -160,7 +160,7 @@ def create_pref_data(
 
             key, subkey = jr.split(key)
             if jr.uniform(subkey) > prob:
-                num_mislabels += 1
+                n_mislabels += 1
                 label = 0
 
         # * irrationality: label flip mistake
@@ -174,10 +174,10 @@ def create_pref_data(
     labels_Q1 = jnp.expand_dims(jnp.asarray(labels), 1).astype(jnp.int32)
 
     if traj_obs is None:
-        return QueryIndexAndResponses(queries_Q2, labels_Q1, num_mislabels)
+        return QueryIndexAndResponses(queries_Q2, labels_Q1, n_mislabels)
     else:
         features_Q2TD = traj_obs[queries_Q2]  # index into (N, T, D) using (Q, 2)
-        pref_data = QueryFeaturesAndResponses(features_Q2TD, labels_Q1, num_mislabels)
+        pref_data = QueryFeaturesAndResponses(features_Q2TD, labels_Q1, n_mislabels)
         return pref_data
 
 

@@ -82,11 +82,12 @@ def main(cfg):
     print(
         f"Seed: {seed} x {cfg['seeds']}\n"
         f"Data:\n"
+        f"  noisy_label={data_cfg['noisy_label']} (beta={data_cfg['bt_beta']})\n"
         f"  Train/Test: {nq_train}/{nq_test}\n"
         f"  Init/Update: {nq_init}/{nsteps}\n"
         f"EKF:\n"
         f"  n_models={ekf_cfg['M']}, sub_dim={ekf_cfg['sub_dim']}, rnd_proj={ekf_cfg['rnd_proj']}\n"
-        f"  prior_noise={ekf_cfg['prior_noise']}, dynamics_noise={ekf_cfg['dynamics_noise']}, obs_noise={ekf_cfg['obs_noise']}\n"
+        f"  prior / dynamics / obs noise: {ekf_cfg['prior_noise']} / {ekf_cfg['dynamics_noise']} / {ekf_cfg['obs_noise']}\n"
         f"  init: bs={ekf_cfg['bs']}, niters={ekf_cfg['niters']}[{warm_burns}::{thinning}] ({n_eff_iterates} eff), {sub_dim=}, {rnd_proj=}\n"
         f"Ensemble:\n"
         f"  n_models={sgd_cfg['M']}\n"
@@ -124,7 +125,7 @@ def main(cfg):
         )
 
         N, T, D = train_trajs_obs.shape
-        print(f"{task}: ({nq_train}, 2, {T}, {D}) {duration:.1f}s")
+        print(f"{task}: ({nq_train}, 2, {T}, {D}), {train_prefs.n_mislabels} mislabels")
         # * run
         for alg, run_fn in [("ekf", run_ekf), ("sgd", run_ensemble)]:
             for is_al in [False, True]:
@@ -174,7 +175,7 @@ def main(cfg):
     fig, axs = plt.subplots(4, 4, figsize=(12, 8))  # 13 tasks total
     axs = axs.flatten()
 
-    def find_min_logpdf(stats: Dict, task: str):
+    def find_min_logpdf(stats: Dict, task: str) -> float:
         """
         stats[task][alg][is_al]["test_logpdf_all"]
         """
@@ -183,6 +184,8 @@ def main(cfg):
             for is_al in [False, True]:
                 curr_min = jnp.min(stats[task][alg][is_al]["test_logpdf_all"])
                 best_min = jnp.minimum(best_min, curr_min)
+        if best_min is -jnp.inf:
+            best_min = -4  # rougly 1.8% accuracy / probability of t2 > t1
         return best_min
 
     def get_label(alg: str, is_al: bool) -> str:

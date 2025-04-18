@@ -7,7 +7,7 @@ import numpy as np
 import torch
 from tensordict import TensorDict
 
-from bnn_pref.data.pref_utils import QueryData, create_pref_data, create_pref_data_jit
+from bnn_pref.data.pref_utils import QueryData, create_pref_data
 from bnn_pref.utils.utils import get_random_seed
 
 
@@ -32,6 +32,8 @@ def make_prefcc_data(key, cfg) -> Dict[str, jax.Array]:
         ranked_returns=train_trajs["returns"],
         # traj_obs=train_trajs["observations"],
         n_queries=nq_train,
+        noisy_label=data_cfg["noisy_label"],
+        bt_beta=data_cfg["bt_beta"],
     )
     test_prefs: QueryData = create_pref_data(
         key_test,
