@@ -1,8 +1,21 @@
 import dataclasses
-from typing import Tuple
+from typing import Dict
 
 import flax
+import jax
 from jaxtyping import Array, Float, Int, Scalar
+
+# Data types
+ArrayDict = Dict[str, jax.Array]
+"""
+    ds = {
+        "observations": (N, T, D),
+        "actions": (N, T, A),
+        "rewards": (N, T),
+        "returns": (N,),
+    }
+"""
+
 
 # demonstrations
 N = Float[Array, "N"]

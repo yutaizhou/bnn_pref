@@ -6,7 +6,7 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 
-from bnn_pref.utils.type import CARL, NTD, Q1, Q2, Q2TD, D, N, unpackable_dataclass
+from bnn_pref.utils.type import NTD, Q1, Q2, Q2TD, ArrayDict, D, N, unpackable_dataclass
 
 
 @unpackable_dataclass
@@ -25,7 +25,7 @@ class QueryIndexAndResponses:
 
 def query_indices_to_features(
     queries: QueryIndexAndResponses,
-    trajs: Dict[str, jax.Array],
+    trajs: ArrayDict,
 ) -> QueryFeaturesAndResponses:
     """
     Convert a QueryIndexAndResponses object to a QueryFeaturesAndResponses object.

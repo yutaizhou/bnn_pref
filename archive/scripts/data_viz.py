@@ -40,7 +40,7 @@ def main(cfg):
         "reacherEasy",
         "reacherHard",
         "walkerWalk",
-        "ogbench",
+        # "ogbench",
     ]
 
     fig, axs = plt.subplots(4, 4, figsize=(12, 8))  # 13 tasks total

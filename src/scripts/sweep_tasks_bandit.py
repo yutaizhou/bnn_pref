@@ -62,7 +62,7 @@ def main(cfg):
         "reacherEasy",
         "reacherHard",
         "walkerWalk",
-        "ogbench",
+        # "ogbench",
     ]
 
     stats = nested_defaultdict()
@@ -125,7 +125,9 @@ def main(cfg):
         )
 
         N, T, D = train_trajs_obs.shape
-        print(f"{task}: ({nq_train}, 2, {T}, {D}), {train_prefs.n_mislabels} mislabels")
+        print(
+            f"{task}: NTD={train_trajs_obs.shape}, nq_train={nq_train}, {train_prefs.n_mislabels} mislabels"
+        )
         # * run
         for alg, run_fn in [("ekf", run_ekf), ("sgd", run_ensemble)]:
             for is_al in [False, True]:
@@ -172,7 +174,7 @@ def main(cfg):
                 )
 
     # * plot logpdf learning curve
-    fig, axs = plt.subplots(4, 4, figsize=(12, 8))  # 13 tasks total
+    fig, axs = plt.subplots(3, 4, figsize=(12, 8))
     axs = axs.flatten()
 
     def find_min_logpdf(stats: Dict, task: str) -> float:

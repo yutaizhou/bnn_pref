@@ -1,5 +1,3 @@
-from typing import Dict
-
 import jax
 import jax.numpy as jnp
 import jax.random as jr
@@ -7,6 +5,7 @@ import numpy as np
 
 import ogbench
 from bnn_pref.data.pref_utils import QueryData, create_pref_data
+from bnn_pref.utils.type import ArrayDict
 from bnn_pref.utils.utils import get_random_seed
 
 
@@ -57,10 +56,10 @@ def make_ogbench_data(key, cfg):
 
 
 def process_ogbench(
-    ds: Dict[str, np.ndarray],
+    ds: ArrayDict,
     rank: bool = False,
     thin: int = 1,
-) -> Dict[str, jnp.ndarray]:
+) -> ArrayDict:
     """
     observations (5000000, 29) -> (10000, 500, 29)
     actions (5000000, 8) -> (10000, 500, 8)

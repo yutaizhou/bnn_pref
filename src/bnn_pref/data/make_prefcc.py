@@ -8,22 +8,32 @@ import torch
 from tensordict import TensorDict
 
 from bnn_pref.data.pref_utils import QueryData, create_pref_data
+from bnn_pref.data.traj_utils import rebalance
+from bnn_pref.utils.type import ArrayDict
 from bnn_pref.utils.utils import get_random_seed
 
 
-def make_prefcc_data(key, cfg) -> Dict[str, jax.Array]:
+def make_prefcc_data(key, cfg) -> ArrayDict:
     task_cfg = cfg["task"]
     data_cfg = cfg["data"]
     path = task_cfg["tensordict_path"]
     demo_train_frac = data_cfg["demo_train_frac"]
     nq_train, nq_test = data_cfg["nq_train"], data_cfg["nq_test"]
 
-    # * load trajectory dat, random split into train/test
+    # * load trajectory data, random split into train/test, sort by return
     td = torch.load(path, weights_only=False)
     ds = process_prefcc_data(td)
 
     key, key_split = jr.split(key, 2)
     train_trajs, test_trajs = split_dataset(key_split, ds, demo_train_frac)
+
+    # optional pruning
+    return_bins = jnp.arange(11) * 100  # [0, 100, 200, ... 1000]
+    max_count_per_bin = 50
+    tokeep = 150  # (150 choose 2) = 11175
+    train_trajs = rebalance(
+        key, task_cfg["name"], train_trajs, return_bins, max_count_per_bin, tokeep
+    )
 
     # * turn train/test trajs into preference data
     key, key_train, key_test = jr.split(key_split, 3)
@@ -53,7 +63,7 @@ def make_prefcc_data(key, cfg) -> Dict[str, jax.Array]:
 def process_prefcc_data(
     td: TensorDict,
     rank: bool = False,
-) -> Dict[str, jax.Array]:
+) -> ArrayDict:
     """
     Tensordict only contains obs, act, rew, and are already sorted by returns.
     """
@@ -76,9 +86,9 @@ def process_prefcc_data(
 
 def split_dataset(
     key,
-    ds: Dict[str, jax.Array],
+    ds: ArrayDict,
     train_frac=0.8,
-) -> Tuple[Dict[str, jax.Array], Dict[str, jax.Array]]:
+) -> Tuple[ArrayDict, ArrayDict]:
     """
     take (optionally ranked) ds, split into train/test, each sorted by return (ascending)
 

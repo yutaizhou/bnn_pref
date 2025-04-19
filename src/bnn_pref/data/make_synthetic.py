@@ -23,7 +23,7 @@ def make_synthetic_data(key, cfg) -> Tuple[NTD, N, QueryFeaturesAndResponses]:
     demo_train_frac = data_cfg["demo_train_frac"]
     nq_train, nq_test = data_cfg["nq_train"], data_cfg["nq_test"]
 
-    # * generate true params + trajectories
+    # * generate true params + trajectories, split into train/test, rank by return
     key, key1, key2, key3, key4 = jr.split(key, 5)
     true_param_D = get_gaussian_vector(key1, dim=n_feats, normalize=True)
     true_reward_fn = test_functions_dict[task_cfg["f"]]
@@ -35,6 +35,7 @@ def make_synthetic_data(key, cfg) -> Tuple[NTD, N, QueryFeaturesAndResponses]:
         train_frac=demo_train_frac,
     )
 
+    # * create preference data
     train_prefs: QueryData = create_pref_data(
         key3,
         ranked_returns=train_trajs["returns"],
