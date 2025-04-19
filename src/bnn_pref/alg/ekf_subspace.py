@@ -342,30 +342,17 @@ class SubspaceNeuralEKF(Agent):
         distr = tfd.MultivariateNormalFullCovariance(mean, cov)
         key, key_sample = jr.split(key, 2)
         ss_params = distr.sample(seed=key_sample, sample_shape=(M,))
+        fn = jax.vmap(self.sub2full_predict_logits, in_axes=(0, None))  # (param, input)
 
         # * compute logits for all contexts
-        fn = self.sub2full_predict_logits  # (param, context_N2TD) -> logits_N2
-        fn = jax.vmap(fn, in_axes=(0, None))  # over params
-
         def compute_info_gain(probs_M2):
             mi = probs_M2 * jnp.log2(M * probs_M2 / jnp.sum(probs_M2, axis=0))
             mi = jnp.sum(mi) / M
             return mi
 
-        # * using lax.scan
-        # def scan_step(carry, context_2TD):
-        #     logits_M2 = fn(ss_params, context_2TD)
-        #     probs_M2 = jax.nn.softmax(logits_M2, axis=1)
-        #     value = compute_info_gain(probs_M2)
-        #     return carry, value
-
-        # _, values_N = jax.lax.scan(scan_step, None, contexts_N2TD)
-
-        # * using lax.map
         def map_step(idx):
             context_2TD = env.get_context(idx)
             logits_M2 = fn(ss_params, context_2TD)
-            # probs_M2 = jax.nn.softmax(logits_M2, axis=1)
             probs_M2 = jnp.exp(jax.nn.log_softmax(logits_M2, axis=1))
             value = compute_info_gain(probs_M2)
             return value
@@ -395,3 +382,22 @@ class SubspaceNeuralEKF(Agent):
         llik_QM2 = jax.nn.log_softmax(logits_QM2, axis=2)
         prob_Q2 = jnp.exp(llik_QM2).mean(1)
         return prob_Q2
+
+    # # mode only, for debugging
+    # @partial(jax.jit, static_argnames=["self"])
+    # def compute_predictive(
+    #     self,
+    #     key,
+    #     bel: EKFBeliefState,
+    #     feats_Q2TD: Float[Array, "Q 2 T D"],
+    # ) -> Float[Array, "Q 2"]:
+    #     # * sample model parameters
+    #     mean, cov, t = bel
+    #     fn = partial(self.sub2full_predict_logits, mean)  # param, inputs
+
+    #     # * compute predictive distributions
+    #     logits_Q2 = jax.lax.map(fn, feats_Q2TD, batch_size=self.chunk_size)
+    #     # llik_QM2 = logits_QM2 - jax.nn.logsumexp(logits_QM2, axis=2, keepdims=True)
+    #     llik_Q2 = jax.nn.log_softmax(logits_Q2, axis=2)
+    #     prob_Q2 = jnp.exp(llik_Q2)
+    #     return prob_Q2

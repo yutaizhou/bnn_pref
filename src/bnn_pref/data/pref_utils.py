@@ -82,21 +82,21 @@ def bt_likelihood(r1: float, r2: float, beta: float = 1.0) -> float:
     return jnp.exp(jax.nn.log_softmax(logits))[1]
 
 
-def random_query_iterator_sample(key, n: int, n_queries: int):
+def random_query_iterator_sample(key, n_trajs: int, n_queries: int):
     """
     Note this does not return ti=tj, and might return duplicates
     """
     for _ in range(n_queries):
         key, key1, key2 = jr.split(key, 3)
-        ti = jr.randint(key=key1, shape=(), minval=0, maxval=n - 1)
-        tj = jr.randint(key=key2, shape=(), minval=ti + 1, maxval=n)
+        ti = jr.randint(key=key1, shape=(), minval=0, maxval=n_trajs - 1)
+        tj = jr.randint(key=key2, shape=(), minval=ti + 1, maxval=n_trajs)
         yield ti, tj
 
 
-def random_query_iterator_perm(key, n: int, n_queries: int):
+def random_query_iterator_perm(key, n_trajs: int, n_queries: int):
     _, key_perm = jr.split(key)
 
-    queries_gen = it.combinations(range(n), 2)
+    queries_gen = it.combinations(range(n_trajs), 2)
     queries = jnp.asarray(list(queries_gen))  # ((n choose 2), 2)
     queries = jr.permutation(key_perm, queries)
     queries = queries[:n_queries]
@@ -131,6 +131,10 @@ def create_pref_data(
 
     Note: demonstrations and/or returns must be ranked by increasing reward.
     """
+    # mean = jnp.mean(ranked_returns)
+    # std = jnp.std(ranked_returns)
+    # ranked_returns = (ranked_returns - mean) / std
+
     n_demos = len(ranked_returns)
     n_queries = n_queries if n_queries != -1 else math.comb(n_demos, 2)
 
@@ -138,7 +142,8 @@ def create_pref_data(
     labels = []
     n_mislabels = 0
 
-    for ti, tj in random_query_iterator_sample(key, n_demos, n_queries):
+    # for ti, tj in random_query_iterator_sample(key, n_demos, n_queries):
+    for ti, tj in random_query_iterator_perm(key, n_demos, n_queries):
         label = 1  # label=1 means tj > ti
 
         # * skip if both are bad

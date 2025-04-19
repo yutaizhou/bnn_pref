@@ -102,28 +102,15 @@ class DeepEnsemble(Agent):
         active learning: greedily compute query that maximizes ensemble prediction var
         """
 
-        def predict_fn(ts: TrainState, contexts):
+        @partial(jax.vmap, in_axes=(0, None))  # (ts, input)
+        def fn(ts: TrainState, contexts):
             contexts = rearrange(contexts, "K T D -> 1 K T D", K=2)
             logits_2 = ts.apply_fn({"params": ts.params}, contexts).squeeze()
             return logits_2
 
-        fn = jax.vmap(predict_fn, in_axes=(0, None))  # over ts
-
-        # * using lax.scan
-        # def scan_step(carry, context_2TD):
-        #     logits_M2 = fn(ts, context_2TD)
-        #     probs_M2 = jax.nn.softmax(logits_M2, axis=1)
-        #     pred_M = jnp.argmax(probs_M2, axis=1)
-        #     value = jnp.var(pred_M, axis=0)
-        #     return carry, value
-
-        # _, values_N = jax.lax.scan(scan_step, None, contexts_N2TD)
-
-        # * using lax.map
         def map_step(idx):
             context_2TD = env.get_context(idx)
             logits_M2 = fn(ts, context_2TD)
-            # probs_M2 = jax.nn.softmax(logits_M2, axis=1)
             probs_M2 = jnp.exp(jax.nn.log_softmax(logits_M2, axis=1))
             pred_M = jnp.argmax(probs_M2, axis=1)
             value = jnp.var(pred_M, axis=0)
