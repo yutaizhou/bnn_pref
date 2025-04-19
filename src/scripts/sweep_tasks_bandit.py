@@ -106,8 +106,9 @@ def main(cfg):
         duration = (datetime.now() - start).total_seconds()
 
         # * create env
-        train_trajs_obs = data_dict["train_trajs"]["observations"]  # (N, T, D)
-        train_prefs: QueryData = data_dict["train_prefs"]
+        train_trajs, test_trajs = data_dict["train_trajs"], data_dict["test_trajs"]
+        train_prefs, test_prefs = data_dict["train_prefs"], data_dict["test_prefs"]
+        train_trajs_obs = train_trajs["observations"]  # (N, T, D)
 
         if cfg["sanity"]:
             modified_queries = modify_queries(
@@ -124,9 +125,13 @@ def main(cfg):
             Y=jax.nn.one_hot(train_prefs.responses_Q1.squeeze(), num_classes=2),
         )
 
-        N, T, D = train_trajs_obs.shape
+        nt_train, T, D = train_trajs_obs.shape
+        nt_test = test_trajs["observations"].shape[0]
+        nq_train = train_prefs.queries_Q2.shape[0]
+        nq_test = test_prefs.queries_Q2.shape[0]
+
         print(
-            f"{task}: NTD={train_trajs_obs.shape}, nq_train={nq_train}, {train_prefs.n_mislabels} mislabels"
+            f"{task} ({T=}, {D=}): train/test ({nt_train}/{nt_test}) trajs, ({nq_train}/{nq_test}) queries, {train_prefs.n_mislabels} train pref mislabels"
         )
         # * run
         for alg, run_fn in [("ekf", run_ekf), ("sgd", run_ensemble)]:

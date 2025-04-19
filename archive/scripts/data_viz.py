@@ -61,16 +61,23 @@ def main(cfg):
 
         # * plot histogram of returns
         train_returns = data_dict["train_trajs"]["returns"]
-        train_prefs = data_dict["train_prefs"]
-        n_trajs = train_returns.shape[0]
-        n_queries = train_prefs.queries_Q2.shape[0]
-        n_mislabels = train_prefs.n_mislabels
-        print(f"{task:13}: {n_trajs} trajs, {n_mislabels} / {n_queries} mislabels")
+        test_returns = data_dict["test_trajs"]["returns"]
+        train_prefs, test_prefs = data_dict["train_prefs"], data_dict["test_prefs"]
+        nt_train, nt_test = train_returns.shape[0], test_returns.shape[0]
+        nq_train, nq_test = (
+            train_prefs.queries_Q2.shape[0],
+            test_prefs.queries_Q2.shape[0],
+        )
+        nq_train_mislabel = train_prefs.n_mislabels
+        print(
+            f"{task:13}: train/test {nt_train} / {nt_test} trajs, {nq_train} / {nq_test} queries, {nq_train_mislabel} / {nq_train} train mislabels"
+        )
 
         # * plot histogram
         ax = axs[i]
         ax.hist(train_returns, bins=n_bins, edgecolor="black")
-        ax.set_title(f"{task} ({n_trajs} trajs)")
+        ax.hist(test_returns, bins=n_bins, edgecolor="black")
+        ax.set_title(f"{task} ({nt_train} / {nt_test} trajs)")
         ax.set_xlabel("Return")
         ax.set_ylabel("Frequency")
 
