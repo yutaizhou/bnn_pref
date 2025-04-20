@@ -32,7 +32,6 @@ def make_ogbench_data(key, cfg):
     train_prefs: QueryData = create_pref_data(
         key1,
         ranked_returns=train_trajs["returns"],
-        # traj_obs=train_trajs["observations"],
         n_queries=nq_train,
         noisy_label=data_cfg["noisy_label"],
         bt_beta=data_cfg["bt_beta"],
@@ -41,7 +40,6 @@ def make_ogbench_data(key, cfg):
     test_prefs: QueryData = create_pref_data(
         key2,
         ranked_returns=test_trajs["returns"],
-        # traj_obs=test_trajs["observations"],
         n_queries=nq_test,
     )
 

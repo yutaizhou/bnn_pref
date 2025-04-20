@@ -24,6 +24,14 @@ def make_prefcc_data(key, cfg) -> ArrayDict:
     td = torch.load(path, weights_only=False)
     ds = process_prefcc_data(td)
 
+    # * optionally normalize observations
+    if task_cfg["name"] != "Reacher-v4":
+        obs = ds["observations"]  # (N, T, D)
+        mean = jnp.mean(obs, axis=(0, 1), keepdims=True)
+        std = jnp.std(obs, axis=(0, 1), keepdims=True)
+        obs = (obs - mean) / std
+        ds.update({"observations": obs})
+
     # * optional pruning
     ds = rebalance(
         key,
@@ -43,7 +51,6 @@ def make_prefcc_data(key, cfg) -> ArrayDict:
     train_prefs: QueryData = create_pref_data(
         key_train,
         ranked_returns=train_trajs["returns"],
-        # traj_obs=train_trajs["observations"],
         n_queries=nq_train,
         noisy_label=data_cfg["noisy_label"],
         bt_beta=data_cfg["bt_beta"],
@@ -51,7 +58,6 @@ def make_prefcc_data(key, cfg) -> ArrayDict:
     test_prefs: QueryData = create_pref_data(
         key_test,
         ranked_returns=test_trajs["returns"],
-        # traj_obs=test_trajs["observations"],
         n_queries=nq_test,
     )
 

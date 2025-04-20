@@ -131,9 +131,11 @@ def create_pref_data(
 
     Note: demonstrations and/or returns must be ranked by increasing reward.
     """
-    # mean = jnp.mean(ranked_returns)
-    # std = jnp.std(ranked_returns)
-    # ranked_returns = (ranked_returns - mean) / std
+    if noisy_label:
+        # this allows for bt_beta=15 to get 5-10% error rate across all tasks
+        mean = jnp.mean(ranked_returns)
+        std = jnp.std(ranked_returns)
+        ranked_returns = (ranked_returns - mean) / std
 
     n_demos = len(ranked_returns)
     n_queries = n_queries if n_queries != -1 else math.comb(n_demos, 2)

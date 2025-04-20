@@ -41,7 +41,7 @@ def modify_queries(
     n_reals = pool_size - n_dups
     dup_queries = jnp.tile(queries_Q2[nq_init + n_reals], (n_dups, 1))
     new_queries_Q2 = queries_Q2.at[-n_dups:].set(dup_queries)
-    return new_queries_Q2
+    return new_queries_Q2, n_dups
 
 
 @hydra.main(version_base=None, config_name="config", config_path="../cfg")
@@ -111,13 +111,14 @@ def main(cfg):
         train_trajs_obs = train_trajs["observations"]  # (N, T, D)
 
         if cfg["sanity"]:
-            modified_queries = modify_queries(
+            modified_queries, n_dups = modify_queries(
                 train_prefs.queries_Q2,
                 real_frac=cfg["sanity_frac"],
                 nq_train=nq_train,
                 nq_init=nq_init,
             )
             train_prefs = train_prefs.replace(queries_Q2=modified_queries)
+            print(f"  {n_dups} duplicate queries")
 
         env = PreferenceEnv(
             items=train_trajs_obs,
@@ -131,7 +132,7 @@ def main(cfg):
         nq_test = test_prefs.queries_Q2.shape[0]
 
         print(
-            f"{task} ({T=}, {D=}): train/test ({nt_train}/{nt_test}) trajs, ({nq_train}/{nq_test}) queries, {train_prefs.n_mislabels} train pref mislabels"
+            f"{task} ({T=}, {D=}): train/test ({nt_train}/{nt_test}) trajs, ({nq_train}/{nq_test}) queries, {train_prefs.n_mislabels} train mislabels"
         )
         # * run
         for alg, run_fn in [("ekf", run_ekf), ("sgd", run_ensemble)]:
