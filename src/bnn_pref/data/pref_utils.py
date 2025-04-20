@@ -99,10 +99,10 @@ def random_query_iterator_perm(key, n_trajs: int, n_queries: int):
     queries_gen = it.combinations(range(n_trajs), 2)
     queries = jnp.asarray(list(queries_gen))  # ((n choose 2), 2)
     queries = jr.permutation(key_perm, queries)
-    queries = queries[:n_queries]
+    queries = queries[:n_queries]  # (n_queries, 2)
 
-    for i in range(n_queries):
-        yield queries[i]
+    for query in queries:
+        yield query
 
 
 def create_pref_data(

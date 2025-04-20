@@ -71,11 +71,8 @@ class PreferenceEnv:
                 (n_warmups, n_actions), one-hot
         """
         assert n_warmups <= self.n_queries, "more warmups than dataset size"
-        # Create array of round-robin actions: 0, 1, 2, 0, 1, 2,  ...
-        # actions = jnp.tile(jnp.arange(self.n_actions), n_warmups)
-        idxes = jnp.arange(n_warmups)
-        # actions = jr.randint(key, shape=(n_warmups,), minval=0, maxval=self.n_actions)
-        actions = jnp.ones_like(idxes)
+        idxs = jnp.arange(n_warmups)
+        actions = jnp.argmax(self.labels_Q2[idxs], axis=1)  # take argmax of one-hot
 
         @partial(jax.vmap, in_axes=(0, 0))
         def get(idx: int, action: int):
@@ -84,7 +81,7 @@ class PreferenceEnv:
             reward = self.get_reward(idx, action)
             return context, label, reward
 
-        contexts, labels, rewards = get(idxes, actions)
+        contexts, labels, rewards = get(idxs, actions)
 
         return CARL(contexts, actions, rewards, labels)
 

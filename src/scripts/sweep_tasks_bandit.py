@@ -1,7 +1,7 @@
 import os
 from collections import defaultdict
 from functools import partial
-from typing import Dict
+from typing import Dict, Tuple
 
 os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
 os.environ["DISABLE_CODESIGN_WARNING"] = "1"
@@ -18,7 +18,7 @@ from jaxtyping import Array, Float
 
 from bnn_pref.data import dataset_creators
 from bnn_pref.data.data_env import PreferenceEnv
-from bnn_pref.data.pref_utils import QueryData
+from bnn_pref.data.pref_utils import QueryIndexAndResponses
 from bnn_pref.utils.hydra_resolvers import *
 from bnn_pref.utils.metrics import MeanStd
 from bnn_pref.utils.utils import get_random_seed, nested_defaultdict
@@ -30,18 +30,30 @@ jnp.set_printoptions(precision=2)
 
 
 def modify_queries(
-    queries_Q2: Float[Array, "Q 2"], real_frac: float, nq_train: int, nq_init: int
-) -> Float[Array, "Q 2"]:
+    pref_data: QueryIndexAndResponses,
+    real_frac: float,
+    nq_train: int,
+    nq_init: int,
+) -> Tuple[QueryIndexAndResponses, int]:
     """
     sanity check for active learning acquisition functions
     modify all queries past nq_init: 5% real, and rest duplicate.
     """
+    queries_Q2, responses_Q1 = pref_data.queries_Q2, pref_data.responses_Q1
     pool_size = nq_train - nq_init
     n_dups = int(pool_size * (1 - real_frac))
     n_reals = pool_size - n_dups
     dup_queries = jnp.tile(queries_Q2[nq_init + n_reals], (n_dups, 1))
+    dup_responses = jnp.tile(responses_Q1[nq_init + n_reals], (n_dups, 1))
     new_queries_Q2 = queries_Q2.at[-n_dups:].set(dup_queries)
-    return new_queries_Q2, n_dups
+    new_responses_Q1 = responses_Q1.at[-n_dups:].set(dup_responses)
+
+    new_pref_data = pref_data.replace(
+        queries_Q2=new_queries_Q2,
+        responses_Q1=new_responses_Q1,
+    )
+
+    return new_pref_data, n_dups
 
 
 @hydra.main(version_base=None, config_name="config", config_path="../cfg")
@@ -110,29 +122,27 @@ def main(cfg):
         train_prefs, test_prefs = data_dict["train_prefs"], data_dict["test_prefs"]
         train_trajs_obs = train_trajs["observations"]  # (N, T, D)
 
-        if cfg["sanity"]:
-            modified_queries, n_dups = modify_queries(
-                train_prefs.queries_Q2,
-                real_frac=cfg["sanity_frac"],
-                nq_train=nq_train,
-                nq_init=nq_init,
-            )
-            train_prefs = train_prefs.replace(queries_Q2=modified_queries)
-            print(f"  {n_dups} duplicate queries")
-
-        env = PreferenceEnv(
-            items=train_trajs_obs,
-            X=train_prefs.queries_Q2,
-            Y=jax.nn.one_hot(train_prefs.responses_Q1.squeeze(), num_classes=2),
-        )
-
         nt_train, T, D = train_trajs_obs.shape
         nt_test = test_trajs["observations"].shape[0]
         nq_train = train_prefs.queries_Q2.shape[0]
         nq_test = test_prefs.queries_Q2.shape[0]
 
+        n_dups = 0
+        if cfg["sanity"]:
+            train_prefs, n_dups = modify_queries(
+                train_prefs,
+                real_frac=cfg["sanity_frac"],
+                nq_train=nq_train,
+                nq_init=nq_init,
+            )
         print(
-            f"{task} ({T=}, {D=}): train/test ({nt_train}/{nt_test}) trajs, ({nq_train}/{nq_test}) queries, {train_prefs.n_mislabels} train mislabels"
+            f"{task:13} ({T=}, {D=}): train/test nt=({nt_train}/{nt_test}), nq=({nq_train}/{nq_test}), {train_prefs.n_mislabels} train mislabels, {n_dups} dups"
+        )
+
+        env = PreferenceEnv(
+            items=train_trajs_obs,
+            X=train_prefs.queries_Q2,
+            Y=jax.nn.one_hot(train_prefs.responses_Q1.squeeze(), num_classes=2),
         )
         # * run
         for alg, run_fn in [("ekf", run_ekf), ("sgd", run_ensemble)]:
@@ -238,7 +248,9 @@ def main(cfg):
         ["EKF (Random)", "EKF (Active)", "Ensemble (Random)", "Ensemble (Active)"],
         loc="center right",
     )
-    fig.suptitle(f"log PDF vs. num queries ({nq_train})")
+    fig.suptitle(
+        f"log PDF vs. num queries ({nq_train}, noise={data_cfg['noisy_label']}, sanity={cfg['sanity']})"
+    )
     plt.tight_layout(rect=[0, 0, 0.9, 1])  # [left, bottom, right, top]
     # plt.show()
     plt.savefig(f"{cfg.paths.output_dir}/logpdf_vs_queries.png")

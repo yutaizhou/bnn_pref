@@ -49,7 +49,8 @@ def run_ekf(key, cfg, data_dict, env):
         pred_Q = prob_Q2.argmax(axis=1)
 
         test_acc = jnp.mean(pred_Q == test_prefs.responses_Q1.squeeze())
-        test_logpdf = jnp.log(prob_Q2[:, 1]).mean()
+        prob_Q1 = jnp.take_along_axis(prob_Q2, test_prefs.responses_Q1, axis=1)
+        test_logpdf = jnp.log(prob_Q1).mean()
 
         # all arrays of (1 + nq_updates, )
         result = {
