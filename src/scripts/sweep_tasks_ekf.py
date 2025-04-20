@@ -19,7 +19,6 @@ from bnn_pref.alg.ekf_subspace import SubspaceNeuralEKF
 from bnn_pref.alg.trainer import alg_pipeline
 from bnn_pref.data import dataset_creators
 from bnn_pref.data.data_env import PreferenceEnv
-from bnn_pref.data.pref_utils import query_indices_to_features
 from bnn_pref.utils.hydra_resolvers import *
 from bnn_pref.utils.metrics import MeanStd
 from bnn_pref.utils.utils import get_random_seed
@@ -31,8 +30,8 @@ jnp.set_printoptions(precision=2)
 def run_ekf(key, cfg, data_dict, env):
     ekf_cfg = cfg["ekf"]
     data_cfg = cfg["data"]
+    test_trajs_obs = data_dict["test_trajs"]["observations"]
     test_prefs = data_dict["test_prefs"]
-    test_prefs = query_indices_to_features(test_prefs, data_dict["test_trajs"])
 
     # * build + run bandit alg
     key, key_pipe, key_bma = jr.split(key, 3)
@@ -45,7 +44,9 @@ def run_ekf(key, cfg, data_dict, env):
         # * sample model parameters
         *_, t = bel
         key = jr.fold_in(key_bma, t)
-        prob_Q2 = bandit.compute_predictive(key, bel, test_prefs.queries_Q2TD)
+        prob_Q2 = bandit.compute_predictive(
+            key, bel, test_trajs_obs, test_prefs.queries_Q2
+        )
         pred_Q = prob_Q2.argmax(axis=1)
 
         test_acc = jnp.mean(pred_Q == test_prefs.responses_Q1.squeeze())

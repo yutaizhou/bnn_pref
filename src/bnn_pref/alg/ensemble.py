@@ -131,7 +131,6 @@ class DeepEnsemble(Agent):
 
         @partial(jax.vmap, in_axes=(0, None))  # (ts, input)
         def fn(ts: TrainState, x):
-            x = rearrange(x, "T D -> 1 T D")
             ret = ts.apply_fn(
                 {"params": ts.params}, x, method=self.model.predict_traj_return
             ).squeeze(0)
@@ -140,11 +139,15 @@ class DeepEnsemble(Agent):
         fn = partial(fn, ts)
 
         # * precompute logits for all items
-        logits_NM = jax.lax.map(fn, env.items_NTD, batch_size=self.chunk_size)
+        logits_NM = jax.lax.map(
+            fn,
+            jnp.expand_dims(env.items_NTD, axis=1),
+            batch_size=self.chunk_size,
+        )
 
         def map_step(idx):
             inds_2 = env.get_pref_indices(idx)
-            logits_M2 = logits_NM[inds_2].swapaxes(0, 1)
+            logits_M2 = rearrange(logits_NM[inds_2], "K M -> M K", K=2)
             probs_M2 = jnp.exp(jax.nn.log_softmax(logits_M2, axis=1))
             pred_M = jnp.argmax(probs_M2, axis=1)
             value = jnp.var(pred_M, axis=0)
@@ -159,19 +162,25 @@ class DeepEnsemble(Agent):
     def compute_predictive(
         self,
         bel: TrainState,
-        feats_Q2TD: Float[Array, "Q 2 T D"],
+        items_NTD: Float[Array, "N T D"],
+        query_idxs_Q2: Float[Array, "Q 2"],
     ) -> Float[Array, "Q 2"]:
         # * prepare ensemble predictors
-        fn = jax.vmap(bel.apply_fn, in_axes=(0, None), out_axes=1)  # param, input
-        fn = partial(fn, {"params": bel.params})
+        @partial(jax.vmap, in_axes=(0, None))  # (ts, input)
+        def fn(ts: TrainState, x):
+            ret = ts.apply_fn(
+                {"params": ts.params}, x, method=self.model.predict_traj_return
+            ).squeeze(0)
+            return ret
+
+        logits_NM = jax.lax.map(
+            partial(fn, bel),
+            jnp.expand_dims(items_NTD, axis=1),
+            batch_size=self.chunk_size,
+        )
+        logits_QM2 = rearrange(logits_NM[query_idxs_Q2], "Q K M -> Q M K", K=2)
 
         # * compute predictive distributions
-        logits_QM2 = jax.lax.map(
-            fn,
-            jnp.expand_dims(feats_Q2TD, axis=1),
-            batch_size=self.chunk_size,
-        ).squeeze(1)
-        # llik_QM2 = logits_QM2 - jax.nn.logsumexp(logits_QM2, axis=2, keepdims=True)
         llik_QM2 = jax.nn.log_softmax(logits_QM2, axis=2)
         prob_Q2 = jnp.exp(llik_QM2).mean(1)
         return prob_Q2

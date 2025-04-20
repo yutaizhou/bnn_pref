@@ -6,13 +6,13 @@ demo_train_frac: 0.8
 
 # * preference queries
 # take nq_train / nq_test from the already split train/test trajs
-nq_train: 200
-nq_test: 500
+nq_train: 13000
+nq_test: -1
 
 noisy_label: False # t2 > t1 always if False; o.w. sample from bradley terry
 bt_beta: 15 # beta for BT model. only used if noisy_label=True; need to normalize returns for beta=15 to get 5-10% error rate
 
 # * Data partitioning for streaming algs: EKF, Ensemble, etc.
 nq_init: 5 
-nq_update: 50 # if -1, use all remaining data after nq_init
+nq_update: 50 # query budget; if -1, use all remaining queries after nq_init
 nsteps: ${get_nsteps:${.nq_train}, ${.nq_init}, ${.nq_update}} #! do not set manually

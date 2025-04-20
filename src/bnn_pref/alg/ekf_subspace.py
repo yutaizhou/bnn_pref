@@ -371,7 +371,7 @@ class SubspaceNeuralEKF(Agent):
 
         def map_step(idx):
             inds_2 = env.get_pref_indices(idx)
-            logits_M2 = logits_NM[inds_2].swapaxes(0, 1)
+            logits_M2 = rearrange(logits_NM[inds_2], "K M -> M K", K=2)
             probs_M2 = jnp.exp(jax.nn.log_softmax(logits_M2, axis=1))
             value = compute_info_gain(probs_M2)
             return value
@@ -385,17 +385,22 @@ class SubspaceNeuralEKF(Agent):
         self,
         key,
         bel: EKFBeliefState,
-        feats_Q2TD: Float[Array, "Q 2 T D"],
+        items_NTD: Float[Array, "N T D"],
+        query_idxs_Q2: Float[Array, "Q 2"],
     ) -> Float[Array, "Q 2"]:
         # * sample model parameters
         mean, cov, t = bel
         dist = tfd.MultivariateNormalFullCovariance(mean, cov)
         ss_params = dist.sample(seed=key, sample_shape=(self.mi_samples,))
-        fn = jax.vmap(self.sub2full_predict_logits, in_axes=(0, None))  # over params
+        fn = jax.vmap(self.sub2full_predict_return, in_axes=(0, None))  # over params
         fn = partial(fn, ss_params)
 
+        # precompute logits for all items
+        logits_NM = jax.lax.map(fn, items_NTD, batch_size=self.chunk_size).squeeze()
+        logits_QM2 = rearrange(logits_NM[query_idxs_Q2], "Q K M -> Q M K", K=2)
+
         # * compute predictive distributions
-        logits_QM2 = jax.lax.map(fn, feats_Q2TD, batch_size=self.chunk_size)
+        # logits_QM2 = jax.lax.map(fn, feats_Q2TD, batch_size=self.chunk_size)
         # llik_QM2 = logits_QM2 - jax.nn.logsumexp(logits_QM2, axis=2, keepdims=True)
         llik_QM2 = jax.nn.log_softmax(logits_QM2, axis=2)
         prob_Q2 = jnp.exp(llik_QM2).mean(1)
