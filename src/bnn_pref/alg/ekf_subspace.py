@@ -309,26 +309,6 @@ class SubspaceNeuralEKF(Agent):
         bel = EKFBeliefState(mean=posterior_mean, cov=posterior_cov, t=t + 1)
         return bel
 
-    def choose_action(
-        self,
-        key,
-        bel: EKFBeliefState,
-        context: Float[Array, "2 T D"],
-    ) -> Scalar:
-        # Thompson sampling strategy
-        # Could also use epsilon greedy or UCB
-        w = self.sample_params(key, bel)
-        logits_2 = self.sub2full_predict_logits(w, context)
-        action = logits_2.argmax()
-        return action
-
-    def sample_params(self, key, bel: EKFBeliefState) -> Array:
-        """only used in choose_action()"""
-        mean, cov, t = bel
-        distr = tfd.MultivariateNormalFullCovariance(mean, cov)
-        params = distr.sample(seed=key)
-        return params
-
     # @partial(jax.jit, static_argnames=["self", "env"])
     # def acquire_next_query(
     #     self, key, bel: EKFBeliefState, env: PreferenceEnv, pool_idxes_Q: Array
@@ -363,7 +343,11 @@ class SubspaceNeuralEKF(Agent):
 
     @partial(jax.jit, static_argnames=["self", "env"])
     def acquire_next_query(
-        self, key, bel: EKFBeliefState, env: PreferenceEnv, pool_idxes_Q: Array
+        self,
+        key,
+        bel: EKFBeliefState,
+        env: PreferenceEnv,
+        pool_idxes_Q: Array,
     ) -> int:
         """
         active learning: greedily compute query that maximizes InfoGain acquisition fn
@@ -377,13 +361,13 @@ class SubspaceNeuralEKF(Agent):
         fn = jax.vmap(self.sub2full_predict_return, in_axes=(0, None))
         fn = partial(fn, ss_params)
 
+        # precompute logits for all items
+        logits_NM = jax.lax.map(fn, env.items_NTD, batch_size=self.chunk_size).squeeze()
+
         def compute_info_gain(probs_M2):
             mi = probs_M2 * jnp.log2(M * probs_M2 / jnp.sum(probs_M2, axis=0))
             mi = jnp.sum(mi) / M
             return mi
-
-        # precompute logits for all items
-        logits_NM = jax.lax.map(fn, env.items_NTD, batch_size=self.chunk_size).squeeze()
 
         def map_step(idx):
             inds_2 = env.get_pref_indices(idx)

@@ -71,8 +71,6 @@ def run_bandit(
     """
     # index into the dataset, get what's remaining after warmup
     pool_size = len(env) - nq_init  # active learning
-    # contexts_pool, _ = env.get_n(jnp.arange(nq_init, len(env)))
-    # assert pool_size == len(contexts_pool)
     pool_idxes = jnp.arange(nq_init, len(env))
 
     def filter_onestep(
@@ -80,19 +78,18 @@ def run_bandit(
         key: Key,
     ) -> Tuple[AgentState, int]:
         bel, t = curr
-        t_offset = t + nq_init  # offset by nq_init
+        t_offset = t + nq_init  # offset by nq_init to index into query pool
 
         context = env.get_context(t_offset)
-        label = env.get_label(t_offset)  # one-hot pref, always [0,1] cuz traj 2 > 1
+        label = env.get_label(t_offset)  # one-hot pref, always [0,1] if noiseless
         batch = CARL(context, None, None, label)
         bel = bandit.update_bel(bel, batch)
         q = env.get_pref_indices(t_offset)
 
         key, subkey = split(key)
-        if not active:  # get a random query
-            # t_next = t + 1
+        if not active:
             t_next = jr.randint(subkey, (), 0, pool_size)
-        else:  # get a query that maximizes acquisition fn
+        else:
             t_next = bandit.acquire_next_query(subkey, bel, env, pool_idxes)
 
         return (bel, t_next), (bel, t, q)

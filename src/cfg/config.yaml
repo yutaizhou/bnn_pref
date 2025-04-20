@@ -14,7 +14,7 @@ chunk_size: 64
 
 # * sanity check for active learning acquisition functions
 sanity: False
-sanity_frac: 0.01 # 1% of nq_train=5000 is 50, nq_update=50
+sanity_frac: 0.01 # fraction of non-duplicates in the query pool. 1% of nq_train=5000 is 50, nq_update=50 
 
 paths:
   results_dir: ${paths.root_dir}/results
