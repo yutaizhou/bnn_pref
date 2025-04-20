@@ -94,6 +94,33 @@ class DeepEnsemble(Agent):
         ts, loss = grad_fn(ts, batch)
         return ts
 
+    # @partial(jax.jit, static_argnames=["self", "env"])
+    # def acquire_next_query(
+    #     self, key, ts: TrainState, env: PreferenceEnv, pool_idxes_N: Array
+    # ) -> int:
+    #     """
+    #     active learning: greedily compute query that maximizes ensemble prediction var
+    #     """
+
+    #     @partial(jax.vmap, in_axes=(0, None))  # (ts, input)
+    #     def fn(ts: TrainState, contexts):
+    #         contexts = rearrange(contexts, "K T D -> 1 K T D", K=2)
+    #         logits_2 = ts.apply_fn({"params": ts.params}, contexts).squeeze()
+    #         return logits_2
+
+    #     def map_step(idx):
+    #         context_2TD = env.get_context(idx)
+    #         logits_M2 = fn(ts, context_2TD)
+    #         probs_M2 = jnp.exp(jax.nn.log_softmax(logits_M2, axis=1))
+    #         pred_M = jnp.argmax(probs_M2, axis=1)
+    #         value = jnp.var(pred_M, axis=0)
+    #         return value
+
+    #     values_N = jax.lax.map(map_step, pool_idxes_N, batch_size=self.chunk_size)
+
+    #     query_idx = jnp.argmax(values_N)
+    #     return query_idx
+
     @partial(jax.jit, static_argnames=["self", "env"])
     def acquire_next_query(
         self, key, ts: TrainState, env: PreferenceEnv, pool_idxes_N: Array
@@ -103,14 +130,21 @@ class DeepEnsemble(Agent):
         """
 
         @partial(jax.vmap, in_axes=(0, None))  # (ts, input)
-        def fn(ts: TrainState, contexts):
-            contexts = rearrange(contexts, "K T D -> 1 K T D", K=2)
-            logits_2 = ts.apply_fn({"params": ts.params}, contexts).squeeze()
-            return logits_2
+        def fn(ts: TrainState, x):
+            x = rearrange(x, "T D -> 1 T D")
+            ret = ts.apply_fn(
+                {"params": ts.params}, x, method=self.model.predict_traj_return
+            ).squeeze(0)
+            return ret
+
+        fn = partial(fn, ts)
+
+        # * precompute logits for all items
+        logits_NM = jax.lax.map(fn, env.items_NTD, batch_size=self.chunk_size)
 
         def map_step(idx):
-            context_2TD = env.get_context(idx)
-            logits_M2 = fn(ts, context_2TD)
+            inds_2 = env.get_pref_indices(idx)
+            logits_M2 = logits_NM[inds_2].swapaxes(0, 1)
             probs_M2 = jnp.exp(jax.nn.log_softmax(logits_M2, axis=1))
             pred_M = jnp.argmax(probs_M2, axis=1)
             value = jnp.var(pred_M, axis=0)

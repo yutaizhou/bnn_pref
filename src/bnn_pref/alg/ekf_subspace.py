@@ -329,9 +329,41 @@ class SubspaceNeuralEKF(Agent):
         params = distr.sample(seed=key)
         return params
 
+    # @partial(jax.jit, static_argnames=["self", "env"])
+    # def acquire_next_query(
+    #     self, key, bel: EKFBeliefState, env: PreferenceEnv, pool_idxes_Q: Array
+    # ) -> int:
+    #     """
+    #     active learning: greedily compute query that maximizes InfoGain acquisition fn
+    #     """
+    #     # * sample M (subspace) models from posterior
+    #     M = self.mi_samples  # number of models to sample
+    #     mean, cov = bel.mean, bel.cov
+    #     distr = tfd.MultivariateNormalFullCovariance(mean, cov)
+    #     key, key_sample = jr.split(key, 2)
+    #     ss_params = distr.sample(seed=key_sample, sample_shape=(M,))
+    #     fn = jax.vmap(self.sub2full_predict_logits, in_axes=(0, None))  # (param, input)
+
+    #     # * compute logits for all contexts
+    #     def compute_info_gain(probs_M2):
+    #         mi = probs_M2 * jnp.log2(M * probs_M2 / jnp.sum(probs_M2, axis=0))
+    #         mi = jnp.sum(mi) / M
+    #         return mi
+
+    #     def map_step(idx):
+    #         context_2TD = env.get_context(idx)
+    #         logits_M2 = fn(ss_params, context_2TD)
+    #         probs_M2 = jnp.exp(jax.nn.log_softmax(logits_M2, axis=1))
+    #         value = compute_info_gain(probs_M2)
+    #         return value
+
+    #     values_Q = jax.lax.map(map_step, pool_idxes_Q, batch_size=self.chunk_size)
+    #     query_idx = jnp.argmax(values_Q)
+    #     return query_idx
+
     @partial(jax.jit, static_argnames=["self", "env"])
     def acquire_next_query(
-        self, key, bel: EKFBeliefState, env: PreferenceEnv, pool_idxes_N: Array
+        self, key, bel: EKFBeliefState, env: PreferenceEnv, pool_idxes_Q: Array
     ) -> int:
         """
         active learning: greedily compute query that maximizes InfoGain acquisition fn
@@ -342,24 +374,26 @@ class SubspaceNeuralEKF(Agent):
         distr = tfd.MultivariateNormalFullCovariance(mean, cov)
         key, key_sample = jr.split(key, 2)
         ss_params = distr.sample(seed=key_sample, sample_shape=(M,))
-        fn = jax.vmap(self.sub2full_predict_logits, in_axes=(0, None))  # (param, input)
+        fn = jax.vmap(self.sub2full_predict_return, in_axes=(0, None))
+        fn = partial(fn, ss_params)
 
-        # * compute logits for all contexts
         def compute_info_gain(probs_M2):
             mi = probs_M2 * jnp.log2(M * probs_M2 / jnp.sum(probs_M2, axis=0))
             mi = jnp.sum(mi) / M
             return mi
 
+        # precompute logits for all items
+        logits_NM = jax.lax.map(fn, env.items_NTD, batch_size=self.chunk_size).squeeze()
+
         def map_step(idx):
-            context_2TD = env.get_context(idx)
-            logits_M2 = fn(ss_params, context_2TD)
+            inds_2 = env.get_pref_indices(idx)
+            logits_M2 = logits_NM[inds_2].swapaxes(0, 1)
             probs_M2 = jnp.exp(jax.nn.log_softmax(logits_M2, axis=1))
             value = compute_info_gain(probs_M2)
             return value
 
-        values_N = jax.lax.map(map_step, pool_idxes_N, batch_size=self.chunk_size)
-
-        query_idx = jnp.argmax(values_N)
+        values_Q = jax.lax.map(map_step, pool_idxes_Q, batch_size=self.chunk_size)
+        query_idx = jnp.argmax(values_Q)
         return query_idx
 
     @partial(jax.jit, static_argnames=["self"])

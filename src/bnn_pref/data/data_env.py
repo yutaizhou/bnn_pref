@@ -51,8 +51,7 @@ class PreferenceEnv:
     def get_pref_indices(self, t) -> Int[Array, "2"]:
         """
         Get the indices of the two items in the preference query.
-        Used for debugging acquisition functions where we have duplicate queries in the
-        pool.
+        Used for debugging acquisition functions using duplicate queries in the pool.
         """
         return self.queries_Q2[t]
 

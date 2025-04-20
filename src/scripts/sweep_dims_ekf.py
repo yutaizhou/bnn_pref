@@ -33,13 +33,13 @@ def run_ekf(key, cfg):
 
     # * generate true params + preference data
     output = make_synthetic_data(key, cfg)
-    train_data, test_data = output["train_prefs"], output["test_prefs"]
+    train_prefs, test_prefs = output["train_prefs"], output["test_prefs"]
 
     # * build + run bandit alg
     key, key1 = jr.split(key, 2)
     env = PreferenceEnv(
-        X=train_data.queries_Q2TD,
-        Y=jax.nn.one_hot(train_data.responses_Q1.squeeze(), num_classes=2),
+        X=train_prefs.queries_Q2TD,
+        Y=jax.nn.one_hot(train_prefs.responses_Q1.squeeze(), num_classes=2),
     )
 
     bel_trace, bandit = alg_pipeline(key1, SubspaceNeuralEKF, env, ekf_cfg, data_cfg)
@@ -47,10 +47,10 @@ def run_ekf(key, cfg):
 
     pref_predictor = jax.vmap(partial(bandit.sub2full_predict_logits, bel.mean))
     reward_predictor = jax.vmap(partial(bandit.sub2full_predict_return, bel.mean))
-    train_acc = compute_acc_nn(pref_predictor, train_data)
-    test_acc = compute_acc_nn(pref_predictor, test_data)
-    test_logpdf = compute_logpdf_nn(pref_predictor, test_data)
-    pref_acc = compute_pref_ranking_acc(reward_predictor, test_data)
+    train_acc = compute_acc_nn(pref_predictor, train_prefs)
+    test_acc = compute_acc_nn(pref_predictor, test_prefs)
+    test_logpdf = compute_logpdf_nn(pref_predictor, test_prefs)
+    pref_acc = compute_pref_ranking_acc(reward_predictor, test_prefs)
 
     results = {
         "train_acc": train_acc,
