@@ -1,16 +1,24 @@
 # * demonstrations
 # for splitting demo into train/test traj. Each split is independetly turned into pref queries
-# ogbench doesn't need this.
-n_demos: 200
+n_demos: 200 # only used by synthetic tasks
+
+# * rebalancing pruning trajectories based on return
+n_bins: 10 # usuallly doesn't need to be changed
+max_count_per_bin: 70
+tokeep: 250  # (150 choose 2) = 11175; this is for both train + test
 demo_train_frac: 0.8 
+
+# prune strategy: (max_count / tokeep / beta)
+# old: 60/200/15 -> 13000 ish, 5-10% error rate
+# new: 70/250/10  -> 19900 nq_train, 4-11% error rate
 
 # * preference queries
 # take nq_train / nq_test from the already split train/test trajs
-nq_train: 13000
+nq_train: -1
 nq_test: -1
 
 noisy_label: False # t2 > t1 always if False; o.w. sample from bradley terry
-bt_beta: 15 # beta for BT model. only used if noisy_label=True; need to normalize returns for beta=15 to get 5-10% error rate
+bt_beta: 10 # beta for BT model. only used if noisy_label=True; need to normalize returns for beta=15 to get 5-10% error rate
 
 # * Data partitioning for streaming algs: EKF, Ensemble, etc.
 nq_init: 5 

@@ -37,9 +37,9 @@ def make_prefcc_data(key, cfg) -> ArrayDict:
         key,
         task_cfg["name"],
         ds=ds,
-        n_bins=10,
-        max_count_per_bin=60,
-        tokeep=200,  # (150 choose 2) = 11175
+        n_bins=data_cfg["n_bins"],
+        max_count_per_bin=data_cfg["max_count_per_bin"],
+        tokeep=data_cfg["tokeep"],
     )
 
     # * split into train/test

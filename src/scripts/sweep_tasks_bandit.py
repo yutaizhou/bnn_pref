@@ -92,9 +92,12 @@ def main(cfg):
     n_eff_iterates = (ekf_cfg["niters"] - warm_burns) // thinning
 
     print(
-        f"Seed: {seed} x {cfg['seeds']}\n"
+        f"Run:\n"
+        f"  Seed: {seed} x {cfg['seeds']}\n"
+        f"  Sanity: {cfg['sanity']} ({cfg['sanity_frac']} real frac)\n"
         f"Data:\n"
-        f"  noisy_label={data_cfg['noisy_label']} (beta={data_cfg['bt_beta']})\n"
+        f"  prune: {data_cfg['n_bins']} bins, {data_cfg['max_count_per_bin']} max_count_per_bin, {data_cfg['tokeep']} tokeep\n"
+        f"  noisy_label: {data_cfg['noisy_label']} (beta={data_cfg['bt_beta']})\n"
         f"  Train/Test: {nq_train}/{nq_test}\n"
         f"  Init/Update: {nq_init}/{nsteps}\n"
         f"EKF:\n"
@@ -135,8 +138,9 @@ def main(cfg):
                 nq_train=nq_train,
                 nq_init=nq_init,
             )
+        mislabel_ratio = train_prefs.n_mislabels / nq_train
         print(
-            f"{task:13} ({T=}, {D=}): train/test nt=({nt_train}/{nt_test}), nq=({nq_train}/{nq_test}), {train_prefs.n_mislabels} train mislabels, {n_dups} dups"
+            f"{task:13} ({T=}, {D=}): train/test nt=({nt_train}/{nt_test}), nq=({nq_train}/{nq_test}), {train_prefs.n_mislabels} train mislabels ({mislabel_ratio:.2%}), {n_dups} dups"
         )
 
         env = PreferenceEnv(

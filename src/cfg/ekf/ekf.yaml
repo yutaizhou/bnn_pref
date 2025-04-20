@@ -6,7 +6,7 @@ hidden_sizes:
 
 # * active learning
 active: False
-M: 10 # num models to sample for mutual information acquisition function
+M: 15 # num models to sample for mutual information acquisition function
 
 # * Subspace Init w/ SGD 
 niters: 100  # Total number of GD steps on warmup data

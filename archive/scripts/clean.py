@@ -39,5 +39,9 @@ if __name__ == "__main__":
     directory = "/Users/yutai/dev/projects/bnn_pref/results"
 
     # Confirm before proceeding
-    clean_empty_dirs(directory)
-    print("Done!")
+    confirm = input("Any hydra jobs running? Are you sure you want to proceed? (y/n): ")
+    if confirm == "y":
+        clean_empty_dirs(directory)
+        print("Done!")
+    else:
+        print("Aborting...")

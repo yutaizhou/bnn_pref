@@ -10,7 +10,7 @@ defaults:
 - hydra: default
 
 fhat: linear
-chunk_size: 64
+chunk_size: 128
 
 # * sanity check for active learning acquisition functions
 sanity: False
