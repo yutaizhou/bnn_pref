@@ -173,16 +173,19 @@ class DeepEnsemble(Agent):
             ).squeeze(0)
             return ret
 
+        fn = partial(fn, bel)
+
+        # * precompute logits for all items
         logits_NM = jax.lax.map(
-            partial(fn, bel),
-            jnp.expand_dims(items_NTD, axis=1),
-            batch_size=self.chunk_size,
+            fn, jnp.expand_dims(items_NTD, axis=1), batch_size=self.chunk_size
         )
         logits_QM2 = rearrange(logits_NM[query_idxs_Q2], "Q K M -> Q M K", K=2)
 
         # * compute predictive distributions
         llik_QM2 = jax.nn.log_softmax(logits_QM2, axis=2)
-        prob_Q2 = jnp.exp(llik_QM2).mean(1)
+        llik_Q2 = jax.nn.logsumexp(llik_QM2, axis=1) - jnp.log(self.n_models)
+        prob_Q2 = jnp.exp(llik_Q2)
+        # prob_Q2 = jnp.exp(llik_QM2).mean(1)
         return prob_Q2
 
 

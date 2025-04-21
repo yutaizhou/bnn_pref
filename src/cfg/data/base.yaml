@@ -16,7 +16,7 @@ demo_train_frac: 0.8
 # * preference queries
 # take nq_train / nq_test from the already split train/test trajs
 nq_train: -1
-nq_test: -1
+nq_test: 500
 
 noisy_label: False # t2 > t1 always if False; o.w. sample from bradley terry
 bt_beta: 10 # beta for BT model. only used if noisy_label=True; need to normalize returns for beta=15 to get 5-10% error rate

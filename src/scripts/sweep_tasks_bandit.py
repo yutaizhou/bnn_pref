@@ -156,10 +156,8 @@ def main(cfg):
                 seeds = jnp.array(key_seeds)
                 run_fn = partial(run_fn, cfg=cfg, data_dict=data_dict, env=env)
 
-                # vmap version
+                # run in vmap or lax version (parallel vs. sequential)
                 res_m, metadata_m = jax.vmap(run_fn, in_axes=(0,))(seeds)
-
-                # lax.map version
                 # res_m, metadata_m = jax.lax.map(run_fn, seeds)
 
                 res = {
@@ -232,6 +230,8 @@ def main(cfg):
             for is_al in [False, True]:
                 # (n_seeds, nq_update)
                 values = stats[task][alg][is_al]["test_logpdf_all"]
+                if jnp.isinf(values).any():
+                    continue
                 label = get_label(alg, is_al)
                 style = get_style(alg, is_al)
                 ax.plot(values.mean(0), label=label, **style)
@@ -242,6 +242,8 @@ def main(cfg):
                     alpha=0.2,
                     **style,
                 )
+                ax.axhline(y=-0.69, linestyle=":", linewidth=1, color="red")
+
         task_nq_train = stats[task][alg][is_al]["nq_train"]
         task_nq_test = stats[task][alg][is_al]["nq_test"]
         ax.set_title(f"{task} (nq={task_nq_train}/{task_nq_test})")
