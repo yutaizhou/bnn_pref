@@ -255,7 +255,7 @@ def main(cfg):
     axs = axs.flatten()
     for i, task in enumerate(tasks):
         ax = axs[i]
-        ax.set_ylim(0, 1)
+        ax.set_ylim(0.4, 1)
         ax.axhline(y=0.5, linestyle=":", linewidth=1, color="red")
         for alg in ["ekf", "sgd"]:
             for is_al in [False, True]:

@@ -242,12 +242,12 @@ class SubspaceNeuralEKF(Agent):
         #     return p * (1 - p)
 
         init_mean = jnp.zeros(sub_dim)
-        S = jnp.eye(sub_dim) * self.prior_noise
+        init_cov = jnp.eye(sub_dim) * self.prior_noise
         Q = jnp.eye(sub_dim) * self.dynamics_noise
         R = jnp.eye(2) * self.obs_noise
         self.ekf_params = ParamsNLGSSM(
             initial_mean=init_mean,
-            initial_covariance=S,
+            initial_covariance=init_cov,
             dynamics_function=lambda z, u: z,  # constant dynamics
             dynamics_covariance=Q,
             emission_function=emission_fn,
@@ -263,7 +263,7 @@ class SubspaceNeuralEKF(Agent):
         #     emission_cov_function=emission_cov_cmgf,
         # )
 
-        bel = EKFBeliefState(mean=init_mean, cov=S, t=0)
+        bel = EKFBeliefState(mean=init_mean, cov=init_cov, t=0)
         return bel
 
     @partial(jax.jit, static_argnames=["self"])
