@@ -123,7 +123,7 @@ class DeepEnsemble(Agent):
 
     @partial(jax.jit, static_argnames=["self", "env"])
     def acquire_next_query(
-        self, key, ts: TrainState, env: PreferenceEnv, pool_idxes_N: Array
+        self, key, ts: TrainState, env: PreferenceEnv, pool_idxes_Q: Array
     ) -> int:
         """
         active learning: greedily compute query that maximizes ensemble prediction var
@@ -153,9 +153,9 @@ class DeepEnsemble(Agent):
             value = jnp.var(pred_M, axis=0)
             return value
 
-        values_N = jax.lax.map(map_step, pool_idxes_N, batch_size=self.chunk_size)
+        values_Q = jax.lax.map(map_step, pool_idxes_Q, batch_size=self.chunk_size)
 
-        query_idx = jnp.argmax(values_N)
+        query_idx = jnp.argmax(values_Q)
         return query_idx
 
     @partial(jax.jit, static_argnames=["self"])

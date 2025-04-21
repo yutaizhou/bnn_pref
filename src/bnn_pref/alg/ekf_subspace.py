@@ -364,21 +364,23 @@ class SubspaceNeuralEKF(Agent):
         # precompute logits for all items
         logits_NM = jax.lax.map(fn, env.items_NTD, batch_size=self.chunk_size).squeeze()
 
-        def compute_info_gain(logprobs_M2):
-            probs_M2 = jnp.exp(logprobs_M2)
-            probs_M2 = jnp.nan_to_num(probs_M2, posinf=1.0, neginf=1e-8)
-            mi_M2 = probs_M2 * jnp.log2(M * probs_M2 / jnp.sum(probs_M2, axis=0))
-            mi_M2 = jnp.sum(mi_M2) / M
-            return mi_M2
-
         # def compute_info_gain(logprobs_M2):
-        #     """work in logspace for numerical stability"""
-        #     log_sum_p = jax.nn.logsumexp(logprobs_M2, axis=0, keepdims=True)
-        #     log_M = jnp.log(M)
+        #     probs_M2 = jnp.exp(logprobs_M2)
+        #     probs_M2 = jnp.nan_to_num(probs_M2, posinf=1.0, neginf=1e-8)
 
-        #     mi_terms = jnp.exp(logprobs_M2) * (log_M + logprobs_M2 - log_sum_p)
-        #     mi = jnp.sum(mi_terms) / M
-        #     return mi / jnp.log(2)
+        #     mi_M2 = probs_M2 * jnp.log2(M * probs_M2 / jnp.sum(probs_M2, axis=0))
+        #     value = jnp.sum(mi_M2) / M
+        #     return value
+
+        def compute_info_gain(logprobs_M2):
+            """work in logspace for numerical stability"""
+            log_sum_p = jax.nn.logsumexp(logprobs_M2, axis=0, keepdims=True)
+            log_M = jnp.log(M)
+            log2 = jnp.log(2)
+
+            mi_M2 = jnp.exp(logprobs_M2) * (log_M + logprobs_M2 - log_sum_p) / log2
+            value = jnp.sum(mi_M2) / M
+            return value
 
         def map_step(idx):
             inds_2 = env.get_pref_indices(idx)
