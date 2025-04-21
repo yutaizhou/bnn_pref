@@ -11,7 +11,7 @@ import jax.random as jr
 import matplotlib.pyplot as plt
 
 from bnn_pref.data.make_synthetic import generate_synthetic_trajs, make_synthetic_data
-from bnn_pref.data.pref_utils import BradleyTerry, QueryFeaturesAndResponses
+from bnn_pref.data.pref_utils import BradleyTerry
 from bnn_pref.utils.utils import get_gaussian_vector, get_random_seed
 
 

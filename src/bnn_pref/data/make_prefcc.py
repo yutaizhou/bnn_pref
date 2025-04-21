@@ -7,7 +7,7 @@ import numpy as np
 import torch
 from tensordict import TensorDict
 
-from bnn_pref.data.pref_utils import QueryData, create_pref_data
+from bnn_pref.data.pref_utils import QueryIndexAndResponses, create_pref_data
 from bnn_pref.data.traj_utils import rebalance
 from bnn_pref.utils.type import ArrayDict
 from bnn_pref.utils.utils import get_random_seed
@@ -50,14 +50,14 @@ def make_prefcc_data(key, cfg) -> ArrayDict:
 
     # * turn train/test trajs into preference data
     key, key_train, key_test = jr.split(key_split, 3)
-    train_prefs: QueryData = create_pref_data(
+    train_prefs: QueryIndexAndResponses = create_pref_data(
         key_train,
         ranked_returns=train_trajs["returns"],
         n_queries=nq_train,
         noisy_label=data_cfg["noisy_label"],
         bt_beta=data_cfg["bt_beta"],
     )
-    test_prefs: QueryData = create_pref_data(
+    test_prefs: QueryIndexAndResponses = create_pref_data(
         key_test,
         ranked_returns=test_trajs["returns"],
         n_queries=nq_test,

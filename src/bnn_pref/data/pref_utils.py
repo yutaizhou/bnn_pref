@@ -39,9 +39,6 @@ def query_indices_to_features(
     )
 
 
-QueryData = Union[QueryFeaturesAndResponses, QueryIndexAndResponses]
-
-
 class BradleyTerry:
     @staticmethod
     def logpdf(
@@ -108,7 +105,6 @@ def random_query_iterator_perm(key, n_trajs: int, n_queries: int):
 def create_pref_data(
     key,
     ranked_returns: N,
-    traj_obs: Optional[NTD] = None,
     n_queries: int = -1,
     skip_threshold: float = -jnp.inf,  # skip if both are bad
     use_delta: bool = False,  # skip by delta_rank or delta_reward
@@ -117,7 +113,7 @@ def create_pref_data(
     noisy_label: bool = False,  # noisy preferences
     bt_beta: float = 1.0,
     mistake_prob: float = 0.0,  # label flip mistake (not rly used)
-) -> Union[QueryIndexAndResponses, QueryFeaturesAndResponses]:
+) -> QueryIndexAndResponses:
     """
     Args:
         num_queries (int): specifies the number of pairwise comparisons between trajectories
@@ -180,12 +176,7 @@ def create_pref_data(
     queries_Q2 = jnp.asarray(queries).astype(jnp.int32)
     labels_Q1 = jnp.expand_dims(jnp.asarray(labels), 1).astype(jnp.int32)
 
-    if traj_obs is None:
-        return QueryIndexAndResponses(queries_Q2, labels_Q1, n_mislabels)
-    else:
-        features_Q2TD = traj_obs[queries_Q2]  # index into (N, T, D) using (Q, 2)
-        pref_data = QueryFeaturesAndResponses(features_Q2TD, labels_Q1, n_mislabels)
-        return pref_data
+    return QueryIndexAndResponses(queries_Q2, labels_Q1, n_mislabels)
 
 
 if __name__ == "__main__":

@@ -4,12 +4,12 @@ import jax.random as jr
 import numpy as np
 
 import ogbench
-from bnn_pref.data.pref_utils import QueryData, create_pref_data
+from bnn_pref.data.pref_utils import QueryIndexAndResponses, create_pref_data
 from bnn_pref.utils.type import ArrayDict
 from bnn_pref.utils.utils import get_random_seed
 
 
-def make_ogbench_data(key, cfg):
+def make_ogbench_data(key, cfg) -> ArrayDict:
     data_cfg = cfg["data"]
     task_cfg = cfg["task"]
     nq_train, nq_test = data_cfg["nq_train"], data_cfg["nq_test"]
@@ -29,7 +29,7 @@ def make_ogbench_data(key, cfg):
 
     # * create preference data
     key, key1, key2 = jr.split(key, 3)
-    train_prefs: QueryData = create_pref_data(
+    train_prefs: QueryIndexAndResponses = create_pref_data(
         key1,
         ranked_returns=train_trajs["returns"],
         n_queries=nq_train,
@@ -37,7 +37,7 @@ def make_ogbench_data(key, cfg):
         bt_beta=data_cfg["bt_beta"],
     )
 
-    test_prefs: QueryData = create_pref_data(
+    test_prefs: QueryIndexAndResponses = create_pref_data(
         key2,
         ranked_returns=test_trajs["returns"],
         n_queries=nq_test,
