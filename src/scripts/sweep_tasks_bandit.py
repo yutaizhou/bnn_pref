@@ -180,6 +180,9 @@ def main(cfg):
                     # "train_logpdf": MeanStd(res_m["train_logpdf"][:, -1]),
                     "test_logpdf_warm": MeanStd(res_m["test_logpdf"][:, 0]),
                     "test_logpdf": MeanStd(res_m["test_logpdf"][:, -1]),
+                    # * metadata
+                    "nq_train": nq_train,
+                    "nq_test": nq_test,
                 }
 
                 stats[task][alg][is_al] = res
@@ -239,7 +242,9 @@ def main(cfg):
                     alpha=0.2,
                     **style,
                 )
-        ax.set_title(f"{task}")
+        task_nq_train = stats[task][alg][is_al]["nq_train"]
+        task_nq_test = stats[task][alg][is_al]["nq_test"]
+        ax.set_title(f"{task} (nq={task_nq_train}/{task_nq_test})")
 
     dummy_lines = [
         plt.plot([], [], color="blue", linestyle="--", label="EKF (Random)")[0],
@@ -253,7 +258,7 @@ def main(cfg):
         loc="center right",
     )
     fig.suptitle(
-        f"log PDF vs. num queries ({nq_train}, noise={data_cfg['noisy_label']}, sanity={cfg['sanity']})"
+        f"log PDF vs. num queries (noise={data_cfg['noisy_label']}, sanity={cfg['sanity']})"
     )
     plt.tight_layout(rect=[0, 0, 0.9, 1])  # [left, bottom, right, top]
     # plt.show()

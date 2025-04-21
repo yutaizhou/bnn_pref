@@ -9,8 +9,9 @@ tokeep: 250  # (150 choose 2) = 11175; this is for both train + test
 demo_train_frac: 0.8 
 
 # prune strategy: (max_count / tokeep / beta)
-# old: 60/200/15 -> 13000 ish, 5-10% error rate
-# new: 70/250/10  -> 19900 nq_train, 4-11% error rate
+# 60/200/15 -> 13000 ish, 5-10% error rate
+# 70/250/10  -> 19900 nq_train, 4-11% error rate
+# 100/375/7 ->  44850 nq_train, 5-20% error rate
 
 # * preference queries
 # take nq_train / nq_test from the already split train/test trajs
