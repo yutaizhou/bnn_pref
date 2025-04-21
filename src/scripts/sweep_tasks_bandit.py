@@ -175,13 +175,18 @@ def main(cfg):
 
                 stats[task][alg][is_al] = res
 
+                test_logpdf_all = res_m["test_logpdf"]
+                nans = ~jnp.isfinite(test_logpdf_all)
+
                 print(
                     f"  {alg} active={str(is_al):5}, "
                     f"acc: {res['test_acc_final'].mean:.2%} ± {res['test_acc_final'].std:.2%}, "
                     f"logpdf: {res['test_logpdf_final'].mean:.2f} ± {res['test_logpdf_final'].std:.2f}, "
                     # f"({metadata_m['full_param_count'][0]:,d} -> {metadata_m['subspace_param_count'][0]:,d}) "
-                    # f", bma_acc: {res['test_acc_bma'].mean:.2%} ± {res['test_acc_bma'].std:.2%}"
+                    # f"nans: {res['n_nan_total_logpdf']} / {res['n_nan_run_logpdf']}"
                 )
+                if nans.any():
+                    print(f"nans: {nans.sum(1)}")
 
     # * plot logpdf learning curve
     fig, axs = plt.subplots(3, 4, figsize=(12, 8))
@@ -209,7 +214,8 @@ def main(cfg):
             for is_al in [False, True]:
                 # (n_seeds, nq_update)
                 values = stats[task][alg][is_al]["test_logpdf_all"]
-                if not jnp.isfinite(values).any():
+                nans = ~jnp.isfinite(values)
+                if nans.any():
                     continue
                 label = get_label(alg, is_al)
                 style = get_style(alg, is_al)
