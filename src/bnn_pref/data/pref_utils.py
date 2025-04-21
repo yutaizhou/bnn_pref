@@ -6,7 +6,7 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 
-from bnn_pref.utils.type import NTD, Q1, Q2, Q2TD, ArrayDict, D, N, unpackable_dataclass
+from bnn_pref.utils.type import Q1, Q2, Q2TD, ArrayDict, D, N, unpackable_dataclass
 
 
 @unpackable_dataclass

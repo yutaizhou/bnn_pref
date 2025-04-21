@@ -9,26 +9,35 @@ from flax.training.train_state import TrainState
 from jax import jit, value_and_grad
 from jax.flatten_util import ravel_pytree
 from jax.lax import scan
-from jaxtyping import Array, Float
+from jaxtyping import Array, Float, Int
 
-from bnn_pref.data.data_env import CARL, BatchIndexManager, retrieve
+from bnn_pref.alg.trainer import AgentState
+from bnn_pref.data.data_env import CARL, BatchIndexManager, PreferenceEnv, retrieve
 
 
 class Agent(ABC):
     @abstractmethod
-    def init_bel(self, key, warmup_data: CARL):
+    def init_bel(self, key, warmup_data: CARL) -> AgentState:
         pass
 
     @abstractmethod
-    def update_bel(self, bel, batch: CARL):
+    def update_bel(self, bel: AgentState, batch: CARL) -> AgentState:
         pass
 
     @abstractmethod
-    def acquire_next_query(self, key, bel, env, pool_idxes_N: Array) -> int:
+    def acquire_next_query(
+        self, key, bel: AgentState, env: PreferenceEnv, pool_idxes_Q: Int[Array, "Q"]
+    ) -> int:
         pass
 
     @abstractmethod
-    def compute_predictive(self, bel, feats_Q2TD: Float[Array, "Q 2 T D"]):
+    def compute_predictive(
+        self,
+        key,
+        bel: AgentState,
+        items_NTD: Float[Array, "N T D"],
+        query_idxs_Q2: Float[Array, "Q 2"],
+    ) -> Float[Array, "Q 2"]:
         pass
 
 

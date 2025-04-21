@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import jax.random as jr
 from jaxtyping import Array, Float, Int
 
-from bnn_pref.utils.type import CARL, NTD, Q2, Q2TD
+from bnn_pref.utils.type import CARL, NTD, Q2
 
 
 def retrieve(data, batch_idx: Float[Array, "B"]):

@@ -123,9 +123,8 @@ def main(cfg):
         # * create env
         train_trajs, test_trajs = data_dict["train_trajs"], data_dict["test_trajs"]
         train_prefs, test_prefs = data_dict["train_prefs"], data_dict["test_prefs"]
-        train_trajs_obs = train_trajs["observations"]  # (N, T, D)
 
-        nt_train, T, D = train_trajs_obs.shape
+        nt_train, T, D = train_trajs["observations"].shape
         nt_test = test_trajs["observations"].shape[0]
         nq_train = train_prefs.queries_Q2.shape[0]
         nq_test = test_prefs.queries_Q2.shape[0]
@@ -144,7 +143,7 @@ def main(cfg):
         )
 
         env = PreferenceEnv(
-            items=train_trajs_obs,
+            items=train_trajs["observations"],
             X=train_prefs.queries_Q2,
             Y=jax.nn.one_hot(train_prefs.responses_Q1.squeeze(), num_classes=2),
         )
@@ -168,18 +167,18 @@ def main(cfg):
                     "nq_test": nq_test,
                     # * logpdf
                     "test_logpdf_all": res_m["test_logpdf"],
-                    "test_logpdf": MeanStd(res_m["test_logpdf"][:, -1]),
+                    "test_logpdf_final": MeanStd(res_m["test_logpdf"][:, -1]),
                     # * acc
                     "test_acc_all": res_m["test_acc"],
-                    "test_acc": MeanStd(res_m["test_acc"][:, -1]),
+                    "test_acc_final": MeanStd(res_m["test_acc"][:, -1]),
                 }
 
                 stats[task][alg][is_al] = res
 
                 print(
                     f"  {alg} active={str(is_al):5}, "
-                    f"acc: {res['test_acc'].mean:.2%} ± {res['test_acc'].std:.2%}, "
-                    f"logpdf: {res['test_logpdf'].mean:.2f} ± {res['test_logpdf'].std:.2f}, "
+                    f"acc: {res['test_acc_final'].mean:.2%} ± {res['test_acc_final'].std:.2%}, "
+                    f"logpdf: {res['test_logpdf_final'].mean:.2f} ± {res['test_logpdf_final'].std:.2f}, "
                     # f"({metadata_m['full_param_count'][0]:,d} -> {metadata_m['subspace_param_count'][0]:,d}) "
                     # f", bma_acc: {res['test_acc_bma'].mean:.2%} ± {res['test_acc_bma'].std:.2%}"
                 )
@@ -187,19 +186,6 @@ def main(cfg):
     # * plot logpdf learning curve
     fig, axs = plt.subplots(3, 4, figsize=(12, 8))
     axs = axs.flatten()
-
-    def find_min_logpdf(stats: Dict, task: str) -> float:
-        """
-        stats[task][alg][is_al]["test_logpdf_all"]
-        """
-        best_min = jnp.inf
-        for alg in ["ekf", "sgd"]:
-            for is_al in [False, True]:
-                curr_min = jnp.min(stats[task][alg][is_al]["test_logpdf_all"])
-                best_min = jnp.minimum(best_min, curr_min)
-        if best_min is -jnp.inf:
-            best_min = -4  # rougly 1.8% accuracy / probability of t2 > t1
-        return best_min
 
     def get_label(alg: str, is_al: bool) -> str:
         if alg == "ekf":
