@@ -222,10 +222,13 @@ def main(cfg):
         linestyle = "-" if is_al else "--"
         return {"color": color, "linestyle": linestyle, "linewidth": 1}
 
+    # * plot logpdf eval curve
     for i, task in enumerate(tasks):
         ax = axs[i]
-        y_min = find_min_logpdf(stats, task)
-        ax.set_ylim(y_min, 0)
+        # y_min = find_min_logpdf(stats, task)
+        # ax.set_ylim(y_min, 0)
+        ax.set_ylim(-1.25, 0)
+        ax.axhline(y=-0.69, linestyle=":", linewidth=1, color="red")
         for alg in ["ekf", "sgd"]:
             for is_al in [False, True]:
                 # (n_seeds, nq_update)
@@ -242,7 +245,6 @@ def main(cfg):
                     alpha=0.2,
                     **style,
                 )
-                ax.axhline(y=-0.69, linestyle=":", linewidth=1, color="red")
 
         task_nq_train = stats[task][alg][is_al]["nq_train"]
         task_nq_test = stats[task][alg][is_al]["nq_test"]
@@ -266,12 +268,13 @@ def main(cfg):
     # plt.show()
     plt.savefig(f"{cfg.paths.output_dir}/logpdf_vs_queries.png")
 
-    # * plot acc learning curve
+    # * plot acc eval curve
     fig, axs = plt.subplots(4, 4, figsize=(12, 8))  # 13 tasks total
     axs = axs.flatten()
     for i, task in enumerate(tasks):
         ax = axs[i]
         ax.set_ylim(0, 1)
+        ax.axhline(y=0.5, linestyle=":", linewidth=1, color="red")
         for alg in ["ekf", "sgd"]:
             for is_al in [False, True]:
                 values = stats[task][alg][is_al]["test_acc_all"]  # (n_seeds, nq_update)

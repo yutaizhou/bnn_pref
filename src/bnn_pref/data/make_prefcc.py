@@ -25,7 +25,9 @@ def make_prefcc_data(key, cfg) -> ArrayDict:
     ds = process_prefcc_data(td)
 
     # * optionally normalize observations
-    if task_cfg["name"] != "Reacher-v4":
+    if task_cfg["name"] not in [
+        "Reacher-v4",
+    ]:
         obs = ds["observations"]  # (N, T, D)
         mean = jnp.mean(obs, axis=(0, 1), keepdims=True)
         std = jnp.std(obs, axis=(0, 1), keepdims=True)

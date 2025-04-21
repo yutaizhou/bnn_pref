@@ -71,7 +71,8 @@ def main(cfg):
         nq_train_mislabel = train_prefs.n_mislabels
         mistake_ratio = nq_train_mislabel / nq_train
         print(
-            f"{task:13}: train/test {nt_train} / {nt_test} trajs, {nq_train} / {nq_test} queries, {nq_train_mislabel} / {nq_train} train mislabels ({mistake_ratio:.2%})"
+            f"{task:13}: train/test {nt_train} / {nt_test} trajs, {nq_train} / {nq_test} queries, {nq_train_mislabel} / {nq_train} train mislabels ({mistake_ratio:.2%})\n"
+            f"  obs: {data_dict['train_trajs']['observations'].shape}"
         )
 
         # * plot histogram

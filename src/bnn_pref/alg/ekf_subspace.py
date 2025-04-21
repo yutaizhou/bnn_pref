@@ -365,9 +365,9 @@ class SubspaceNeuralEKF(Agent):
         logits_NM = jax.lax.map(fn, env.items_NTD, batch_size=self.chunk_size).squeeze()
 
         def compute_info_gain(probs_M2):
-            mi = probs_M2 * jnp.log2(M * probs_M2 / jnp.sum(probs_M2, axis=0))
-            mi = jnp.sum(mi) / M
-            return mi
+            mi_M2 = probs_M2 * jnp.log2(M * probs_M2 / jnp.sum(probs_M2, axis=0))
+            mi_M2 = jnp.sum(mi_M2) / M
+            return mi_M2
 
         def map_step(idx):
             inds_2 = env.get_pref_indices(idx)

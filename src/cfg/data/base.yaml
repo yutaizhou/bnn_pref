@@ -2,24 +2,25 @@
 # for splitting demo into train/test traj. Each split is independetly turned into pref queries
 n_demos: 200 # only used by synthetic tasks
 
-# * rebalancing pruning trajectories based on return
-n_bins: 10 # usuallly doesn't need to be changed
-max_count_per_bin: 70
-tokeep: 250  # (150 choose 2) = 11175; this is for both train + test
+# * rebalancing pruning trajectories based on return 
+max_count_per_bin: 100
+tokeep: 375  # this is for both train + test
 demo_train_frac: 0.8 
+n_bins: 10 # doesn't really need to be changed
 
 # prune strategy: (max_count / tokeep / beta)
 # 60/200/15 -> 13000 ish, 5-10% error rate
 # 70/250/10  -> 19900 nq_train, 4-11% error rate
 # 100/375/7 ->  44850 nq_train, 5-20% error rate
 
+noisy_label: False # t2 > t1 always if False; o.w. sample from bradley terry
+bt_beta: 7 # beta for BT model. only used if noisy_label=True; need to normalize returns for beta=15 to get 5-10% error rate
+
 # * preference queries
 # take nq_train / nq_test from the already split train/test trajs
 nq_train: -1
 nq_test: 500
 
-noisy_label: False # t2 > t1 always if False; o.w. sample from bradley terry
-bt_beta: 10 # beta for BT model. only used if noisy_label=True; need to normalize returns for beta=15 to get 5-10% error rate
 
 # * Data partitioning for streaming algs: EKF, Ensemble, etc.
 nq_init: 5 
