@@ -160,6 +160,7 @@ def main(cfg):
                 res_m, metadata_m = jax.vmap(run_fn, in_axes=(0,))(seeds)
                 # res_m, metadata_m = jax.lax.map(run_fn, seeds)
 
+                # (n_seeds, nq_update)
                 res = {
                     "task": task,
                     "active": is_al,
@@ -248,7 +249,7 @@ def main(cfg):
 
         task_nq_train = stats[task][alg][is_al]["nq_train"]
         task_nq_test = stats[task][alg][is_al]["nq_test"]
-        ax.set_title(f"{task} (nq={task_nq_train}/{task_nq_test})")
+        ax.set_title(f"{task} (nq={task_nq_train}/{task_nq_test})", fontsize=8)
 
     dummy_lines = [
         plt.plot([], [], color="blue", linestyle="--", label="EKF (Random)")[0],

@@ -364,16 +364,27 @@ class SubspaceNeuralEKF(Agent):
         # precompute logits for all items
         logits_NM = jax.lax.map(fn, env.items_NTD, batch_size=self.chunk_size).squeeze()
 
-        def compute_info_gain(probs_M2):
+        def compute_info_gain(logprobs_M2):
+            probs_M2 = jnp.exp(logprobs_M2)
+            probs_M2 = jnp.nan_to_num(probs_M2, posinf=1.0, neginf=1e-8)
             mi_M2 = probs_M2 * jnp.log2(M * probs_M2 / jnp.sum(probs_M2, axis=0))
             mi_M2 = jnp.sum(mi_M2) / M
             return mi_M2
 
+        # def compute_info_gain(logprobs_M2):
+        #     """work in logspace for numerical stability"""
+        #     log_sum_p = jax.nn.logsumexp(logprobs_M2, axis=0, keepdims=True)
+        #     log_M = jnp.log(M)
+
+        #     mi_terms = jnp.exp(logprobs_M2) * (log_M + logprobs_M2 - log_sum_p)
+        #     mi = jnp.sum(mi_terms) / M
+        #     return mi / jnp.log(2)
+
         def map_step(idx):
             inds_2 = env.get_pref_indices(idx)
             logits_M2 = rearrange(logits_NM[inds_2], "K M -> M K", K=2)
-            probs_M2 = jnp.exp(jax.nn.log_softmax(logits_M2, axis=1))
-            value = compute_info_gain(probs_M2)
+            logprobs_M2 = jax.nn.log_softmax(logits_M2, axis=1)
+            value = compute_info_gain(logprobs_M2)
             return value
 
         values_Q = jax.lax.map(map_step, pool_idxes_Q, batch_size=self.chunk_size)
