@@ -35,8 +35,9 @@ def make_prefcc_data(key, cfg) -> ArrayDict:
         ds.update({"observations": obs})
 
     # * optional pruning
+    key, key_rebalance = jr.split(key, 2)
     ds = rebalance(
-        key,
+        key_rebalance,
         task_cfg["name"],
         ds=ds,
         n_bins=data_cfg["n_bins"],
@@ -49,7 +50,7 @@ def make_prefcc_data(key, cfg) -> ArrayDict:
     train_trajs, test_trajs = split_dataset(key_split, ds, demo_train_frac)
 
     # * turn train/test trajs into preference data
-    key, key_train, key_test = jr.split(key_split, 3)
+    key, key_train, key_test = jr.split(key, 3)
     train_prefs: QueryIndexAndResponses = create_pref_data(
         key_train,
         ranked_returns=train_trajs["returns"],

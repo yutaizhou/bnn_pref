@@ -20,11 +20,11 @@ def make_synthetic_data(key, cfg) -> ArrayDict:
     nq_train, nq_test = data_cfg["nq_train"], data_cfg["nq_test"]
 
     # * generate true params + trajectories, split into train/test, rank by return
-    key, key1, key2, key3, key4 = jr.split(key, 5)
-    true_param_D = get_gaussian_vector(key1, dim=n_feats, normalize=True)
+    key, key_param, key_traj = jr.split(key, 3)
+    true_param_D = get_gaussian_vector(key_param, dim=n_feats, normalize=True)
     true_reward_fn = test_functions_dict[task_cfg["f"]]
     train_trajs, test_trajs = generate_synthetic_trajs(
-        key2,
+        key_traj,
         traj_shape=(n_demos, demo_len, n_feats),
         true_param=true_param_D,
         true_reward_fn=true_reward_fn,
@@ -32,8 +32,9 @@ def make_synthetic_data(key, cfg) -> ArrayDict:
     )
 
     # * create preference data
+    key, key_train, key_test = jr.split(key, 3)
     train_prefs: QueryIndexAndResponses = create_pref_data(
-        key3,
+        key_train,
         ranked_returns=train_trajs["returns"],
         n_queries=nq_train,
         noisy_label=data_cfg["noisy_label"],
@@ -41,7 +42,7 @@ def make_synthetic_data(key, cfg) -> ArrayDict:
     )
 
     test_prefs: QueryIndexAndResponses = create_pref_data(
-        key4,
+        key_test,
         ranked_returns=test_trajs["returns"],
         n_queries=nq_test,
     )

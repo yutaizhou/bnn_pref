@@ -12,7 +12,7 @@ from einops import rearrange
 from flax import linen as nn
 from flax.training.train_state import TrainState
 from jax.flatten_util import ravel_pytree
-from jaxtyping import Array, Float, Scalar
+from jaxtyping import Array, Float, Int
 from sklearn.decomposition import PCA
 from tensorflow_probability.substrates import jax as tfp
 
@@ -138,7 +138,7 @@ class SubspaceNeuralEKF(Agent):
         params_trace = warm_metrics["params"][self.warm_burns :: self.thinning]
 
         if self.rnd_proj:
-            assert type(self.sub_dim) is int
+            assert isinstance(self.sub_dim, int)
             full_dim = params_trace.shape[-1]
             sub_dim = self.sub_dim
             key, proj_key = jr.split(key, 2)
@@ -309,45 +309,13 @@ class SubspaceNeuralEKF(Agent):
         bel = EKFBeliefState(mean=posterior_mean, cov=posterior_cov, t=t + 1)
         return bel
 
-    # @partial(jax.jit, static_argnames=["self", "env"])
-    # def acquire_next_query(
-    #     self, key, bel: EKFBeliefState, env: PreferenceEnv, pool_idxes_Q: Array
-    # ) -> int:
-    #     """
-    #     active learning: greedily compute query that maximizes InfoGain acquisition fn
-    #     """
-    #     # * sample M (subspace) models from posterior
-    #     M = self.mi_samples  # number of models to sample
-    #     mean, cov = bel.mean, bel.cov
-    #     distr = tfd.MultivariateNormalFullCovariance(mean, cov)
-    #     key, key_sample = jr.split(key, 2)
-    #     ss_params = distr.sample(seed=key_sample, sample_shape=(M,))
-    #     fn = jax.vmap(self.sub2full_predict_logits, in_axes=(0, None))  # (param, input)
-
-    #     # * compute logits for all contexts
-    #     def compute_info_gain(probs_M2):
-    #         mi = probs_M2 * jnp.log2(M * probs_M2 / jnp.sum(probs_M2, axis=0))
-    #         mi = jnp.sum(mi) / M
-    #         return mi
-
-    #     def map_step(idx):
-    #         context_2TD = env.get_context(idx)
-    #         logits_M2 = fn(ss_params, context_2TD)
-    #         probs_M2 = jnp.exp(jax.nn.log_softmax(logits_M2, axis=1))
-    #         value = compute_info_gain(probs_M2)
-    #         return value
-
-    #     values_Q = jax.lax.map(map_step, pool_idxes_Q, batch_size=self.chunk_size)
-    #     query_idx = jnp.argmax(values_Q)
-    #     return query_idx
-
     @partial(jax.jit, static_argnames=["self", "env"])
     def acquire_next_query(
         self,
         key,
         bel: EKFBeliefState,
         env: PreferenceEnv,
-        pool_idxes_Q: Array,
+        pool_idxes_Q: Int[Array, "Q"],
     ) -> int:
         """
         active learning: greedily compute query that maximizes InfoGain acquisition fn
@@ -399,8 +367,9 @@ class SubspaceNeuralEKF(Agent):
         key,
         bel: EKFBeliefState,
         items_NTD: Float[Array, "N T D"],
-        query_idxs_Q2: Float[Array, "Q 2"],
+        query_idxs_Q2: Int[Array, "Q 2"],
     ) -> Float[Array, "Q 2"]:
+        """sample params from posterior, then compute predictive"""
         # * sample model parameters
         mean, cov, t = bel
         dist = tfd.MultivariateNormalFullCovariance(mean, cov)
@@ -419,7 +388,6 @@ class SubspaceNeuralEKF(Agent):
         # prob_Q2 = jnp.exp(llik_QM2).mean(1)
         return prob_Q2
 
-    # # mode only, for debugging
     # @partial(jax.jit, static_argnames=["self"])
     # def compute_predictive(
     #     self,
@@ -428,6 +396,7 @@ class SubspaceNeuralEKF(Agent):
     #     items_NTD: Float[Array, "N T D"],
     #     query_idxs_Q2: Float[Array, "Q 2"],
     # ) -> Float[Array, "Q 2"]:
+    #     """use posterior mode only, then compute predictive"""
     #     # * sample model parameters
     #     mean, cov, t = bel
     #     fn = partial(self.sub2full_predict_return, mean)  # param, inputs

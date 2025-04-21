@@ -28,9 +28,9 @@ def make_ogbench_data(key, cfg) -> ArrayDict:
     test_trajs = process_ogbench(test_trajs, rank=True)
 
     # * create preference data
-    key, key1, key2 = jr.split(key, 3)
+    key, key_train, key_test = jr.split(key, 3)
     train_prefs: QueryIndexAndResponses = create_pref_data(
-        key1,
+        key_train,
         ranked_returns=train_trajs["returns"],
         n_queries=nq_train,
         noisy_label=data_cfg["noisy_label"],
@@ -38,7 +38,7 @@ def make_ogbench_data(key, cfg) -> ArrayDict:
     )
 
     test_prefs: QueryIndexAndResponses = create_pref_data(
-        key2,
+        key_test,
         ranked_returns=test_trajs["returns"],
         n_queries=nq_test,
     )

@@ -9,10 +9,8 @@ import optax
 from einops import rearrange
 from flax import linen as nn
 from flax.training.train_state import TrainState
-from jax.flatten_util import ravel_pytree
-from jaxtyping import Array, Float, Scalar
+from jaxtyping import Array, Float, Int, Scalar
 from sklearn.decomposition import PCA
-from tensorflow_probability.substrates import jax as tfp
 
 from bnn_pref.alg.agent_utils import Agent, bt_loss_fn, run_gradient_descent
 from bnn_pref.data.data_env import PreferenceEnv
@@ -94,36 +92,9 @@ class DeepEnsemble(Agent):
         ts, loss = grad_fn(ts, batch)
         return ts
 
-    # @partial(jax.jit, static_argnames=["self", "env"])
-    # def acquire_next_query(
-    #     self, key, ts: TrainState, env: PreferenceEnv, pool_idxes_N: Array
-    # ) -> int:
-    #     """
-    #     active learning: greedily compute query that maximizes ensemble prediction var
-    #     """
-
-    #     @partial(jax.vmap, in_axes=(0, None))  # (ts, input)
-    #     def fn(ts: TrainState, contexts):
-    #         contexts = rearrange(contexts, "K T D -> 1 K T D", K=2)
-    #         logits_2 = ts.apply_fn({"params": ts.params}, contexts).squeeze()
-    #         return logits_2
-
-    #     def map_step(idx):
-    #         context_2TD = env.get_context(idx)
-    #         logits_M2 = fn(ts, context_2TD)
-    #         probs_M2 = jnp.exp(jax.nn.log_softmax(logits_M2, axis=1))
-    #         pred_M = jnp.argmax(probs_M2, axis=1)
-    #         value = jnp.var(pred_M, axis=0)
-    #         return value
-
-    #     values_N = jax.lax.map(map_step, pool_idxes_N, batch_size=self.chunk_size)
-
-    #     query_idx = jnp.argmax(values_N)
-    #     return query_idx
-
     @partial(jax.jit, static_argnames=["self", "env"])
     def acquire_next_query(
-        self, key, ts: TrainState, env: PreferenceEnv, pool_idxes_Q: Array
+        self, key, ts: TrainState, env: PreferenceEnv, pool_idxes_Q: Int[Array, "Q"]
     ) -> int:
         """
         active learning: greedily compute query that maximizes ensemble prediction var
@@ -163,7 +134,7 @@ class DeepEnsemble(Agent):
         self,
         bel: TrainState,
         items_NTD: Float[Array, "N T D"],
-        query_idxs_Q2: Float[Array, "Q 2"],
+        query_idxs_Q2: Int[Array, "Q 2"],
     ) -> Float[Array, "Q 2"]:
         # * prepare ensemble predictors
         @partial(jax.vmap, in_axes=(0, None))  # (ts, input)
