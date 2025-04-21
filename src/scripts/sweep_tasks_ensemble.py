@@ -127,18 +127,12 @@ def main(cfg):
             res = {
                 "task": task,
                 "active": is_al,
+                # * logpdf
                 "test_logpdf_all": res_m["test_logpdf"],
-                "test_acc_all": res_m["test_acc"],
-                # acc
-                # "train_acc_warm": MeanStd(res_m["train_acc"][:, 0]),
-                # "train_acc": MeanStd(res_m["train_acc"][:, -1]),
-                "test_acc_warm": MeanStd(res_m["test_acc"][:, 0]),
-                "test_acc": MeanStd(res_m["test_acc"][:, -1]),
-                # logpdf
-                # "train_logpdf_warm": MeanStd(res_m["train_logpdf"][:, 0]),
-                # "train_logpdf": MeanStd(res_m["train_logpdf"][:, -1]),
-                "test_logpdf_warm": MeanStd(res_m["test_logpdf"][:, 0]),
                 "test_logpdf": MeanStd(res_m["test_logpdf"][:, -1]),
+                # * acc
+                "test_acc_all": res_m["test_acc"],
+                "test_acc": MeanStd(res_m["test_acc"][:, -1]),
             }
 
             stats[task][is_al] = res
@@ -146,7 +140,6 @@ def main(cfg):
             print(
                 f"  active={str(is_al):5}, "
                 f"acc: {res['test_acc'].mean:.2%} ± {res['test_acc'].std:.2%}, "
-                # f"acc: {res['test_acc_warm']:.2%} ± {res['test_acc_warm_std']:.2%} -> {res['test_acc']:.2%} ± {res['test_acc_std']:.2%}, "
                 f"logpdf: {res['test_logpdf'].mean:.2f} ± {res['test_logpdf'].std:.2f}, "
                 # f"({metadata_m['full_param_count'][0]:,d} -> {metadata_m['subspace_param_count'][0]:,d}) "
                 f"({duration:.1f}s)"

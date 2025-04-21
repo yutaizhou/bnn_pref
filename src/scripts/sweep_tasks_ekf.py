@@ -141,19 +141,12 @@ def main(cfg):
             res = {
                 "task": task,
                 "active": is_al,
+                # * logpdf
                 "test_logpdf_all": res_m["test_logpdf"],
-                "test_acc_all": res_m["test_acc"],
-                # acc
-                # "train_acc_warm": MeanStd(res_m["train_acc"][:, 0]),
-                # "train_acc": MeanStd(res_m["train_acc"][:, -1]),
-                "test_acc_warm": MeanStd(res_m["test_acc"][:, 0]),
-                "test_acc": MeanStd(res_m["test_acc"][:, -1]),
-                # "test_acc_bma": MeanStd(res_m["test_acc_bma"][:, -1]),
-                # logpdf
-                # "train_logpdf_warm": MeanStd(res_m["train_logpdf"][:, 0]),
-                # "train_logpdf": MeanStd(res_m["train_logpdf"][:, -1]),
-                "test_logpdf_warm": MeanStd(res_m["test_logpdf"][:, 0]),
                 "test_logpdf": MeanStd(res_m["test_logpdf"][:, -1]),
+                # * acc
+                "test_acc_all": res_m["test_acc"],
+                "test_acc": MeanStd(res_m["test_acc"][:, -1]),
             }
 
             stats[task][is_al] = res
@@ -161,23 +154,10 @@ def main(cfg):
             print(
                 f"  active={str(is_al):5}, "
                 f"acc: {res['test_acc'].mean:.2%} ± {res['test_acc'].std:.2%}, "
-                # f"acc: {res['test_acc_warm']:.2%} ± {res['test_acc_warm_std']:.2%} -> {res['test_acc']:.2%} ± {res['test_acc_std']:.2%}, "
                 f"logpdf: {res['test_logpdf'].mean:.2f} ± {res['test_logpdf'].std:.2f}, "
                 # f"({metadata_m['full_param_count'][0]:,d} -> {metadata_m['subspace_param_count'][0]:,d}) "
                 f"({duration:.1f}s)"
             )
-
-    # print("\n === Printing extra stats ===")
-    # for stat in stats:
-    #     print(
-    #         f"{stat['task']} ({duration:.1f}s):\n"
-    #         f"  ({metadata_m['full_param_count'][0]:,d} -> {metadata_m['subspace_param_count'][0]:,d})\n"
-    #         f"  Train acc:    {stat['train_acc_warm']:.2%} ± {stat['train_acc_warm_std']:.2%} -> {stat['train_acc']:.2%} ± {stat['train_acc_std']:.2%}\n"
-    #         f"  Acc:          {stat['test_acc_warm']:.2%} ± {stat['test_acc_warm_std']:.2%} -> {stat['test_acc']:.2%} ± {stat['test_acc_std']:.2%}\n"
-    #         f"  Acc BMA:      {stat['test_acc_bma']:.2%} ± {stat['test_acc_bma_std']:.2%}\n"
-    #         f"  Train logpdf: {stat['train_logpdf_warm']:.2f} ± {stat['train_logpdf_warm_std']:.2f} -> {stat['train_logpdf']:.2f} ± {stat['train_logpdf_std']:.2f}\n"
-    #         f"  logpdf:       {stat['test_logpdf_warm']:.2f} ± {stat['test_logpdf_warm_std']:.2f} -> {stat['test_logpdf']:.2f} ± {stat['test_logpdf_std']:.2f}\n"
-    #     )
 
     # * plot logpdf learning curve
     fig, axs = plt.subplots(4, 4, figsize=(12, 8))  # 13 tasks total
