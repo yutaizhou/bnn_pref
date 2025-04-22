@@ -50,8 +50,8 @@ class DeepEnsemble(Agent):
         ts = jax.vmap(init_model, in_axes=(0, None, None, None))(
             jnp.array(keys_init), self.model, warmup_data.contexts.shape[1:], self.opt
         )
-        self.ensemble_params_count = count_params(ts.params)
-        self.model_params_count = self.ensemble_params_count // self.n_models
+        self.ensemble_param_count = count_params(ts.params)
+        self.param_count = self.ensemble_param_count // self.n_models
 
         run_sgd_fn = partial(
             run_gradient_descent,

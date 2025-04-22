@@ -38,7 +38,7 @@ class EKFBeliefState:
     t: int
 
 
-class SubspaceNeuralEKF(Agent):
+class SubspaceEKF(Agent):
     def __init__(
         self,
         model: nn.Module,
@@ -153,8 +153,8 @@ class SubspaceNeuralEKF(Agent):
             self.sub_dim = pca.n_components_
             proj_matrix = pca.components_  # (sub_dim, full_dim)
 
-        self.full_params_count = count_params(initial_params)
-        self.subspace_params_count = sub_dim
+        self.param_count = count_params(initial_params)
+        self.subspace_param_count = sub_dim
 
         params_full_init, reconstruct_tree_params = ravel_pytree(warm_ts.params)
         self.warmed_params = warm_ts.params

@@ -12,7 +12,7 @@ import jax.random as jr
 import matplotlib.pyplot as plt
 from hydra.core.hydra_config import HydraConfig
 
-from bnn_pref.alg.ekf_subspace import SubspaceNeuralEKF
+from bnn_pref.alg.ekf_subspace import SubspaceEKF
 from bnn_pref.alg.trainer import alg_pipeline
 from bnn_pref.data import dataset_creators
 from bnn_pref.data.data_env import PreferenceEnv
@@ -47,9 +47,7 @@ def main(cfg):
         Y=jax.nn.one_hot(train_prefs.responses_Q1.squeeze(), num_classes=2),
     )
 
-    bel_trace, bandit = alg_pipeline(
-        key_pipe, SubspaceNeuralEKF, env, ekf_cfg, data_cfg
-    )
+    bel_trace, bandit = alg_pipeline(key_pipe, SubspaceEKF, env, ekf_cfg, data_cfg)
 
     # * compute metrics
     sub2full_logits_fn = bandit.sub2full_predict_logits  # (params, N2TD) -> (N2,)
@@ -80,7 +78,7 @@ def main(cfg):
     *_, res = jax.lax.scan(eval_bel, init=(), xs=bel_trace)
 
     print(
-        f"Param Count:  {bandit.full_params_count} -> {bandit.subspace_params_count}\n"
+        f"Param Count:  {bandit.param_count} -> {bandit.subspace_param_count}\n"
         f"Train acc:    {res['train_acc'][0]:.2%} -> {res['train_acc'][-1]:.2%}\n"
         f"Test acc:     {res['test_acc'][0]:.2%} -> {res['test_acc'][-1]:.2%}\n"
         f"Test acc BMA: {res['test_acc_bma'][-1]:.2%}\n"

@@ -1,7 +1,5 @@
-import itertools as it
 import os
 from collections import defaultdict
-from dataclasses import dataclass
 
 os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
 os.environ["DISABLE_CODESIGN_WARNING"] = "1"
@@ -58,8 +56,8 @@ def run_ensemble(key, cfg, data_dict, env):
 
     results = {
         **al_results,  # (n_seeds, nq_update)
-        "model_params_count": bandit.model_params_count,
-        "ensemble_params_count": bandit.ensemble_params_count,
+        "param_count": bandit.param_count,
+        "ensemble_param_count": bandit.ensemble_param_count,
     }
     return results
 

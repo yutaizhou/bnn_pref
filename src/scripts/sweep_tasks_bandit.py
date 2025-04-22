@@ -140,7 +140,7 @@ def main(cfg):
             )
         mislabel_ratio = train_prefs.n_mislabels / nq_train
         print(
-            f"{task:13} ({T=}, {D=}): train/test nt=({nt_train}/{nt_test}), nq=({nq_train}/{nq_test}), {train_prefs.n_mislabels} train mislabels ({mislabel_ratio:.2%}), {n_dups} dups"
+            f"{task:13} ({T=}, {D=}): train/test nt=({nt_train}/{nt_test}), nq=({nq_train}/{nq_test}), {train_prefs.n_mislabels} mislabels ({mislabel_ratio:.1%}), {n_dups} dups"
         )
 
         env = PreferenceEnv(
@@ -159,10 +159,15 @@ def main(cfg):
                 # run in vmap or lax version (parallel vs. sequential)
                 start = datetime.now()
                 res_m = (
-                    jax.block_until_ready(jax.vmap(run_fn)(seeds))
+                    jax.vmap(run_fn)(seeds)
                     if cfg["seed_vmap"]
-                    else jax.block_until_ready(jax.lax.map(run_fn, seeds))
+                    else jax.lax.map(run_fn, seeds)
                 )
+                # res_m = (
+                #     jax.block_until_ready(jax.vmap(run_fn)(seeds))
+                #     if cfg["seed_vmap"]
+                #     else jax.block_until_ready(jax.lax.map(run_fn, seeds))
+                # )
                 duration = (datetime.now() - start).total_seconds()
 
                 # (n_seeds, nq_update)
@@ -184,14 +189,17 @@ def main(cfg):
 
                 test_logpdf_all = res_m["test_logpdf"]
                 nans = ~jnp.isfinite(test_logpdf_all)
-
+                param_count = (
+                    res_m["param_count"]
+                    if alg == "ekf"
+                    else res_m["ensemble_param_count"]
+                )[0].item()
                 print(
                     f"  {alg} active={str(is_al):5}, "
                     f"acc: {res['test_acc_final'].mean:.2%} ± {res['test_acc_final'].std:.2%}, "
                     f"logpdf: {res['test_logpdf_final'].mean:.2f} ± {res['test_logpdf_final'].std:.2f}, "
-                    f"duration: {res['duration']:.1f}s"
-                    # f"({metadata_m['full_param_count'][0]:,d} -> {metadata_m['subspace_param_count'][0]:,d}) "
-                    # f"nans: {res['n_nan_total_logpdf']} / {res['n_nan_run_logpdf']}"
+                    f"param: {param_count:,d}, "
+                    f"({res['duration']:.1f}s)"
                 )
                 if nans.any():
                     print(f"nans: {nans.sum(1)}")

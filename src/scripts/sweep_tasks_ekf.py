@@ -1,7 +1,5 @@
-import itertools as it
 import os
 from collections import defaultdict
-from dataclasses import dataclass
 
 os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
 os.environ["DISABLE_CODESIGN_WARNING"] = "1"
@@ -15,7 +13,7 @@ import jax.random as jr
 import matplotlib.pyplot as plt
 from hydra.core.hydra_config import HydraConfig
 
-from bnn_pref.alg.ekf_subspace import SubspaceNeuralEKF
+from bnn_pref.alg.ekf_subspace import SubspaceEKF
 from bnn_pref.alg.trainer import alg_pipeline
 from bnn_pref.data import dataset_creators
 from bnn_pref.data.data_env import PreferenceEnv
@@ -35,9 +33,7 @@ def run_ekf(key, cfg, data_dict, env):
 
     # * build + run bandit alg
     key, key_pipe, key_bma = jr.split(key, 3)
-    bel_trace, bandit = alg_pipeline(
-        key_pipe, SubspaceNeuralEKF, env, ekf_cfg, data_cfg
-    )
+    bel_trace, bandit = alg_pipeline(key_pipe, SubspaceEKF, env, ekf_cfg, data_cfg)
 
     # * compute metrics
     def eval_bel(_, bel):
@@ -64,8 +60,8 @@ def run_ekf(key, cfg, data_dict, env):
 
     results = {
         **al_results,  # (n_seeds, nq_update)
-        "full_param_count": bandit.full_params_count,
-        "subspace_param_count": bandit.subspace_params_count,
+        "param_count": bandit.param_count,
+        "subspace_param_count": bandit.subspace_param_count,
     }
 
     return results

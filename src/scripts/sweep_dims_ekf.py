@@ -9,7 +9,7 @@ import jax.numpy as jnp
 import jax.random as jr
 import matplotlib.pyplot as plt
 
-from bnn_pref.alg.ekf_subspace import SubspaceNeuralEKF
+from bnn_pref.alg.ekf_subspace import SubspaceEKF
 from bnn_pref.alg.trainer import alg_pipeline
 from bnn_pref.data import make_synthetic_data
 from bnn_pref.data.data_env import PreferenceEnv
@@ -42,7 +42,7 @@ def run_ekf(key, cfg):
         Y=jax.nn.one_hot(train_prefs.responses_Q1.squeeze(), num_classes=2),
     )
 
-    bel_trace, bandit = alg_pipeline(key1, SubspaceNeuralEKF, env, ekf_cfg, data_cfg)
+    bel_trace, bandit = alg_pipeline(key1, SubspaceEKF, env, ekf_cfg, data_cfg)
     bel = jax.tree_util.tree_map(lambda x: x[-1], bel_trace)
 
     pref_predictor = jax.vmap(partial(bandit.sub2full_predict_logits, bel.mean))
@@ -60,8 +60,8 @@ def run_ekf(key, cfg):
     }
 
     metadata = {
-        "full_param_count": bandit.full_params_count,
-        "subspace_param_count": bandit.subspace_params_count,
+        "param_count": bandit.param_count,
+        "subspace_param_count": bandit.subspace_param_count,
     }
 
     return results, metadata
