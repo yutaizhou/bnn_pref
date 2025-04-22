@@ -62,12 +62,13 @@ def run_ekf(key, cfg, data_dict, env):
 
     *_, al_results = jax.lax.scan(eval_bel, init=(), xs=bel_trace)
 
-    results = al_results
-    metadata = {
+    results = {
+        **al_results,  # (n_seeds, nq_update)
         "full_param_count": bandit.full_params_count,
         "subspace_param_count": bandit.subspace_params_count,
     }
-    return results, metadata
+
+    return results
 
 
 @hydra.main(version_base=None, config_name="config", config_path="../cfg")

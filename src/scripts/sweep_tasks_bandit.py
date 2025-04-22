@@ -71,8 +71,8 @@ def main(cfg):
         "cheetahDMC",
         "hopperHop",
         "pendulum",
-        "reacherEasy",
-        "reacherHard",
+        # "reacherEasy",
+        # "reacherHard",
         "walkerWalk",
         # "ogbench",
     ]
@@ -93,7 +93,7 @@ def main(cfg):
 
     print(
         f"Run:\n"
-        f"  Seed: {seed} x {cfg['seeds']}\n"
+        f"  Seed: {seed} x {cfg['seeds']} (seed_vmap={cfg['seed_vmap']})\n"
         f"  Sanity: {cfg['sanity']} ({cfg['sanity_frac']} real frac)\n"
         f"Data:\n"
         f"  prune: {data_cfg['n_bins']} bins, {data_cfg['max_count_per_bin']} max_count_per_bin, {data_cfg['tokeep']} tokeep\n"
@@ -109,6 +109,7 @@ def main(cfg):
         f"  init: bs={sgd_cfg['bs']}, niters={sgd_cfg['niters']}\n"
     )
 
+    total_duration = datetime.now()
     for task in tasks:
         # * update cfg
         new_cfg = hydra.compose("config", overrides=[f"task={task}"])
@@ -156,8 +157,13 @@ def main(cfg):
                 run_fn = partial(run_fn, cfg=cfg, data_dict=data_dict, env=env)
 
                 # run in vmap or lax version (parallel vs. sequential)
-                res_m, metadata_m = jax.vmap(run_fn, in_axes=(0,))(seeds)
-                # res_m, metadata_m = jax.lax.map(run_fn, seeds)
+                start = datetime.now()
+                res_m = (
+                    jax.block_until_ready(jax.vmap(run_fn)(seeds))
+                    if cfg["seed_vmap"]
+                    else jax.block_until_ready(jax.lax.map(run_fn, seeds))
+                )
+                duration = (datetime.now() - start).total_seconds()
 
                 # (n_seeds, nq_update)
                 res = {
@@ -165,6 +171,7 @@ def main(cfg):
                     "active": is_al,
                     "nq_train": nq_train,
                     "nq_test": nq_test,
+                    "duration": duration,
                     # * logpdf
                     "test_logpdf_all": res_m["test_logpdf"],
                     "test_logpdf_final": MeanStd(res_m["test_logpdf"][:, -1]),
@@ -182,11 +189,14 @@ def main(cfg):
                     f"  {alg} active={str(is_al):5}, "
                     f"acc: {res['test_acc_final'].mean:.2%} ± {res['test_acc_final'].std:.2%}, "
                     f"logpdf: {res['test_logpdf_final'].mean:.2f} ± {res['test_logpdf_final'].std:.2f}, "
+                    f"duration: {res['duration']:.1f}s"
                     # f"({metadata_m['full_param_count'][0]:,d} -> {metadata_m['subspace_param_count'][0]:,d}) "
                     # f"nans: {res['n_nan_total_logpdf']} / {res['n_nan_run_logpdf']}"
                 )
                 if nans.any():
                     print(f"nans: {nans.sum(1)}")
+    total_duration = (datetime.now() - total_duration).total_seconds()
+    print(f"Total duration: {total_duration:.1f}s")
 
     # * plot logpdf learning curve
     fig, axs = plt.subplots(3, 4, figsize=(12, 8))

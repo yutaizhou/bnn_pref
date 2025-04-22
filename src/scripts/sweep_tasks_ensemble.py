@@ -56,12 +56,12 @@ def run_ensemble(key, cfg, data_dict, env):
 
     *_, al_results = jax.lax.scan(eval_bel, init=(), xs=ts_trace)
 
-    results = al_results
-    metadata = {
+    results = {
+        **al_results,  # (n_seeds, nq_update)
         "model_params_count": bandit.model_params_count,
         "ensemble_params_count": bandit.ensemble_params_count,
     }
-    return results, metadata
+    return results
 
 
 @hydra.main(version_base=None, config_name="config", config_path="../cfg")

@@ -11,6 +11,7 @@ defaults:
 
 fhat: linear
 chunk_size: 128
+seed_vmap: True # good for 3 seeds or under
 
 # * sanity check for active learning acquisition functions
 sanity: False
