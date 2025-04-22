@@ -21,7 +21,7 @@ rnd_proj: False
 # * Subspace Inference w/ EKF
 # intuition on Kalman Gain - stronger posterior update <- inc prior_noise, dec obs_noise
 prior_noise: 0.07
-dynamics_noise: 0.0001 # small Gaussian drift on NN params, where we assume constant dynamics
+dynamics_noise: 0.0001 # assume constant dynamics w/ gaussian drift on NN params
 obs_noise: 0.07  # noise on emissions, which for pref learning is always +1 for traj2 > traj 1 # 1 rly affects bma 
 iekf: 2 # iterated EKF: multiple linearization of measurement model around current belief instead of prior belief
 

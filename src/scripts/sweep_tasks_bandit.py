@@ -116,9 +116,7 @@ def main(cfg):
 
         # * create dataset
         key, key_data, *key_seeds = jr.split(key, 2 + cfg["seeds"])
-        start = datetime.now()
         data_dict = dataset_creators[cfg["task"]["ds_type"]](key_data, cfg)
-        duration = (datetime.now() - start).total_seconds()
 
         # * create env
         train_trajs, test_trajs = data_dict["train_trajs"], data_dict["test_trajs"]
@@ -223,10 +221,8 @@ def main(cfg):
     # * plot logpdf eval curve
     for i, task in enumerate(tasks):
         ax = axs[i]
-        # y_min = find_min_logpdf(stats, task)
-        # ax.set_ylim(y_min, 0)
-        ax.set_ylim(-1.25, 0)
-        ax.axhline(y=-0.69, linestyle=":", linewidth=1, color="red")
+        ax.set_ylim(-0.73, 0)  # ln(0.48)
+        ax.axhline(y=-0.69, linestyle=":", linewidth=1, color="red")  # ln(0.5) = -0.69
         for alg in ["ekf", "sgd"]:
             for is_al in [False, True]:
                 # (n_seeds, nq_update)
@@ -272,7 +268,7 @@ def main(cfg):
     axs = axs.flatten()
     for i, task in enumerate(tasks):
         ax = axs[i]
-        ax.set_ylim(0.4, 1)
+        ax.set_ylim(0.48, 1)
         ax.axhline(y=0.5, linestyle=":", linewidth=1, color="red")
         for alg in ["ekf", "sgd"]:
             for is_al in [False, True]:

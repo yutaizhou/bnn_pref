@@ -26,7 +26,7 @@ paths:
     data_dir: ${paths.prefcc_dir}
 
 
-seed: -1 # for jr.key()
-seeds: 1 # for jax.vmap()
+seed: -1 # for jr.key() - initial random seeding
+seeds: 1 # for jax.vmap() - number of seeds to run
 show_fig: False
 save_fig: False
