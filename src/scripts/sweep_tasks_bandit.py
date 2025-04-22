@@ -167,7 +167,7 @@ def main(cfg):
                 # )
                 duration = (datetime.now() - start).total_seconds()
 
-                # (n_seeds, nq_update)
+                # (n_seeds, 1 + nq_update)
                 res = {
                     "task": task,
                     "active": is_al,
@@ -225,7 +225,7 @@ def main(cfg):
         ax.axhline(y=-0.69, linestyle=":", linewidth=1, color="red")  # ln(0.5) = -0.69
         for alg in ["ekf", "sgd"]:
             for is_al in [False, True]:
-                # (n_seeds, nq_update)
+                # (n_seeds, 1 + nq_update)
                 values = stats[task][alg][is_al]["test_logpdf_all"]
                 nans = ~jnp.isfinite(values)
                 if nans.any():

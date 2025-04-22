@@ -1,5 +1,6 @@
 import os
 from collections import defaultdict
+from functools import partial
 
 os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
 os.environ["DISABLE_CODESIGN_WARNING"] = "1"
@@ -20,7 +21,7 @@ from bnn_pref.data import dataset_creators
 from bnn_pref.data.data_env import PreferenceEnv
 from bnn_pref.utils.hydra_resolvers import *
 from bnn_pref.utils.metrics import MeanStd
-from bnn_pref.utils.utils import get_random_seed
+from bnn_pref.utils.utils import get_random_seed, nested_defaultdict
 
 logging.getLogger("jax._src.xla_bridge").setLevel(logging.ERROR)
 jnp.set_printoptions(precision=2)
@@ -55,7 +56,7 @@ def run_ensemble(key, cfg, data_dict, env):
     *_, al_results = jax.lax.scan(eval_bel, init=(), xs=ts_trace)
 
     results = {
-        **al_results,  # (n_seeds, nq_update)
+        **al_results,  # (n_seeds, 1 + nq_update)
         "param_count": bandit.param_count,
         "ensemble_param_count": bandit.ensemble_param_count,
     }
@@ -69,77 +70,103 @@ def main(cfg):
 
     tasks = [
         "reacher",
-        "lunar",
-        "cheetah",
-        "acrobot",
-        "ball",
-        "cartpoleSwing",
-        "cheetahDMC",
-        "hopperHop",
-        "pendulum",
-        "reacherEasy",
-        "reacherHard",
-        "walkerWalk",
-        "ogbench",
+        # "lunar",
+        # "cheetah",
+        # "acrobot",
+        # "ball",
+        # "cartpoleSwing",
+        # "cheetahDMC",
+        # "hopperHop",
+        # "pendulum",
+        # "reacherEasy",
+        # "reacherHard",
+        # "walkerWalk",
+        # "ogbench",
     ]
-    stats = defaultdict(lambda: defaultdict(dict))
+    stats = nested_defaultdict()
 
     data_cfg = cfg["data"]
-    alg_cfg = cfg["sgd"]
+    sgd_cfg = cfg["sgd"]
     nq_train, nq_test = data_cfg["nq_train"], data_cfg["nq_test"]
     nq_init, nsteps = data_cfg["nq_init"], data_cfg["nsteps"]
-    batch_size = alg_cfg["bs"]
-    niters = alg_cfg["niters"]
+
     print(
-        f"Seed: {seed} x {cfg['seeds']}\n"
+        f"Run:\n"
+        f"  Seed: {seed} x {cfg['seeds']} (seed_vmap={cfg['seed_vmap']})\n"
+        f"  Sanity: {cfg['sanity']} ({cfg['sanity_frac']} real frac)\n"
         f"Data:\n"
+        f"  prune: {data_cfg['n_bins']} bins, {data_cfg['max_count_per_bin']} max_count_per_bin, {data_cfg['tokeep']} tokeep\n"
+        f"  noisy_label: {data_cfg['noisy_label']} (beta={data_cfg['bt_beta']})\n"
         f"  Train/Test: {nq_train}/{nq_test}\n"
         f"  Init/Update: {nq_init}/{nsteps}\n"
         f"Ensemble:\n"
-        f"  n_models={alg_cfg['M']}\n"
-        f"  init: bs={batch_size}, niters={niters}\n"
+        f"  n_models={sgd_cfg['M']}\n"
+        f"  init: bs={sgd_cfg['bs']}, niters={sgd_cfg['niters']}\n"
     )
 
     for task in tasks:
-        print(f"{task}: ")
+        # * update cfg
+        new_cfg = hydra.compose("config", overrides=[f"task={task}"])
+        cfg["task"].update(new_cfg["task"])
+
+        # * create dataset
         key, key_data, *key_seeds = jr.split(key, 2 + cfg["seeds"])
         data_dict = dataset_creators[cfg["task"]["ds_type"]](key_data, cfg)
-        train_prefs = data_dict["train_prefs"]
+
+        # * create env
+        train_trajs, test_trajs = data_dict["train_trajs"], data_dict["test_trajs"]
+        train_prefs, test_prefs = data_dict["train_prefs"], data_dict["test_prefs"]
+
+        nt_train, T, D = train_trajs["observations"].shape
+        nt_test = test_trajs["observations"].shape[0]
+        nq_train = train_prefs.queries_Q2.shape[0]
+        nq_test = test_prefs.queries_Q2.shape[0]
+
+        print(
+            f"{task:13} ({T=}, {D=}): train/test nt=({nt_train}/{nt_test}), nq=({nq_train}/{nq_test}), {train_prefs.n_mislabels} mislabels ({train_prefs.n_mislabels / nq_train:.1%})"
+        )
+
         env = PreferenceEnv(
-            X=train_prefs.queries_Q2TD,
+            items=train_trajs["observations"],
+            X=train_prefs.queries_Q2,
             Y=jax.nn.one_hot(train_prefs.responses_Q1.squeeze(), num_classes=2),
         )
+        # * run
         for is_al in [False, True]:
-            # * update cfg
-            new_cfg = hydra.compose("config", overrides=[f"task={task}"])
-            cfg["task"].update(new_cfg["task"])
             cfg["sgd"]["active"] = is_al
 
-            # * run
             seeds = jnp.array(key_seeds)
-            run_vmap = jax.vmap(run_ensemble, in_axes=(0, None, None, None))
-            start_time = datetime.now()
-            res_m, metadata_m = run_vmap(seeds, cfg, data_dict, env)
-            duration = (datetime.now() - start_time).total_seconds()
+            run_fn = partial(run_ensemble, cfg=cfg, data_dict=data_dict, env=env)
+
+            # run in vmap or lax version (parallel vs. sequential)
+            start = datetime.now()
+            res_m = (
+                jax.vmap(run_fn)(seeds)
+                if cfg["seed_vmap"]
+                else jax.lax.map(run_fn, seeds)
+            )
+            duration = (datetime.now() - start).total_seconds()
 
             res = {
                 "task": task,
                 "active": is_al,
                 # * logpdf
                 "test_logpdf_all": res_m["test_logpdf"],
-                "test_logpdf": MeanStd(res_m["test_logpdf"][:, -1]),
+                "test_logpdf_final": MeanStd(res_m["test_logpdf"][:, -1]),
                 # * acc
                 "test_acc_all": res_m["test_acc"],
-                "test_acc": MeanStd(res_m["test_acc"][:, -1]),
+                "test_acc_final": MeanStd(res_m["test_acc"][:, -1]),
             }
 
             stats[task][is_al] = res
+            param_count = res_m["param_count"][0].item()
+            ensemble_param_count = res_m["ensemble_param_count"][0].item()
 
             print(
                 f"  active={str(is_al):5}, "
-                f"acc: {res['test_acc'].mean:.2%} ± {res['test_acc'].std:.2%}, "
-                f"logpdf: {res['test_logpdf'].mean:.2f} ± {res['test_logpdf'].std:.2f}, "
-                # f"({metadata_m['full_param_count'][0]:,d} -> {metadata_m['subspace_param_count'][0]:,d}) "
+                f"acc: {res['test_acc_final'].mean:.2%} ± {res['test_acc_final'].std:.2%}, "
+                f"logpdf: {res['test_logpdf_final'].mean:.2f} ± {res['test_logpdf_final'].std:.2f}, "
+                f"({param_count:,d} -> {ensemble_param_count:,d}) "
                 f"({duration:.1f}s)"
             )
 
