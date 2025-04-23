@@ -1,3 +1,4 @@
+import itertools as it
 import os
 from collections import defaultdict
 from functools import partial
@@ -70,17 +71,17 @@ def main(cfg):
 
     tasks = [
         "reacher",
-        # "lunar",
-        # "cheetah",
-        # "acrobot",
-        # "ball",
-        # "cartpoleSwing",
-        # "cheetahDMC",
-        # "hopperHop",
-        # "pendulum",
+        "lunar",
+        "cheetah",
+        "acrobot",
+        "ball",
+        "cartpoleSwing",
+        "cheetahDMC",
+        "hopperHop",
+        "pendulum",
         # "reacherEasy",
         # "reacherHard",
-        # "walkerWalk",
+        "walkerWalk",
         # "ogbench",
     ]
     stats = nested_defaultdict()
@@ -110,7 +111,7 @@ def main(cfg):
         cfg["task"].update(new_cfg["task"])
 
         # * create dataset
-        key, key_data, *key_seeds = jr.split(key, 2 + cfg["seeds"])
+        key, key_data = jr.split(key, 2)
         data_dict = dataset_creators[cfg["task"]["ds_type"]](key_data, cfg)
 
         # * create env
@@ -132,24 +133,37 @@ def main(cfg):
             Y=jax.nn.one_hot(train_prefs.responses_Q1.squeeze(), num_classes=2),
         )
         # * run
-        for is_al in [False, True]:
+        key, *key_seeds = jr.split(key, 1 + cfg["seeds"])
+        seeds = jnp.array(key_seeds)
+        for is_al, sgd_vmap in it.product([False, True], [False, True]):
             cfg["sgd"]["active"] = is_al
+            cfg["sgd"]["use_vmap"] = sgd_vmap
 
-            seeds = jnp.array(key_seeds)
             run_fn = partial(run_ensemble, cfg=cfg, data_dict=data_dict, env=env)
 
             # run in vmap or lax version (parallel vs. sequential)
             start = datetime.now()
+
+            # res_m = (
+            #     jax.vmap(run_fn)(seeds)
+            #     if cfg["seed_vmap"]
+            #     else jax.lax.map(run_fn, seeds)
+            # )
+
             res_m = (
-                jax.vmap(run_fn)(seeds)
+                jax.block_until_ready(jax.vmap(run_fn)(seeds))
                 if cfg["seed_vmap"]
-                else jax.lax.map(run_fn, seeds)
+                else jax.block_until_ready(jax.lax.map(run_fn, seeds))
             )
+
             duration = (datetime.now() - start).total_seconds()
 
             res = {
                 "task": task,
                 "active": is_al,
+                "nq_train": nq_train,
+                "nq_test": nq_test,
+                "duration": duration,
                 # * logpdf
                 "test_logpdf_all": res_m["test_logpdf"],
                 "test_logpdf_final": MeanStd(res_m["test_logpdf"][:, -1]),
@@ -163,7 +177,7 @@ def main(cfg):
             ensemble_param_count = res_m["ensemble_param_count"][0].item()
 
             print(
-                f"  active={str(is_al):5}, "
+                f"  active={str(is_al):5}, vmap={str(sgd_vmap):5}, "
                 f"acc: {res['test_acc_final'].mean:.2%} ± {res['test_acc_final'].std:.2%}, "
                 f"logpdf: {res['test_logpdf_final'].mean:.2f} ± {res['test_logpdf_final'].std:.2f}, "
                 f"({param_count:,d} -> {ensemble_param_count:,d}) "
@@ -176,10 +190,10 @@ def main(cfg):
 
     for i, task in enumerate(tasks):
         ax = axs[i]
-        y_min = min(stat["test_logpdf_all"].min() for stat in stats[task].values())
-        ax.set_ylim(y_min, 0)
+        ax.set_ylim(-0.73, 0)
+        ax.axhline(y=-0.69, linestyle=":", linewidth=1, color="red")  # ln(0.5) = -0.69
         for is_al in [False, True]:
-            values = stats[task][is_al]["test_logpdf_all"]  # (n_seeds, nq_update)
+            values = stats[task][is_al]["test_logpdf_all"]  # (n_seeds, 1 + nq_update)
             mean, std = values.mean(0), values.std(0)
             ax.plot(mean, label="Active" if is_al else "Random")
             ax.fill_between(
@@ -191,14 +205,15 @@ def main(cfg):
     fig.legend(dummy_lines, ["Random", "Active"], loc="center right")
     fig.suptitle("log PDF vs. num queries ")
     plt.tight_layout(rect=[0, 0, 0.9, 1])  # [left, bottom, right, top]
-    plt.show()
+    # plt.show()
 
     # * plot acc learning curve
     fig, axs = plt.subplots(4, 4, figsize=(12, 8))  # 13 tasks total
     axs = axs.flatten()
     for i, task in enumerate(tasks):
         ax = axs[i]
-        ax.set_ylim(0, 1)
+        ax.set_ylim(0.48, 1)
+        ax.axhline(y=0.5, linestyle=":", linewidth=1, color="red")
         for is_al in [False, True]:
             values = stats[task][is_al]["test_acc_all"]  # (n_seeds, nq_update)
             mean, std = values.mean(0), values.std(0)
@@ -212,7 +227,7 @@ def main(cfg):
     fig.legend(dummy_lines, ["Random", "Active"], loc="center right")
     fig.suptitle("Accuracy vs. num queries")
     plt.tight_layout(rect=[0, 0, 0.9, 1])  # [left, bottom, right, top]
-    plt.show()
+    # plt.show()
 
 
 if __name__ == "__main__":

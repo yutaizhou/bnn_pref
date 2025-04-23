@@ -115,7 +115,7 @@ def main(cfg):
         cfg["task"].update(new_cfg["task"])
 
         # * create dataset
-        key, key_data, *key_seeds = jr.split(key, 2 + cfg["seeds"])
+        key, key_data = jr.split(key, 2)
         data_dict = dataset_creators[cfg["task"]["ds_type"]](key_data, cfg)
 
         # * create env
@@ -146,25 +146,29 @@ def main(cfg):
             Y=jax.nn.one_hot(train_prefs.responses_Q1.squeeze(), num_classes=2),
         )
         # * run
+        key, *key_seeds = jr.split(key, 1 + cfg["seeds"])
+        seeds = jnp.array(key_seeds)
         for alg, run_fn in [("ekf", run_ekf), ("sgd", run_ensemble)]:
             for is_al in [False, True]:
                 cfg[alg]["active"] = is_al
 
-                seeds = jnp.array(key_seeds)
                 run_fn = partial(run_fn, cfg=cfg, data_dict=data_dict, env=env)
 
                 # run in vmap or lax version (parallel vs. sequential)
                 start = datetime.now()
-                res_m = (
-                    jax.vmap(run_fn)(seeds)
-                    if cfg["seed_vmap"]
-                    else jax.lax.map(run_fn, seeds)
-                )
+
                 # res_m = (
-                #     jax.block_until_ready(jax.vmap(run_fn)(seeds))
+                #     jax.vmap(run_fn)(seeds)
                 #     if cfg["seed_vmap"]
-                #     else jax.block_until_ready(jax.lax.map(run_fn, seeds))
+                #     else jax.lax.map(run_fn, seeds)
                 # )
+
+                res_m = (
+                    jax.block_until_ready(jax.vmap(run_fn)(seeds))
+                    if cfg["seed_vmap"]
+                    else jax.block_until_ready(jax.lax.map(run_fn, seeds))
+                )
+
                 duration = (datetime.now() - start).total_seconds()
 
                 # (n_seeds, 1 + nq_update)

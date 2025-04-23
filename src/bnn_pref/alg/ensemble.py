@@ -35,6 +35,7 @@ class DeepEnsemble(Agent):
         niters: int = 1000,
         batch_size: int = 32,
         chunk_size: int = 64,
+        use_vmap: bool = True,  # for training update_bel in {init,update}_bel
     ):
         self.n_models = n_models
         self.model = model
@@ -43,6 +44,7 @@ class DeepEnsemble(Agent):
         self.niters = niters
         self.batch_size = batch_size
         self.chunk_size = chunk_size
+        self.use_vmap = use_vmap
 
     @partial(jax.jit, static_argnames=["self"])
     def init_bel(self, key, warmup_data: CARL) -> TrainState:
@@ -53,7 +55,7 @@ class DeepEnsemble(Agent):
         self.ensemble_param_count = count_params(ts.params)
         self.param_count = self.ensemble_param_count // self.n_models
 
-        run_sgd_fn = partial(
+        sgd_fn = partial(
             run_gradient_descent,
             loss_fn=bt_loss_fn,
             has_aux=True,
@@ -61,12 +63,16 @@ class DeepEnsemble(Agent):
             niters=self.niters,
             batch_size=self.batch_size,
             l2_reg=self.l2_reg,
-        )
+        )  # remaining args: (key, ts)
 
         # same datastream for all models
         key, key_sgd = jr.split(key)
-        run_sgd_fn = jax.vmap(run_sgd_fn, in_axes=(None, 0))  # vmap (key, ts)
-        warm_ts, warm_metrics = run_sgd_fn(key_sgd, ts)
+        if self.use_vmap:
+            sgd_fn = jax.vmap(sgd_fn, in_axes=(None, 0))  # vmap over ts
+            warm_ts, warm_metrics = sgd_fn(key_sgd, ts)
+        else:
+            sgd_fn = partial(sgd_fn, key_sgd)
+            warm_ts, warm_metrics = jax.lax.map(sgd_fn, ts)
 
         # different datastreams for each model
         # key, *key_sgd = jr.split(key, 1 + self.n_models)
@@ -88,8 +94,12 @@ class DeepEnsemble(Agent):
             (loss, _), grads = grad_fn(ts.params, ts, batch, self.l2_reg)
             return ts.apply_gradients(grads=grads), loss
 
-        grad_fn = jax.vmap(train_step, in_axes=(0, None))  # over ts
-        ts, loss = grad_fn(ts, batch)
+        if self.use_vmap:
+            grad_fn = jax.vmap(train_step, in_axes=(0, None))  # vmap over ts
+            ts, loss = grad_fn(ts, batch)
+        else:
+            grad_fn = partial(train_step, batch=batch)
+            ts, loss = jax.lax.map(grad_fn, ts)
         return ts
 
     @partial(jax.jit, static_argnames=["self", "env"])
@@ -100,21 +110,35 @@ class DeepEnsemble(Agent):
         active learning: greedily compute query that maximizes ensemble prediction var
         """
 
-        @partial(jax.vmap, in_axes=(0, None))  # (ts, input)
-        def fn(ts: TrainState, x):
+        def predict_fn(ts: TrainState, x: Float[Array, "1 T D"]) -> Float[Array, " "]:
             ret = ts.apply_fn(
                 {"params": ts.params}, x, method=self.model.predict_traj_return
             ).squeeze(0)
             return ret
 
-        fn = partial(fn, ts)
-
         # * precompute logits for all items
-        logits_NM = jax.lax.map(
-            fn,
-            jnp.expand_dims(env.items_NTD, axis=1),
-            batch_size=self.chunk_size,
-        )
+        if self.use_vmap:
+            # vmap over ts, run over items sequentially
+            fn = jax.vmap(predict_fn, in_axes=(0, None))
+            items_N1TD = rearrange(env.items_NTD, "N T D -> N 1 T D")
+            logits_NM = jax.lax.map(
+                partial(fn, ts),
+                items_N1TD,
+                batch_size=self.chunk_size,
+            )
+        else:
+            # run over ts sequentially, run over items sequentially
+            items_N1TD = rearrange(env.items_NTD, "N T D -> N 1 T D")
+
+            def scan_ts(_, ts_single):
+                ret_N = jax.lax.map(
+                    partial(predict_fn, ts_single),
+                    items_N1TD,
+                    batch_size=self.chunk_size,
+                )
+                return _, ret_N
+
+            logits_NM = rearrange(jax.lax.scan(scan_ts, None, ts)[1], "M N -> N M")
 
         def map_step(idx):
             inds_2 = env.get_pref_indices(idx)
@@ -132,24 +156,43 @@ class DeepEnsemble(Agent):
     @partial(jax.jit, static_argnames=["self"])
     def compute_predictive(
         self,
-        bel: TrainState,
+        ts: TrainState,
         items_NTD: Float[Array, "N T D"],
         query_idxs_Q2: Int[Array, "Q 2"],
     ) -> Float[Array, "Q 2"]:
+        """
+        compute predictive distribution for all items in query pool
+        """
+
         # * prepare ensemble predictors
-        @partial(jax.vmap, in_axes=(0, None))  # (ts, input)
-        def fn(ts: TrainState, x):
+        def predict_fn(ts: TrainState, x: Float[Array, "1 T D"]) -> Float[Array, " "]:
             ret = ts.apply_fn(
                 {"params": ts.params}, x, method=self.model.predict_traj_return
             ).squeeze(0)
             return ret
 
-        fn = partial(fn, bel)
-
         # * precompute logits for all items
-        logits_NM = jax.lax.map(
-            fn, jnp.expand_dims(items_NTD, axis=1), batch_size=self.chunk_size
-        )
+        if self.use_vmap:
+            fn = jax.vmap(predict_fn, in_axes=(0, None))
+            items_N1TD = rearrange(items_NTD, "N T D -> N 1 T D")
+            logits_NM = jax.lax.map(
+                partial(fn, ts),
+                items_N1TD,
+                batch_size=self.chunk_size,
+            )
+        else:
+            items_N1TD = rearrange(items_NTD, "N T D -> N 1 T D")
+
+            def scan_ts(_, ts_single):
+                ret_N = jax.lax.map(
+                    partial(predict_fn, ts_single),
+                    items_N1TD,
+                    batch_size=self.chunk_size,
+                )
+                return _, ret_N
+
+            logits_NM = rearrange(jax.lax.scan(scan_ts, None, ts)[1], "M N -> N M")
+
         logits_QM2 = rearrange(logits_NM[query_idxs_Q2], "Q K M -> Q M K", K=2)
 
         # * compute predictive distributions
