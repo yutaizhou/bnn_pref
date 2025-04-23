@@ -1,6 +1,7 @@
 defaults:
 - _self_
 - task: synthetic
+- network: small
 - mcmc: mh
 - ekf: ekf
 - sgd: sgd
