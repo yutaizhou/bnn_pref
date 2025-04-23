@@ -184,16 +184,24 @@ def main(cfg):
 
                 test_logpdf_all = res_m["test_logpdf"]
                 nans = ~jnp.isfinite(test_logpdf_all)
-                param_count = (
-                    res_m["param_count"]
-                    if alg == "ekf"
-                    else res_m["ensemble_param_count"]
-                )[0].item()
+
+                def get_param_msg(alg: str, res_m: dict) -> str:
+                    if alg == "ekf":
+                        param_count = res_m["param_count"][0].item()
+                        subspace_param_count = res_m["subspace_param_count"][0].item()
+                        return f"({param_count:,d} -> {subspace_param_count:,d})"
+                    elif alg == "sgd":
+                        param_count = res_m["param_count"][0].item()
+                        ensemble_param_count = res_m["ensemble_param_count"][0].item()
+                        return f"({param_count:,d} -> {ensemble_param_count:,d})"
+                    else:
+                        raise ValueError(f"Unknown algorithm: {alg}")
+
                 print(
                     f"  {alg} active={str(is_al):5}, "
                     f"acc: {res['test_acc_final'].mean:.2%} ± {res['test_acc_final'].std:.2%}, "
-                    f"logpdf: {res['test_logpdf_final'].mean:.2f} ± {res['test_logpdf_final'].std:.2f}, "
-                    f"param: {param_count:,d}, "
+                    f"logpdf: {res['test_logpdf_final'].mean:.2f} ± {res['test_logpdf_final'].std:.2f}; "
+                    f"{get_param_msg(alg, res_m)}, "
                     f"({res['duration']:.1f}s)"
                 )
                 if nans.any():
