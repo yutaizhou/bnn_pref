@@ -1,7 +1,6 @@
 import os
-from collections import defaultdict
 from functools import partial
-from typing import Dict, Tuple
+from typing import Tuple
 
 os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
 os.environ["DISABLE_CODESIGN_WARNING"] = "1"
@@ -14,13 +13,13 @@ import jax.numpy as jnp
 import jax.random as jr
 import matplotlib.pyplot as plt
 from hydra.core.hydra_config import HydraConfig
-from jaxtyping import Array, Float
 
 from bnn_pref.data import dataset_creators
 from bnn_pref.data.data_env import PreferenceEnv
 from bnn_pref.data.pref_utils import QueryIndexAndResponses
 from bnn_pref.utils.hydra_resolvers import *
 from bnn_pref.utils.metrics import MeanStd
+from bnn_pref.utils.print_utils import get_param_count_msg
 from bnn_pref.utils.utils import get_random_seed, nested_defaultdict
 from scripts.sweep_tasks_ekf import run_ekf
 from scripts.sweep_tasks_ensemble import run_ensemble
@@ -100,11 +99,11 @@ def main(cfg):
         f"  Train/Test: {nq_train}/{nq_test}\n"
         f"  Init/Update: {nq_init}/{nsteps}\n"
         f"EKF:\n"
+        f"  M={ekf_cfg['M']}, use_vmap={ekf_cfg['use_vmap']}\n"
         f"  prior / dynamics / obs noise: {ekf_cfg['prior_noise']} / {ekf_cfg['dynamics_noise']} / {ekf_cfg['obs_noise']}\n"
-        f"  n_models={ekf_cfg['M']}, use_vmap={ekf_cfg['use_vmap']}\n"
         f"  init: bs={ekf_cfg['bs']}, niters={ekf_cfg['niters']}[{warm_burns}::{thinning}] ({n_eff_iterates} eff), {sub_dim=}, rnd_proj={ekf_cfg['rnd_proj']}\n"
         f"Ensemble:\n"
-        f"  n_models={sgd_cfg['M']}, use_vmap={sgd_cfg['use_vmap']}\n"
+        f"  M={sgd_cfg['M']}, use_vmap={sgd_cfg['use_vmap']}\n"
         f"  init: bs={sgd_cfg['bs']}, niters={sgd_cfg['niters']}\n"
     )
 
@@ -185,23 +184,11 @@ def main(cfg):
                 test_logpdf_all = res_m["test_logpdf"]
                 nans = ~jnp.isfinite(test_logpdf_all)
 
-                def get_param_msg(alg: str, res_m: dict) -> str:
-                    if alg == "ekf":
-                        param_count = res_m["param_count"][0].item()
-                        subspace_param_count = res_m["subspace_param_count"][0].item()
-                        return f"({param_count:,d} -> {subspace_param_count:,d})"
-                    elif alg == "sgd":
-                        param_count = res_m["param_count"][0].item()
-                        ensemble_param_count = res_m["ensemble_param_count"][0].item()
-                        return f"({param_count:,d} -> {ensemble_param_count:,d})"
-                    else:
-                        raise ValueError(f"Unknown algorithm: {alg}")
-
                 print(
                     f"  {alg} active={str(is_al):5}, "
                     f"acc: {res['test_acc_final'].mean:.2%} ± {res['test_acc_final'].std:.2%}, "
                     f"logpdf: {res['test_logpdf_final'].mean:.2f} ± {res['test_logpdf_final'].std:.2f}; "
-                    f"{get_param_msg(alg, res_m)}, "
+                    f"{get_param_count_msg(cfg, alg, res_m)}, "
                     f"({res['duration']:.1f}s)"
                 )
                 if nans.any():

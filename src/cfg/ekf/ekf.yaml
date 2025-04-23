@@ -1,13 +1,15 @@
+# * model ensembling & active learning
+# ensembling only used for computing predictive & acquisition function (not training)
+active: False
+M: 15 
+use_vmap: True 
+chunk_size: ${..chunk_size}
+
 # * NN model
-use_vmap: True # for computing predictive & acquisition function (not training)
 learning_rate: 0.001
 hidden_sizes:
   - 32
   - 32
-
-# * active learning
-active: False
-M: 15 # num models to sample for mutual information acquisition function
 
 # * Subspace Init w/ SGD 
 niters: 100  # Total number of GD steps on warmup data
@@ -28,18 +30,21 @@ iekf: 2 # iterated EKF: multiple linearization of measurement model around curre
 
 
 # * following is just for convenience in hydra CLI overrides
-cls:
-  niters: ${..niters}
-  batch_size: ${..bs}
-  l2_reg: ${..l2_reg}
-  warm_burns: ${..warm_burns}
-  thinning: ${..thinning}
-  sub_dim: ${..sub_dim}
-  rnd_proj: ${..rnd_proj}
-  prior_noise: ${..prior_noise}
-  dynamics_noise: ${..dynamics_noise}
-  obs_noise: ${..obs_noise}
-  iekf: ${..iekf}
-  mi_samples: ${..M}
-  chunk_size: ${...chunk_size}
-  use_vmap: ${..use_vmap}
+# cls:
+#   niters: ${..niters}
+#   batch_size: ${..bs}
+#   l2_reg: ${..l2_reg}
+
+#   warm_burns: ${..warm_burns}
+#   thinning: ${..thinning}
+#   sub_dim: ${..sub_dim}
+#   rnd_proj: ${..rnd_proj}
+
+#   prior_noise: ${..prior_noise}
+#   dynamics_noise: ${..dynamics_noise}
+#   obs_noise: ${..obs_noise}
+#   iekf: ${..iekf}
+
+#   n_models: ${..M}
+#   chunk_size: ${...chunk_size}
+#   use_vmap: ${..use_vmap}

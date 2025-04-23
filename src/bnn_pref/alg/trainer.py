@@ -29,14 +29,15 @@ def alg_pipeline(
     data_cfg: Dict,
 ) -> Tuple[AgentState, Agent]:
     nq_init, nsteps = data_cfg["nq_init"], data_cfg["nsteps"]
-    bs = alg_cfg["cls"]["batch_size"]
+    bs = alg_cfg["bs"]
     if nq_init < bs:
-        alg_cfg["cls"]["batch_size"] = 1
-        # print(f"WARNING: {nq_init=} < {bs=}, setting ekf.cls.batch_size = 1")
+        alg_cfg["bs"] = 1
+        # print(f"WARNING: {nq_init=} < {bs=}, setting alg_cfg.bs = 1")
 
     model = RewardNet(alg_cfg["hidden_sizes"])
     opt = optax.adam(alg_cfg["learning_rate"])
-    bandit = alg_cls(model, opt, **alg_cfg["cls"])
+    cls_kwargs = alg_cls.get_hydra_config(alg_cfg)
+    bandit = alg_cls(model, opt, **cls_kwargs)
 
     key, key_warm, key_bel_init, key_run = split(key, 4)
     warmup_data = env.warmup(key_warm, nq_init)

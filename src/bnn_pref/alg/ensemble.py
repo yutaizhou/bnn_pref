@@ -50,6 +50,20 @@ class DeepEnsemble(Agent):
         self.chunk_size = chunk_size
         self.use_vmap = use_vmap
 
+    @staticmethod
+    def get_hydra_config(sgd_cfg):
+        # follow sgd.yaml config
+        return {
+            # training
+            "niters": sgd_cfg["niters"],
+            "batch_size": sgd_cfg["bs"],
+            "l2_reg": sgd_cfg["l2_reg"],
+            # ensembling
+            "n_models": sgd_cfg["M"],
+            "chunk_size": sgd_cfg["chunk_size"],
+            "use_vmap": sgd_cfg["use_vmap"],
+        }
+
     @partial(jax.jit, static_argnames=["self"])
     def init_bel(self, key, warmup_data: CARL) -> TrainState:
         key, *keys_init = jr.split(key, 1 + self.n_models)

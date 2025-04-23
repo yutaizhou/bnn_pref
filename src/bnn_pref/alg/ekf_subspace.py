@@ -54,35 +54,10 @@ class SubspaceEKF(Agent):
         dynamics_noise: float = 0.0,
         obs_noise: float = 1.0,
         iekf: int = 1,
-        mi_samples: int = 20,
+        n_models: int = 20,
         chunk_size: int = 64,
         use_vmap: bool = True,
     ):
-        """
-        Subspace Neural Bandit implementation.
-        Parameters
-        ----------
-        n_feats : int
-            The number of input features of the model.
-        model : flax.nn.Module
-            The flax model to be used for the bandits.
-        opt: flax.optim.Optimizer
-            The optimizer to be used for training the model.
-        warm_burns : int
-            The number of SGD iterates to be thrown away for the warmup phase.
-        sub_dim: Union[float, int]
-            The number of components to be used for the PCA.
-        rnd_proj: bool
-            Whether to use random projection.
-        prior_noise : float
-            The prior noise for the EKF.
-        dynamics_noise: float
-            The dynamics noise for the EKF.
-        obs_noise: float
-            The observation noise for the EKF.
-        batch_size: Optional[int]
-            The batch size for mini-batch SGD.
-        """
         self.model = model
         self.opt = opt
         self.l2_reg = l2_reg
@@ -96,13 +71,36 @@ class SubspaceEKF(Agent):
         self.dynamics_noise = dynamics_noise
         self.obs_noise = obs_noise
         self.iekf = iekf
-        self.mi_samples = mi_samples
+        self.n_models = n_models
         self.n_feats = None
         self.chunk_size = chunk_size
         self.use_vmap = use_vmap
         if not rnd_proj:
             n_eff_iterates = (niters - warm_burns) // thinning
             assert n_eff_iterates >= sub_dim, f"{n_eff_iterates=} < {sub_dim=}"
+
+    @staticmethod
+    def get_hydra_config(ekf_cfg):
+        # follow ekf.yaml config
+        return {
+            # subspace init
+            "niters": ekf_cfg["niters"],
+            "batch_size": ekf_cfg["bs"],
+            "l2_reg": ekf_cfg["l2_reg"],
+            "warm_burns": ekf_cfg["warm_burns"],
+            "thinning": ekf_cfg["thinning"],
+            "sub_dim": ekf_cfg["sub_dim"],
+            "rnd_proj": ekf_cfg["rnd_proj"],
+            # subspace inference
+            "prior_noise": ekf_cfg["prior_noise"],
+            "dynamics_noise": ekf_cfg["dynamics_noise"],
+            "obs_noise": ekf_cfg["obs_noise"],
+            "iekf": ekf_cfg["iekf"],
+            # ensembling
+            "n_models": ekf_cfg["M"],
+            "chunk_size": ekf_cfg["chunk_size"],
+            "use_vmap": ekf_cfg["use_vmap"],
+        }
 
     # @partial(jax.jit, static_argnames=["self"])
     def init_bel(self, key, warmup_data: CARL) -> EKFBeliefState:
@@ -323,7 +321,7 @@ class SubspaceEKF(Agent):
         active learning: greedily compute query that maximizes InfoGain acquisition fn
         """
         # * sample M (subspace) models from posterior
-        M = self.mi_samples  # number of models to sample
+        M = self.n_models  # number of models to sample
         mean, cov = bel.mean, bel.cov
         distr = tfd.MultivariateNormalFullCovariance(mean, cov)
         key, key_sample = jr.split(key, 2)
@@ -392,7 +390,7 @@ class SubspaceEKF(Agent):
     ) -> Float[Array, "Q 2"]:
         """sample params from posterior, then compute predictive"""
         # * sample model parameters
-        M = self.mi_samples
+        M = self.n_models
         mean, cov, t = bel
         dist = tfd.MultivariateNormalFullCovariance(mean, cov)
         key, key_sample = jr.split(key, 2)

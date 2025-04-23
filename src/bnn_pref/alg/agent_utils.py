@@ -39,6 +39,11 @@ class Agent(ABC):
     ) -> Float[Array, "Q 2"]:
         pass
 
+    @staticmethod
+    @abstractmethod
+    def get_hydra_config(cls_cfg: Dict):
+        pass
+
 
 def subspace2full_params(
     params_subspace: Float[Array, "sub_dim"],

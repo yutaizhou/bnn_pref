@@ -1,13 +1,15 @@
+# * model ensembling & active learning
+# ensembling used for training, computing predictive & acquisition function
+active: False
+M: 15 
+use_vmap: True 
+chunk_size: ${..chunk_size}
+
 # * NN model
-use_vmap: True # for training, computing predictive & acquisition function
 learning_rate: 0.001
 hidden_sizes:
   - 32
   - 32
-
-# * active learning
-active: False
-M: 15 # ensemble size
 
 # * Init
 niters: 100  # Total number of GD steps on warmup data
@@ -15,10 +17,12 @@ bs: 1 # -1 for full batch GD. Otherwise, mini-batch SGD
 l2_reg: 0
 
 # * Update
-cls:
-  n_models: ${..M}
-  l2_reg: ${..l2_reg}
-  niters: ${..niters}
-  batch_size: ${..bs}
-  chunk_size: ${...chunk_size}
-  use_vmap: ${..use_vmap}
+# cls:
+#   # training
+#   niters: ${..niters}
+#   batch_size: ${..bs}
+#   l2_reg: ${..l2_reg}
+#   # ensembling
+#   n_models: ${..M}
+#   chunk_size: ${...chunk_size}
+#   use_vmap: ${..use_vmap}

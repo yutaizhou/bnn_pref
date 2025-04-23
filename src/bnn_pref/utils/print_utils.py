@@ -1,3 +1,18 @@
+def get_param_count_msg(cfg, alg: str, res_m: dict) -> str:
+    if alg == "ekf":
+        ekf_M = cfg["ekf"]["M"]
+        param_count = res_m["param_count"][0].item()
+        subspace_param_count = res_m["subspace_param_count"][0].item()
+        return f"({param_count:,d} -> {subspace_param_count:,d})"
+    elif alg == "sgd":
+        sgd_M = cfg["sgd"]["M"]
+        param_count = res_m["param_count"][0].item()
+        ensemble_param_count = res_m["ensemble_param_count"][0].item()
+        return f"({param_count:,d} x {sgd_M:d} -> {ensemble_param_count:,d})"
+    else:
+        raise ValueError(f"Unknown algorithm: {alg}")
+
+
 def print_ekf_cfg(seed, cfg, length=None, n_feats=None):
     data_cfg = cfg["data"]
     task_cfg = cfg["task"]  # only synthetic task has T and D in task_cfg
