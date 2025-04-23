@@ -5,21 +5,22 @@ from typing import Callable, Dict, Optional, Union
 import jax
 import jax.numpy as jnp
 import jax.random as jr
+from jaxtyping import Array, Float, Int
 
-from bnn_pref.utils.type import Q1, Q2, Q2TD, ArrayDict, D, N, unpackable_dataclass
+from bnn_pref.utils.type import ArrayDict, unpackable_dataclass
 
 
 @unpackable_dataclass
 class QueryFeaturesAndResponses:
-    queries_Q2TD: Q2TD
-    responses_Q1: Q1
+    queries_Q2TD: Float[Array, "n_queries 2 n_steps n_feats"]
+    responses_Q1: Int[Array, "n_queries 1"]
     n_mislabels: int
 
 
 @unpackable_dataclass
 class QueryIndexAndResponses:
-    queries_Q2: Q2
-    responses_Q1: Q1
+    queries_Q2: Int[Array, "n_queries 2"]
+    responses_Q1: Int[Array, "n_queries 1"]
     n_mislabels: int
 
 
@@ -42,11 +43,11 @@ def query_indices_to_features(
 class BradleyTerry:
     @staticmethod
     def logpdf(
-        params_D: D,
+        params_D: Float[Array, "n_feats"],
         data: QueryFeaturesAndResponses,
         reward_fn: Callable,
         beta: float = 1.0,  # rationality constant
-    ) -> Q1:
+    ) -> Float[Array, "n_queries 1"]:
         features_Q2TD, responses_Q1 = data.queries_Q2TD, data.responses_Q1
         returns_Q2 = beta * reward_fn(features_Q2TD, params_D)
         returns_Q1 = jnp.take_along_axis(returns_Q2, responses_Q1, axis=1)
@@ -54,15 +55,17 @@ class BradleyTerry:
 
     @staticmethod
     def potential(
-        params: D, reward_fn: Callable, data: QueryFeaturesAndResponses
+        params_D: Float[Array, "n_feats"],
+        reward_fn: Callable,
+        data: QueryFeaturesAndResponses,
     ) -> float:
-        ll_Q = BradleyTerry.logpdf(
-            params_D=params,
+        ll_Q1 = BradleyTerry.logpdf(
+            params_D=params_D,
             data=data,
             reward_fn=reward_fn,
         )
         # prior = # just uniform log 1
-        joint_ll = ll_Q.sum()
+        joint_ll = ll_Q1.sum()
         return joint_ll
 
 
@@ -104,7 +107,7 @@ def random_query_iterator_perm(key, n_trajs: int, n_queries: int):
 
 def create_pref_data(
     key,
-    ranked_returns: N,
+    ranked_returns: Float[Array, "n_trajs"],
     n_queries: int = -1,
     skip_threshold: float = -jnp.inf,  # skip if both are bad
     use_delta: bool = False,  # skip by delta_rank or delta_reward
@@ -168,7 +171,8 @@ def create_pref_data(
 
         # * irrationality: label flip mistake
         key, subkey = jr.split(key)
-        label = 1 - label if (jr.uniform(subkey) < mistake_prob) else label
+        prob = jr.uniform(subkey)
+        label = 1 - label if (prob < mistake_prob) else label
 
         queries.append((ti, tj))
         labels.append(label)
