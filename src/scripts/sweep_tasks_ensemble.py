@@ -101,7 +101,7 @@ def main(cfg):
         f"  Train/Test: {nq_train}/{nq_test}\n"
         f"  Init/Update: {nq_init}/{nsteps}\n"
         f"Ensemble:\n"
-        f"  n_models={sgd_cfg['M']}\n"
+        f"  n_models={sgd_cfg['M']}, use_vmap={sgd_cfg['use_vmap']}\n"
         f"  init: bs={sgd_cfg['bs']}, niters={sgd_cfg['niters']}\n"
     )
 
@@ -139,16 +139,9 @@ def main(cfg):
             cfg["sgd"]["active"] = is_al
             cfg["sgd"]["use_vmap"] = sgd_vmap
 
-            run_fn = partial(run_ensemble, cfg=cfg, data_dict=data_dict, env=env)
-
             # run in vmap or lax version (parallel vs. sequential)
+            run_fn = partial(run_ensemble, cfg=cfg, data_dict=data_dict, env=env)
             start = datetime.now()
-
-            # res_m = (
-            #     jax.vmap(run_fn)(seeds)
-            #     if cfg["seed_vmap"]
-            #     else jax.lax.map(run_fn, seeds)
-            # )
 
             res_m = (
                 jax.block_until_ready(jax.vmap(run_fn)(seeds))

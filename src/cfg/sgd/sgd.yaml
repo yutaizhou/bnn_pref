@@ -1,5 +1,5 @@
 # * NN model
-use_vmap: True
+use_vmap: True # for training, computing predictive & acquisition function
 learning_rate: 0.001
 hidden_sizes:
   - 32

@@ -101,10 +101,10 @@ def main(cfg):
         f"  Init/Update: {nq_init}/{nsteps}\n"
         f"EKF:\n"
         f"  prior / dynamics / obs noise: {ekf_cfg['prior_noise']} / {ekf_cfg['dynamics_noise']} / {ekf_cfg['obs_noise']}\n"
-        f"  n_models={ekf_cfg['M']}, rnd_proj={ekf_cfg['rnd_proj']}\n"
-        f"  init: bs={ekf_cfg['bs']}, niters={ekf_cfg['niters']}[{warm_burns}::{thinning}] ({n_eff_iterates} eff), {sub_dim=}, \n"
+        f"  n_models={ekf_cfg['M']}, use_vmap={ekf_cfg['use_vmap']}\n"
+        f"  init: bs={ekf_cfg['bs']}, niters={ekf_cfg['niters']}[{warm_burns}::{thinning}] ({n_eff_iterates} eff), {sub_dim=}, rnd_proj={ekf_cfg['rnd_proj']}\n"
         f"Ensemble:\n"
-        f"  n_models={sgd_cfg['M']}\n"
+        f"  n_models={sgd_cfg['M']}, use_vmap={sgd_cfg['use_vmap']}\n"
         f"  init: bs={sgd_cfg['bs']}, niters={sgd_cfg['niters']}\n"
     )
 
@@ -156,12 +156,6 @@ def main(cfg):
 
                 # run in vmap or lax version (parallel vs. sequential)
                 start = datetime.now()
-
-                # res_m = (
-                #     jax.vmap(run_fn)(seeds)
-                #     if cfg["seed_vmap"]
-                #     else jax.lax.map(run_fn, seeds)
-                # )
 
                 res_m = (
                     jax.block_until_ready(jax.vmap(run_fn)(seeds))

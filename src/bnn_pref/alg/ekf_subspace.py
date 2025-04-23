@@ -56,6 +56,7 @@ class SubspaceEKF(Agent):
         iekf: int = 1,
         mi_samples: int = 20,
         chunk_size: int = 64,
+        use_vmap: bool = True,
     ):
         """
         Subspace Neural Bandit implementation.
@@ -98,6 +99,7 @@ class SubspaceEKF(Agent):
         self.mi_samples = mi_samples
         self.n_feats = None
         self.chunk_size = chunk_size
+        self.use_vmap = use_vmap
         if not rnd_proj:
             n_eff_iterates = (niters - warm_burns) // thinning
             assert n_eff_iterates >= sub_dim, f"{n_eff_iterates=} < {sub_dim=}"
@@ -162,7 +164,7 @@ class SubspaceEKF(Agent):
         def sub2full_predict_return(
             params_subspace,
             traj: Float[Array, "T D"],
-        ) -> Float[Array, ""]:
+        ) -> Float[Array, "1"]:
             params_full = subspace2full_params(
                 params_subspace, proj_matrix, params_full_init
             )
@@ -326,11 +328,30 @@ class SubspaceEKF(Agent):
         distr = tfd.MultivariateNormalFullCovariance(mean, cov)
         key, key_sample = jr.split(key, 2)
         ss_params = distr.sample(seed=key_sample, sample_shape=(M,))
-        fn = jax.vmap(self.sub2full_predict_return, in_axes=(0, None))
-        fn = partial(fn, ss_params)
 
-        # precompute logits for all items
-        logits_NM = jax.lax.map(fn, env.items_NTD, batch_size=self.chunk_size).squeeze()
+        # * precompute logits for all items
+        if self.use_vmap:
+            fn = jax.vmap(self.sub2full_predict_return, in_axes=(0, None))
+            fn = partial(fn, ss_params)
+            logits_NM = rearrange(
+                jax.lax.map(fn, env.items_NTD, batch_size=self.chunk_size),
+                "N M 1 -> N M",
+            )
+
+        else:
+
+            def scan_bel(_, ss_param):
+                ret_N1 = jax.lax.map(
+                    partial(self.sub2full_predict_return, ss_param),
+                    env.items_NTD,
+                    batch_size=self.chunk_size,
+                )
+                return _, ret_N1
+
+            logits_NM = rearrange(
+                jax.lax.scan(scan_bel, None, ss_params)[1],
+                "M N 1 -> N M",
+            )
 
         # def compute_info_gain(logprobs_M2):
         #     probs_M2 = jnp.exp(logprobs_M2)
@@ -371,19 +392,40 @@ class SubspaceEKF(Agent):
     ) -> Float[Array, "Q 2"]:
         """sample params from posterior, then compute predictive"""
         # * sample model parameters
+        M = self.mi_samples
         mean, cov, t = bel
         dist = tfd.MultivariateNormalFullCovariance(mean, cov)
-        ss_params = dist.sample(seed=key, sample_shape=(self.mi_samples,))
-        fn = jax.vmap(self.sub2full_predict_return, in_axes=(0, None))  # over params
-        fn = partial(fn, ss_params)
+        key, key_sample = jr.split(key, 2)
+        ss_params = dist.sample(seed=key_sample, sample_shape=(M,))
 
         # * precompute logits for all items
-        logits_NM = jax.lax.map(fn, items_NTD, batch_size=self.chunk_size).squeeze()
+        if self.use_vmap:
+            fn = jax.vmap(self.sub2full_predict_return, in_axes=(0, None))
+            fn = partial(fn, ss_params)
+            logits_NM = rearrange(
+                jax.lax.map(fn, items_NTD, batch_size=self.chunk_size),
+                "N M 1 -> N M",
+            )
+        else:
+
+            def scan_bel(_, ss_param):
+                ret_N1 = jax.lax.map(
+                    partial(self.sub2full_predict_return, ss_param),
+                    items_NTD,
+                    batch_size=self.chunk_size,
+                )
+                return _, ret_N1
+
+            logits_NM = rearrange(
+                jax.lax.scan(scan_bel, None, ss_params)[1],
+                "M N 1 -> N M",
+            )
+
         logits_QM2 = rearrange(logits_NM[query_idxs_Q2], "Q K M -> Q M K", K=2)
 
         # * compute predictive distributions
         llik_QM2 = jax.nn.log_softmax(logits_QM2, axis=2)
-        llik_Q2 = jax.nn.logsumexp(llik_QM2, axis=1) - jnp.log(self.mi_samples)
+        llik_Q2 = jax.nn.logsumexp(llik_QM2, axis=1) - jnp.log(M)
         prob_Q2 = jnp.exp(llik_Q2)
         # prob_Q2 = jnp.exp(llik_QM2).mean(1)
         return prob_Q2
