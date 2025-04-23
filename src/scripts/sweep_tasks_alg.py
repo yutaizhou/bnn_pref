@@ -1,3 +1,4 @@
+import itertools as it
 import os
 from functools import partial
 from typing import Tuple
@@ -257,7 +258,7 @@ def main(cfg):
     plt.savefig(f"{cfg.paths.output_dir}/logpdf_vs_queries.png")
 
     # * plot acc eval curve
-    fig, axs = plt.subplots(4, 4, figsize=(12, 8))  # 13 tasks total
+    fig, axs = plt.subplots(3, 4, figsize=(12, 8))
     axs = axs.flatten()
     for i, task in enumerate(tasks):
         ax = axs[i]
@@ -293,6 +294,39 @@ def main(cfg):
     plt.tight_layout(rect=[0, 0, 0.9, 1])  # [left, bottom, right, top]
     # plt.show()
     plt.savefig(f"{cfg.paths.output_dir}/acc_vs_queries.png")
+
+    # * bar plot duration for each task
+    fig, axs = plt.subplots(3, 4, figsize=(12, 8))
+    axs = axs.flatten()
+
+    # Update legend elements to match logpdf plot style
+    legend_elements = [
+        plt.Rectangle((0, 0), 1, 1, facecolor="blue", hatch="//", label="EKF (Random)"),
+        plt.Rectangle((0, 0), 1, 1, facecolor="blue", label="EKF (Active)"),
+        plt.Rectangle(
+            (0, 0), 1, 1, facecolor="orange", hatch="//", label="Ensemble (Random)"
+        ),
+        plt.Rectangle((0, 0), 1, 1, facecolor="orange", label="Ensemble (Active)"),
+    ]
+
+    for i, task in enumerate(tasks):
+        ax = axs[i]
+        for j, (alg, is_al) in enumerate(it.product(["ekf", "sgd"], [False, True])):
+            stat = stats[task][alg][is_al]
+            duration = stat["duration"]
+            nq_train, nq_test = stat["nq_train"], stat["nq_test"]
+            color = "blue" if alg == "ekf" else "orange"
+            bar = ax.bar(j, duration, color=color)
+            if not is_al:
+                bar.patches[0].set_hatch("//")
+        ax.set_xticks([])
+        # ax.set_ylabel("Duration (s)")
+        ax.set_title(f"{task} (nq={nq_train}/{nq_test})", fontsize=8)
+
+    fig.suptitle("Task Duration (s)")
+    fig.legend(handles=legend_elements, loc="center right")
+    plt.tight_layout(rect=[0, 0, 0.9, 1])
+    plt.savefig(f"{cfg.paths.output_dir}/task_durations.png")
 
 
 if __name__ == "__main__":

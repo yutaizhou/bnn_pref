@@ -143,21 +143,15 @@ class DeepEnsemble(Agent):
             # vmap over ts, run over items sequentially
             fn = jax.vmap(predict_fn, in_axes=(0, None))
             items_N1TD = rearrange(env.items_NTD, "N T D -> N 1 T D")
-            logits_NM = jax.lax.map(
-                partial(fn, ts),
-                items_N1TD,
-                batch_size=self.chunk_size,
-            )
+            fn = partial(fn, ts)
+            logits_NM = jax.lax.map(fn, items_N1TD, batch_size=self.chunk_size)
         else:
             # run over ts sequentially, run over items sequentially
             items_N1TD = rearrange(env.items_NTD, "N T D -> N 1 T D")
 
             def scan_ts(_, ts_single):
-                ret_N = jax.lax.map(
-                    partial(predict_fn, ts_single),
-                    items_N1TD,
-                    batch_size=self.chunk_size,
-                )
+                fn = partial(predict_fn, ts_single)
+                ret_N = jax.lax.map(fn, items_N1TD, batch_size=self.chunk_size)
                 return _, ret_N
 
             logits_NM = rearrange(jax.lax.scan(scan_ts, None, ts)[1], "M N -> N M")
@@ -197,20 +191,14 @@ class DeepEnsemble(Agent):
         if self.use_vmap:
             fn = jax.vmap(predict_fn, in_axes=(0, None))
             items_N1TD = rearrange(items_NTD, "N T D -> N 1 T D")
-            logits_NM = jax.lax.map(
-                partial(fn, ts),
-                items_N1TD,
-                batch_size=self.chunk_size,
-            )
+            fn = partial(fn, ts)
+            logits_NM = jax.lax.map(fn, items_N1TD, batch_size=self.chunk_size)
         else:
             items_N1TD = rearrange(items_NTD, "N T D -> N 1 T D")
 
             def scan_ts(_, ts_single):
-                ret_N = jax.lax.map(
-                    partial(predict_fn, ts_single),
-                    items_N1TD,
-                    batch_size=self.chunk_size,
-                )
+                fn = partial(predict_fn, ts_single)
+                ret_N = jax.lax.map(fn, items_N1TD, batch_size=self.chunk_size)
                 return _, ret_N
 
             logits_NM = rearrange(jax.lax.scan(scan_ts, None, ts)[1], "M N -> N M")

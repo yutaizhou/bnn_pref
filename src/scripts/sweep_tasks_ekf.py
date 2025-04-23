@@ -187,7 +187,7 @@ def main(cfg):
             )
 
     # * plot logpdf learning curve
-    fig, axs = plt.subplots(4, 4, figsize=(12, 8))  # 13 tasks total
+    fig, axs = plt.subplots(3, 4, figsize=(12, 8))  # 13 tasks total
     axs = axs.flatten()
 
     for i, task in enumerate(tasks):
@@ -212,7 +212,7 @@ def main(cfg):
     # plt.show()
 
     # * plot acc learning curve
-    fig, axs = plt.subplots(4, 4, figsize=(12, 8))  # 13 tasks total
+    fig, axs = plt.subplots(3, 4, figsize=(12, 8))  # 13 tasks total
     axs = axs.flatten()
     for i, task in enumerate(tasks):
         ax = axs[i]

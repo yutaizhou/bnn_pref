@@ -13,7 +13,7 @@ n_bins: 10 # doesn't really need to be changed
 # 70/250/10  -> 19900 nq_train, 4-11% error rate
 # 100/375/7 ->  44850 nq_train, 5-20% error rate
 
-noisy_label: False # t2 > t1 always if False; o.w. sample from bradley terry
+noisy_label: True # t2 > t1 always if False; o.w. sample from bradley terry
 bt_beta: 7 # beta for BT model. only used if noisy_label=True; need to normalize returns for beta=15 to get 5-10% error rate
 
 # * preference queries

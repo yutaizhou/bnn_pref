@@ -338,16 +338,13 @@ class SubspaceEKF(Agent):
 
         else:
 
-            def scan_bel(_, ss_param):
-                ret_N1 = jax.lax.map(
-                    partial(self.sub2full_predict_return, ss_param),
-                    env.items_NTD,
-                    batch_size=self.chunk_size,
-                )
+            def scan_param(_, ss_param):
+                fn = partial(self.sub2full_predict_return, ss_param)
+                ret_N1 = jax.lax.map(fn, env.items_NTD, batch_size=self.chunk_size)
                 return _, ret_N1
 
             logits_NM = rearrange(
-                jax.lax.scan(scan_bel, None, ss_params)[1],
+                jax.lax.scan(scan_param, None, ss_params)[1],
                 "M N 1 -> N M",
             )
 
@@ -406,16 +403,13 @@ class SubspaceEKF(Agent):
             )
         else:
 
-            def scan_bel(_, ss_param):
-                ret_N1 = jax.lax.map(
-                    partial(self.sub2full_predict_return, ss_param),
-                    items_NTD,
-                    batch_size=self.chunk_size,
-                )
+            def scan_param(_, ss_param_single):
+                fn = partial(self.sub2full_predict_return, ss_param_single)
+                ret_N1 = jax.lax.map(fn, items_NTD, batch_size=self.chunk_size)
                 return _, ret_N1
 
             logits_NM = rearrange(
-                jax.lax.scan(scan_bel, None, ss_params)[1],
+                jax.lax.scan(scan_param, None, ss_params)[1],
                 "M N 1 -> N M",
             )
 
