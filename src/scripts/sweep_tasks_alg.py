@@ -60,22 +60,27 @@ def modify_queries(
 def main(cfg):
     seed = get_random_seed() if cfg["seed"] == -1 else cfg["seed"]
     key = jr.key(seed)
-
+    run_fns = {
+        "ekf": run_ekf,
+        "sgd": run_ensemble,
+    }
     tasks = [
         "reacher",
-        "lunar",
-        "cheetah",
-        "acrobot",
-        "ball",
-        "cartpoleSwing",
-        "cheetahDMC",
-        "hopperHop",
-        "pendulum",
-        # "reacherEasy",
-        # "reacherHard",
-        "walkerWalk",
-        # "ogbench",
+        # "lunar",
+        # "cheetah",
+        # "acrobot",
+        # "ball",
+        # "cartpoleSwing",
+        # "cheetahDMC",
+        # "hopperHop",
+        # "pendulum",
+        # # "reacherEasy",
+        # # "reacherHard",
+        # "walkerWalk",
+        # # "ogbench",
     ]
+    algs = ["ekf", "sgd"]
+    is_als = [False, True]
 
     stats = nested_defaultdict()
 
@@ -84,11 +89,7 @@ def main(cfg):
     sgd_cfg = cfg["sgd"]
     nq_train, nq_test = data_cfg["nq_train"], data_cfg["nq_test"]
     nq_init, nsteps = data_cfg["nq_init"], data_cfg["nsteps"]
-
-    warm_burns = ekf_cfg["warm_burns"]
-    thinning = ekf_cfg["thinning"]
-    sub_dim = ekf_cfg["sub_dim"]
-    n_eff_iterates = (ekf_cfg["niters"] - warm_burns) // thinning
+    n_eff_iterates = (ekf_cfg["niters"] - ekf_cfg["warm_burns"]) // ekf_cfg["thinning"]
 
     print(
         f"Run:\n"
@@ -103,7 +104,7 @@ def main(cfg):
         f"EKF:\n"
         f"  M={ekf_cfg['M']}, use_vmap={ekf_cfg['use_vmap']}\n"
         f"  prior / dynamics / obs noise: {ekf_cfg['prior_noise']} / {ekf_cfg['dynamics_noise']} / {ekf_cfg['obs_noise']}\n"
-        f"  init: bs={ekf_cfg['bs']}, niters={ekf_cfg['niters']}[{warm_burns}::{thinning}] ({n_eff_iterates} eff), {sub_dim=}, rnd_proj={ekf_cfg['rnd_proj']}\n"
+        f"  init: bs={ekf_cfg['bs']}, niters={ekf_cfg['niters']}[{ekf_cfg['warm_burns']}::{ekf_cfg['thinning']}] ({n_eff_iterates} eff), sub_dim={ekf_cfg['sub_dim']}, rnd_proj={ekf_cfg['rnd_proj']}\n"
         f"Ensemble:\n"
         f"  M={sgd_cfg['M']}, use_vmap={sgd_cfg['use_vmap']}\n"
         f"  init: bs={sgd_cfg['bs']}, niters={sgd_cfg['niters']}\n"
@@ -149,52 +150,52 @@ def main(cfg):
         # * run
         key, *key_seeds = jr.split(key, 1 + cfg["seeds"])
         seeds = jnp.array(key_seeds)
-        for alg, run_fn in [("ekf", run_ekf), ("sgd", run_ensemble)]:
-            for is_al in [False, True]:
-                cfg[alg]["active"] = is_al
+        for alg, is_al in it.product(algs, is_als):
+            cfg[alg]["active"] = is_al
 
-                run_fn = partial(run_fn, cfg=cfg, data_dict=data_dict, env=env)
+            run_fn = run_fns[alg]
+            run_fn = partial(run_fn, cfg=cfg, data_dict=data_dict, env=env)
 
-                # run in vmap or lax version (parallel vs. sequential)
-                start = datetime.now()
+            # run in vmap or lax version (parallel vs. sequential)
+            start = datetime.now()
 
-                res_m = (
-                    jax.block_until_ready(jax.vmap(run_fn)(seeds))
-                    if cfg["seed_vmap"]
-                    else jax.block_until_ready(jax.lax.map(run_fn, seeds))
-                )
+            res_m = (
+                jax.block_until_ready(jax.vmap(run_fn)(seeds))
+                if cfg["seed_vmap"]
+                else jax.block_until_ready(jax.lax.map(run_fn, seeds))
+            )
 
-                duration = (datetime.now() - start).total_seconds()
+            duration = (datetime.now() - start).total_seconds()
 
-                # (n_seeds, 1 + nq_update)
-                res = {
-                    "task": task,
-                    "active": is_al,
-                    "nq_train": nq_train,
-                    "nq_test": nq_test,
-                    "duration": duration,
-                    # * logpdf
-                    "test_logpdf_all": res_m["test_logpdf"],
-                    "test_logpdf_final": MeanStd(res_m["test_logpdf"][:, -1]),
-                    # * acc
-                    "test_acc_all": res_m["test_acc"],
-                    "test_acc_final": MeanStd(res_m["test_acc"][:, -1]),
-                }
+            # (n_seeds, 1 + nq_update)
+            res = {
+                "task": task,
+                "active": is_al,
+                "nq_train": nq_train,
+                "nq_test": nq_test,
+                "duration": duration,
+                # * logpdf
+                "test_logpdf_all": res_m["test_logpdf"],
+                "test_logpdf_final": MeanStd(res_m["test_logpdf"][:, -1]),
+                # * acc
+                "test_acc_all": res_m["test_acc"],
+                "test_acc_final": MeanStd(res_m["test_acc"][:, -1]),
+            }
 
-                stats[task][alg][is_al] = res
+            stats[task][alg][is_al] = res
 
-                test_logpdf_all = res_m["test_logpdf"]
-                nans = ~jnp.isfinite(test_logpdf_all)
+            test_logpdf_all = res_m["test_logpdf"]
+            nans = ~jnp.isfinite(test_logpdf_all)
 
-                print(
-                    f"  {alg} active={str(is_al):5}, "
-                    f"acc: {res['test_acc_final'].mean:.2%} ± {res['test_acc_final'].std:.2%}, "
-                    f"logpdf: {res['test_logpdf_final'].mean:.2f} ± {res['test_logpdf_final'].std:.2f}; "
-                    f"{get_param_count_msg(cfg, alg, res_m)}, "
-                    f"({res['duration']:.1f}s)"
-                )
-                if nans.any():
-                    print(f"nans: {nans.sum(1)}")
+            print(
+                f"  {alg} active={str(is_al):5}, "
+                f"acc: {res['test_acc_final'].mean:.2%} ± {res['test_acc_final'].std:.2%}, "
+                f"logpdf: {res['test_logpdf_final'].mean:.2f} ± {res['test_logpdf_final'].std:.2f}; "
+                f"{get_param_count_msg(cfg, alg, res_m)}, "
+                f"({res['duration']:.1f}s)"
+            )
+            if nans.any():
+                print(f"nans: {nans.sum(1)}")
     total_duration = (datetime.now() - total_duration).total_seconds()
     print(f"Total duration: {total_duration:.1f}s")
 
@@ -218,23 +219,22 @@ def main(cfg):
         ax = axs[i]
         ax.set_ylim(-0.73, 0)  # ln(0.48)
         ax.axhline(y=-0.69, linestyle=":", linewidth=1, color="red")  # ln(0.5) = -0.69
-        for alg in ["ekf", "sgd"]:
-            for is_al in [False, True]:
-                # (n_seeds, 1 + nq_update)
-                values = stats[task][alg][is_al]["test_logpdf_all"]
-                nans = ~jnp.isfinite(values)
-                if nans.any():
-                    continue
-                label = get_label(alg, is_al)
-                style = get_style(alg, is_al)
-                ax.plot(values.mean(0), label=label, **style)
-                ax.fill_between(
-                    jnp.arange(values.shape[1]),
-                    values.mean(0) - values.std(0),
-                    values.mean(0) + values.std(0),
-                    alpha=0.2,
-                    **style,
-                )
+        for alg, is_al in it.product(algs, is_als):
+            # (n_seeds, 1 + nq_update)
+            values = stats[task][alg][is_al]["test_logpdf_all"]
+            nans = ~jnp.isfinite(values)
+            if nans.any():
+                continue
+            label = get_label(alg, is_al)
+            style = get_style(alg, is_al)
+            ax.plot(values.mean(0), label=label, **style)
+            ax.fill_between(
+                jnp.arange(values.shape[1]),
+                values.mean(0) - values.std(0),
+                values.mean(0) + values.std(0),
+                alpha=0.2,
+                **style,
+            )
 
         task_nq_train = stats[task][alg][is_al]["nq_train"]
         task_nq_test = stats[task][alg][is_al]["nq_test"]
@@ -265,19 +265,18 @@ def main(cfg):
         ax = axs[i]
         ax.set_ylim(0.48, 1)
         ax.axhline(y=0.5, linestyle=":", linewidth=1, color="red")
-        for alg in ["ekf", "sgd"]:
-            for is_al in [False, True]:
-                values = stats[task][alg][is_al]["test_acc_all"]  # (n_seeds, nq_update)
-                label = get_label(alg, is_al)
-                style = get_style(alg, is_al)
-                ax.plot(values.mean(0), label=label, **style)
-                ax.fill_between(
-                    jnp.arange(values.shape[1]),
-                    values.mean(0) - values.std(0),
-                    values.mean(0) + values.std(0),
-                    alpha=0.2,
-                    **style,
-                )
+        for alg, is_al in it.product(algs, is_als):
+            values = stats[task][alg][is_al]["test_acc_all"]  # (n_seeds, nq_update)
+            label = get_label(alg, is_al)
+            style = get_style(alg, is_al)
+            ax.plot(values.mean(0), label=label, **style)
+            ax.fill_between(
+                jnp.arange(values.shape[1]),
+                values.mean(0) - values.std(0),
+                values.mean(0) + values.std(0),
+                alpha=0.2,
+                **style,
+            )
         ax.set_title(f"{task}")
 
     dummy_lines = [
@@ -312,7 +311,7 @@ def main(cfg):
 
     for i, task in enumerate(tasks):
         ax = axs[i]
-        for j, (alg, is_al) in enumerate(it.product(["ekf", "sgd"], [False, True])):
+        for j, (alg, is_al) in enumerate(it.product(algs, is_als)):
             stat = stats[task][alg][is_al]
             duration = stat["duration"]
             nq_train, nq_test = stat["nq_train"], stat["nq_test"]
