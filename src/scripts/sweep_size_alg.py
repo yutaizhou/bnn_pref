@@ -34,6 +34,10 @@ jnp.set_printoptions(precision=2)
 def main(cfg):
     seed = get_random_seed() if cfg["seed"] == -1 else cfg["seed"]
     key = jr.key(seed)
+    run_fns = {
+        "ekf": run_ekf,
+        "sgd": run_ensemble,
+    }
 
     tasks = [
         "reacher",
@@ -48,6 +52,9 @@ def main(cfg):
         # "walkerWalk",
         # "ogbench",
     ]
+    algs = ["ekf", "sgd"]
+    is_als = [False, True]
+    networks = ["small", "medium", "large"]
 
     stats = nested_defaultdict()
 
@@ -56,17 +63,13 @@ def main(cfg):
     sgd_cfg = cfg["sgd"]
     nq_train, nq_test = data_cfg["nq_train"], data_cfg["nq_test"]
     nq_init, nsteps = data_cfg["nq_init"], data_cfg["nsteps"]
-
-    warm_burns = ekf_cfg["warm_burns"]
-    thinning = ekf_cfg["thinning"]
-    sub_dim = ekf_cfg["sub_dim"]
-    n_eff_iterates = (ekf_cfg["niters"] - warm_burns) // thinning
+    n_eff_iterates = (ekf_cfg["niters"] - ekf_cfg["warm_burns"]) // ekf_cfg["thinning"]
 
     print(
         f"Run:\n"
         f"  Seed: {seed} x {cfg['seeds']} (seed_vmap={cfg['seed_vmap']})\n"
         f"  Sanity: {cfg['sanity']} ({cfg['sanity_frac']} real frac)\n"
-        f"  Network: {cfg['network']['hidden_sizes']}\n"
+        # f"  Network: {cfg['network']['hidden_sizes']}\n"
         f"Data:\n"
         f"  prune: {data_cfg['n_bins']} bins, {data_cfg['max_count_per_bin']} max_count_per_bin, {data_cfg['tokeep']} tokeep\n"
         f"  noisy_label: {data_cfg['noisy_label']} (beta={data_cfg['bt_beta']})\n"
@@ -75,7 +78,7 @@ def main(cfg):
         f"EKF:\n"
         f"  M={ekf_cfg['M']}, use_vmap={ekf_cfg['use_vmap']}\n"
         f"  prior / dynamics / obs noise: {ekf_cfg['prior_noise']} / {ekf_cfg['dynamics_noise']} / {ekf_cfg['obs_noise']}\n"
-        f"  init: bs={ekf_cfg['bs']}, niters={ekf_cfg['niters']}[{warm_burns}::{thinning}] ({n_eff_iterates} eff), {sub_dim=}, rnd_proj={ekf_cfg['rnd_proj']}\n"
+        f"  init: bs={ekf_cfg['bs']}, niters={ekf_cfg['niters']}[{ekf_cfg['warm_burns']}::{ekf_cfg['thinning']}] ({n_eff_iterates} eff), sub_dim={ekf_cfg['sub_dim']}, rnd_proj={ekf_cfg['rnd_proj']}\n"
         f"Ensemble:\n"
         f"  M={sgd_cfg['M']}, use_vmap={sgd_cfg['use_vmap']}\n"
         f"  init: bs={sgd_cfg['bs']}, niters={sgd_cfg['niters']}\n"
@@ -121,10 +124,18 @@ def main(cfg):
         # * run
         key, *key_seeds = jr.split(key, 1 + cfg["seeds"])
         seeds = jnp.array(key_seeds)
-        for alg, run_fn in [("ekf", run_ekf), ("sgd", run_ensemble)]:
-            for is_al in [False, True]:
-                cfg[alg]["active"] = is_al
+        # combine these two loops into one
+        for alg, is_al in it.product(algs, is_als):
+            cfg[alg]["active"] = is_al
+            for network in networks:
+                new_cfg = hydra.compose(
+                    "config", overrides=[f"task={task}", f"network={network}"]
+                )
+                cfg["network"].update(new_cfg["network"])
+                cfg["ekf"]["hidden_sizes"] = new_cfg["ekf"]["hidden_sizes"]
+                cfg["sgd"]["hidden_sizes"] = new_cfg["sgd"]["hidden_sizes"]
 
+                run_fn = run_fns[alg]
                 run_fn = partial(run_fn, cfg=cfg, data_dict=data_dict, env=env)
 
                 # run in vmap or lax version (parallel vs. sequential)
@@ -153,7 +164,7 @@ def main(cfg):
                     "test_acc_final": MeanStd(res_m["test_acc"][:, -1]),
                 }
 
-                stats[task][alg][is_al] = res
+                stats[task][alg][is_al][network] = res
 
                 test_logpdf_all = res_m["test_logpdf"]
                 nans = ~jnp.isfinite(test_logpdf_all)
@@ -174,11 +185,10 @@ def main(cfg):
     fig, axs = plt.subplots(3, 4, figsize=(12, 8))
     axs = axs.flatten()
 
-    def get_label(alg: str, is_al: bool) -> str:
-        if alg == "ekf":
-            return "EKF (Active)" if is_al else "EKF (Random)"
-        else:
-            return "Ensemble (Active)" if is_al else "Ensemble (Random)"
+    def get_label(alg: str, is_al: bool, network: str) -> str:
+        alg_str = "EKF" if alg == "ekf" else "Ensemble"
+        al_str = "Active" if is_al else "Random"
+        return f"{alg_str} {al_str} {network}"
 
     def get_style(alg: str, is_al: bool) -> dict:
         color = "blue" if alg == "ekf" else "orange"
@@ -190,26 +200,25 @@ def main(cfg):
         ax = axs[i]
         ax.set_ylim(-0.73, 0)  # ln(0.48)
         ax.axhline(y=-0.69, linestyle=":", linewidth=1, color="red")  # ln(0.5) = -0.69
-        for alg in ["ekf", "sgd"]:
-            for is_al in [False, True]:
-                # (n_seeds, 1 + nq_update)
-                values = stats[task][alg][is_al]["test_logpdf_all"]
-                nans = ~jnp.isfinite(values)
-                if nans.any():
-                    continue
-                label = get_label(alg, is_al)
-                style = get_style(alg, is_al)
-                ax.plot(values.mean(0), label=label, **style)
-                ax.fill_between(
-                    jnp.arange(values.shape[1]),
-                    values.mean(0) - values.std(0),
-                    values.mean(0) + values.std(0),
-                    alpha=0.2,
-                    **style,
-                )
+        for alg, is_al, network in it.product(algs, is_als, networks):
+            # (n_seeds, 1 + nq_update)
+            values = stats[task][alg][is_al][network]["test_logpdf_all"]
+            nans = ~jnp.isfinite(values)
+            if nans.any():
+                continue
+            label = get_label(alg, is_al, network)
+            style = get_style(alg, is_al)
+            ax.plot(values.mean(0), label=label, **style)
+            ax.fill_between(
+                jnp.arange(values.shape[1]),
+                values.mean(0) - values.std(0),
+                values.mean(0) + values.std(0),
+                alpha=0.2,
+                **style,
+            )
 
-        task_nq_train = stats[task][alg][is_al]["nq_train"]
-        task_nq_test = stats[task][alg][is_al]["nq_test"]
+        task_nq_train = stats[task][alg][is_al][network]["nq_train"]
+        task_nq_test = stats[task][alg][is_al][network]["nq_test"]
         ax.set_title(f"{task} (nq={task_nq_train}/{task_nq_test})", fontsize=8)
 
     dummy_lines = [
@@ -237,19 +246,19 @@ def main(cfg):
         ax = axs[i]
         ax.set_ylim(0.48, 1)
         ax.axhline(y=0.5, linestyle=":", linewidth=1, color="red")
-        for alg in ["ekf", "sgd"]:
-            for is_al in [False, True]:
-                values = stats[task][alg][is_al]["test_acc_all"]  # (n_seeds, nq_update)
-                label = get_label(alg, is_al)
-                style = get_style(alg, is_al)
-                ax.plot(values.mean(0), label=label, **style)
-                ax.fill_between(
-                    jnp.arange(values.shape[1]),
-                    values.mean(0) - values.std(0),
-                    values.mean(0) + values.std(0),
-                    alpha=0.2,
-                    **style,
-                )
+        for alg, is_al, network in it.product(algs, is_als, networks):
+            # (n_seeds, nq_update)
+            values = stats[task][alg][is_al][network]["test_acc_all"]
+            label = get_label(alg, is_al, network)
+            style = get_style(alg, is_al)
+            ax.plot(values.mean(0), label=label, **style)
+            ax.fill_between(
+                jnp.arange(values.shape[1]),
+                values.mean(0) - values.std(0),
+                values.mean(0) + values.std(0),
+                alpha=0.2,
+                **style,
+            )
         ax.set_title(f"{task}")
 
     dummy_lines = [
@@ -284,8 +293,8 @@ def main(cfg):
 
     for i, task in enumerate(tasks):
         ax = axs[i]
-        for j, (alg, is_al) in enumerate(it.product(["ekf", "sgd"], [False, True])):
-            stat = stats[task][alg][is_al]
+        for j, (alg, is_al, network) in enumerate(it.product(algs, is_als, networks)):
+            stat = stats[task][alg][is_al][network]
             duration = stat["duration"]
             nq_train, nq_test = stat["nq_train"], stat["nq_test"]
             color = "blue" if alg == "ekf" else "orange"
@@ -300,6 +309,38 @@ def main(cfg):
     fig.legend(handles=legend_elements, loc="center right")
     plt.tight_layout(rect=[0, 0, 0.9, 1])
     plt.savefig(f"{cfg.paths.output_dir}/task_durations.png")
+
+    # * plot network size vs. duration
+    fig, axs = plt.subplots(3, 4, figsize=(12, 8))
+    axs = axs.flatten()
+    for i, task in enumerate(tasks):
+        ax = axs[i]
+        for alg, is_al in it.product(algs, is_als):
+            durations = []
+            for j, network in enumerate(networks):
+                stat = stats[task][alg][is_al][network]
+                duration = stat["duration"]
+                nq_train, nq_test = stat["nq_train"], stat["nq_test"]
+                durations.append(duration)
+            style = get_style(alg, is_al)
+            label = get_label(alg, is_al, network)
+            ax.plot(durations, label=label, **style)
+            ax.set_title(f"{task}")
+
+    fig.suptitle("Task Duration (s) vs. Network Size")
+    dummy_lines = [
+        plt.plot([], [], color="blue", linestyle="--", label="EKF (Random)")[0],
+        plt.plot([], [], color="blue", linestyle="-", label="EKF (Active)")[0],
+        plt.plot([], [], color="orange", linestyle="--", label="Ensemble (Random)")[0],
+        plt.plot([], [], color="orange", linestyle="-", label="Ensemble (Active)")[0],
+    ]
+    fig.legend(
+        dummy_lines,
+        ["EKF (Random)", "EKF (Active)", "Ensemble (Random)", "Ensemble (Active)"],
+        loc="center right",
+    )
+    plt.tight_layout(rect=[0, 0, 0.9, 1])
+    plt.savefig(f"{cfg.paths.output_dir}/network_size_vs_duration.png")
 
 
 if __name__ == "__main__":
