@@ -221,24 +221,20 @@ def main(cfg):
         ax.axhline(y=-0.69, linestyle=":", linewidth=1, color="red")  # ln(0.5) = -0.69
         for alg, is_al in it.product(algs, is_als):
             # (n_seeds, 1 + nq_update)
-            values = stats[task][alg][is_al]["test_logpdf_all"]
+            stat = stats[task][alg][is_al]
+            values = stat["test_logpdf_all"]
             nans = ~jnp.isfinite(values)
             if nans.any():
                 continue
             label = get_label(alg, is_al)
             style = get_style(alg, is_al)
-            ax.plot(values.mean(0), label=label, **style)
+            mean, std = values.mean(0), values.std(0)
+            ax.plot(mean, label=label, **style)
             ax.fill_between(
-                jnp.arange(values.shape[1]),
-                values.mean(0) - values.std(0),
-                values.mean(0) + values.std(0),
-                alpha=0.2,
-                **style,
+                jnp.arange(len(mean)), mean - std, mean + std, alpha=0.2, **style
             )
 
-        task_nq_train = stats[task][alg][is_al]["nq_train"]
-        task_nq_test = stats[task][alg][is_al]["nq_test"]
-        ax.set_title(f"{task} (nq={task_nq_train}/{task_nq_test})", fontsize=8)
+        ax.set_title(f"{task} (nq={stat['nq_train']}/{stat['nq_test']})", fontsize=8)
 
     dummy_lines = [
         plt.plot([], [], color="blue", linestyle="--", label="EKF (Random)")[0],
@@ -266,16 +262,14 @@ def main(cfg):
         ax.set_ylim(0.48, 1)
         ax.axhline(y=0.5, linestyle=":", linewidth=1, color="red")
         for alg, is_al in it.product(algs, is_als):
-            values = stats[task][alg][is_al]["test_acc_all"]  # (n_seeds, nq_update)
+            stat = stats[task][alg][is_al]
+            values = stat["test_acc_all"]  # (n_seeds, nq_update)
             label = get_label(alg, is_al)
             style = get_style(alg, is_al)
-            ax.plot(values.mean(0), label=label, **style)
+            mean, std = values.mean(0), values.std(0)
+            ax.plot(mean, label=label, **style)
             ax.fill_between(
-                jnp.arange(values.shape[1]),
-                values.mean(0) - values.std(0),
-                values.mean(0) + values.std(0),
-                alpha=0.2,
-                **style,
+                jnp.arange(len(mean)), mean - std, mean + std, alpha=0.2, **style
             )
         ax.set_title(f"{task}")
 
