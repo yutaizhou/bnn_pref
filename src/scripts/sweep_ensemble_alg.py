@@ -52,7 +52,8 @@ def main(cfg):
         # "ogbench",
     ]
     algs = ["ekf", "sgd"]
-    networks = ["small", "medium", "large"]
+    Ms = [3, 8, 15, 30, 50, 100, 150, 200]
+    # Ms = [3, 8, 15]
 
     stats = nested_defaultdict()
 
@@ -67,7 +68,7 @@ def main(cfg):
         f"Run:\n"
         f"  Seed: {seed} x {cfg['seeds']} (seed_vmap={cfg['seed_vmap']})\n"
         f"  Sanity: {cfg['sanity']} ({cfg['sanity_frac']} real frac)\n"
-        # f"  Network: {cfg['network']['hidden_sizes']}\n"
+        f"  Network: {cfg['network']['hidden_sizes']}\n"
         f"Data:\n"
         f"  prune: {data_cfg['n_bins']} bins, {data_cfg['max_count_per_bin']} max_count_per_bin, {data_cfg['tokeep']} tokeep\n"
         f"  noisy_label: {data_cfg['noisy_label']} (beta={data_cfg['bt_beta']})\n"
@@ -124,13 +125,13 @@ def main(cfg):
         seeds = jnp.array(key_seeds)
         # combine these two loops into one
         for alg in algs:
-            for network in networks:
+            for M in Ms:
                 new_cfg = hydra.compose(
-                    "config", overrides=[f"task={task}", f"network={network}"]
+                    "config",
+                    overrides=[f"task={task}", f"ekf.M={M}", f"sgd.M={M}"],
                 )
-                cfg["network"].update(new_cfg["network"])
-                cfg["ekf"]["hidden_sizes"] = new_cfg["ekf"]["hidden_sizes"]
-                cfg["sgd"]["hidden_sizes"] = new_cfg["sgd"]["hidden_sizes"]
+                cfg["ekf"]["M"] = new_cfg["ekf"]["M"]
+                cfg["sgd"]["M"] = new_cfg["sgd"]["M"]
 
                 start = datetime.now()
 
@@ -157,13 +158,13 @@ def main(cfg):
                     "test_acc_final": MeanStd(res_m["test_acc"][:, -1]),
                 }
 
-                stats[task][alg][network] = res
+                stats[task][alg][M] = res
 
                 test_logpdf_all = res_m["test_logpdf"]
                 nans = ~jnp.isfinite(test_logpdf_all)
 
                 print(
-                    f"  {alg} {network}, "
+                    f"  {alg} ({M=}), "
                     f"acc: {res['test_acc_final'].mean:.2%} ± {res['test_acc_final'].std:.2%}, "
                     f"logpdf: {res['test_logpdf_final'].mean:.2f} ± {res['test_logpdf_final'].std:.2f}; "
                     f"{get_param_count_msg(cfg, alg, res_m)}, "
@@ -178,9 +179,9 @@ def main(cfg):
     fig, axs = plt.subplots(3, 4, figsize=(12, 8))
     axs = axs.flatten()
 
-    def get_label(alg: str, network: str) -> str:
+    def get_label(alg: str, M: int) -> str:
         alg_str = "EKF" if alg == "ekf" else "Ensemble"
-        return f"{alg_str} ({network})"
+        return f"{alg_str} ({M})"
 
     def get_style(alg: str) -> dict:
         color = "blue" if alg == "ekf" else "orange"
@@ -190,14 +191,14 @@ def main(cfg):
         ax = axs[i]
         ax.set_ylim(-0.73, 0)  # ln(0.48)
         ax.axhline(y=-0.69, linestyle=":", linewidth=1, color="red")  # ln(0.5) = -0.69
-        for alg, network in it.product(algs, networks):
+        for alg, M in it.product(algs, Ms):
             # (n_seeds, 1 + nq_update)
-            stat = stats[task][alg][network]
+            stat = stats[task][alg][M]
             values = stat["test_logpdf_all"]
             nans = ~jnp.isfinite(values)
             if nans.any():
                 continue
-            label = get_label(alg, network)
+            label = get_label(alg, M)
             style = get_style(alg)
             mean, std = values.mean(0), values.std(0)
             ax.plot(mean, label=label, **style)
@@ -241,11 +242,11 @@ def main(cfg):
         ax = axs[i]
         ax.set_ylim(0.48, 1)
         ax.axhline(y=0.5, linestyle=":", linewidth=1, color="red")
-        for alg, network in it.product(algs, networks):
+        for alg, M in it.product(algs, Ms):
             # (n_seeds, nq_update)
-            stat = stats[task][alg][network]
+            stat = stats[task][alg][M]
             values = stat["test_acc_all"]
-            label = get_label(alg, network)
+            label = get_label(alg, M)
             style = get_style(alg)
             mean, std = values.mean(0), values.std(0)
             ax.plot(mean, label=label, **style)
@@ -285,18 +286,14 @@ def main(cfg):
 
     # Update legend elements to match logpdf plot style
     legend_elements = [
-        plt.Rectangle((0, 0), 1, 1, facecolor="blue", hatch="//", label="EKF (Random)"),
-        plt.Rectangle((0, 0), 1, 1, facecolor="blue", label="EKF (Active)"),
-        plt.Rectangle(
-            (0, 0), 1, 1, facecolor="orange", hatch="//", label="Ensemble (Random)"
-        ),
-        plt.Rectangle((0, 0), 1, 1, facecolor="orange", label="Ensemble (Active)"),
+        plt.Rectangle((0, 0), 1, 1, facecolor="blue", label="EKF"),
+        plt.Rectangle((0, 0), 1, 1, facecolor="orange", label="Ensemble"),
     ]
 
     for i, task in enumerate(tasks):
         ax = axs[i]
-        for j, (alg, network) in enumerate(it.product(algs, networks)):
-            stat = stats[task][alg][network]
+        for j, (alg, M) in enumerate(it.product(algs, Ms)):
+            stat = stats[task][alg][M]
             duration = stat["duration"]
             nq_train, nq_test = stat["nq_train"], stat["nq_test"]
             color = "blue" if alg == "ekf" else "orange"
@@ -310,46 +307,34 @@ def main(cfg):
     plt.tight_layout(rect=[0, 0, 0.9, 1])
     plt.savefig(f"{cfg.paths.output_dir}/task_durations.png")
 
-    # * plot network size vs. duration
+    # * plot ensemble size vs. duration
     fig, axs = plt.subplots(3, 4, figsize=(12, 8))
     axs = axs.flatten()
     for i, task in enumerate(tasks):
         ax = axs[i]
         for alg in algs:
             durations = []
-            for j, network in enumerate(networks):
-                stat = stats[task][alg][network]
+            for j, M in enumerate(Ms):
+                stat = stats[task][alg][M]
                 duration = stat["duration"]
                 nq_train, nq_test = stat["nq_train"], stat["nq_test"]
                 durations.append(duration)
             style = get_style(alg)
-            label = get_label(alg, network)
-            ax.plot(durations, label=label, **style)
+            label = get_label(alg, M)
+            ax.plot(durations, label=label, marker="o", markersize=3, **style)
+            ax.set_xticks(range(len(Ms)))
+            ax.set_xticklabels(Ms)
+
             ax.set_title(f"{task}")
 
-    fig.suptitle("Task Duration (s) vs. Network Size")
+    fig.suptitle("Task Duration (s) vs. Ensemble Size")
     dummy_lines = [
-        plt.plot([], [], color="blue", linestyle="-", label="EKF (small)")[0],
-        plt.plot([], [], color="blue", linestyle="-", label="EKF (medium)")[0],
-        plt.plot([], [], color="blue", linestyle="-", label="EKF (large)")[0],
-        plt.plot([], [], color="orange", linestyle="-", label="Ensemble (small)")[0],
-        plt.plot([], [], color="orange", linestyle="-", label="Ensemble (medium)")[0],
-        plt.plot([], [], color="orange", linestyle="-", label="Ensemble (large)")[0],
+        plt.plot([], [], color="blue", linestyle="-", label="EKF")[0],
+        plt.plot([], [], color="orange", linestyle="-", label="Ensemble")[0],
     ]
-    fig.legend(
-        dummy_lines,
-        [
-            "EKF (small)",
-            "EKF (medium)",
-            "EKF (large)",
-            "Ensemble (small)",
-            "Ensemble (medium)",
-            "Ensemble (large)",
-        ],
-        loc="center right",
-    )
+    fig.legend(dummy_lines, ["EKF", "Ensemble"], loc="center right")
     plt.tight_layout(rect=[0, 0, 0.9, 1])
-    plt.savefig(f"{cfg.paths.output_dir}/network_size_vs_duration.png")
+    plt.savefig(f"{cfg.paths.output_dir}/ensemble_size_vs_duration.png")
 
 
 if __name__ == "__main__":

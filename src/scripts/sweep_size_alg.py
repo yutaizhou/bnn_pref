@@ -285,12 +285,8 @@ def main(cfg):
 
     # Update legend elements to match logpdf plot style
     legend_elements = [
-        plt.Rectangle((0, 0), 1, 1, facecolor="blue", hatch="//", label="EKF (Random)"),
-        plt.Rectangle((0, 0), 1, 1, facecolor="blue", label="EKF (Active)"),
-        plt.Rectangle(
-            (0, 0), 1, 1, facecolor="orange", hatch="//", label="Ensemble (Random)"
-        ),
-        plt.Rectangle((0, 0), 1, 1, facecolor="orange", label="Ensemble (Active)"),
+        plt.Rectangle((0, 0), 1, 1, facecolor="blue", label="EKF"),
+        plt.Rectangle((0, 0), 1, 1, facecolor="orange", label="Ensemble"),
     ]
 
     for i, task in enumerate(tasks):
@@ -329,25 +325,10 @@ def main(cfg):
 
     fig.suptitle("Task Duration (s) vs. Network Size")
     dummy_lines = [
-        plt.plot([], [], color="blue", linestyle="-", label="EKF (small)")[0],
-        plt.plot([], [], color="blue", linestyle="-", label="EKF (medium)")[0],
-        plt.plot([], [], color="blue", linestyle="-", label="EKF (large)")[0],
-        plt.plot([], [], color="orange", linestyle="-", label="Ensemble (small)")[0],
-        plt.plot([], [], color="orange", linestyle="-", label="Ensemble (medium)")[0],
-        plt.plot([], [], color="orange", linestyle="-", label="Ensemble (large)")[0],
+        plt.plot([], [], color="blue", linestyle="-", label="EKF")[0],
+        plt.plot([], [], color="orange", linestyle="-", label="Ensemble")[0],
     ]
-    fig.legend(
-        dummy_lines,
-        [
-            "EKF (small)",
-            "EKF (medium)",
-            "EKF (large)",
-            "Ensemble (small)",
-            "Ensemble (medium)",
-            "Ensemble (large)",
-        ],
-        loc="center right",
-    )
+    fig.legend(dummy_lines, ["EKF", "Ensemble"], loc="center right")
     plt.tight_layout(rect=[0, 0, 0.9, 1])
     plt.savefig(f"{cfg.paths.output_dir}/network_size_vs_duration.png")
 
