@@ -5,13 +5,15 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from functools import partial
 
+os.environ["D4RL_SUPPRESS_IMPORT_ERROR"] = "1"
+
 import d4rl
 import distrax
 import flax.linen as nn
 import gym
 import jax
 import jax.numpy as jnp
-import numpy as onp
+import numpy as np
 import optax
 import tyro
 import wandb
@@ -25,11 +27,13 @@ class Args:
     # --- Experiment ---
     seed: int = 0
     dataset: str = "halfcheetah-medium-v2"
+    # dataset: str = "bullet-halfcheetah-medium-v0"
+    # dataset: str = "antmaze-large-diverse-v2"
     algorithm: str = "iql"
     num_updates: int = 1_000_000
-    eval_interval: int = 2500
-    eval_workers: int = 8
-    eval_final_episodes: int = 1000
+    eval_interval: int = 20_000
+    eval_workers: int = 4
+    eval_final_episodes: int = 10
     # --- Logging ---
     log: bool = False
     wandb_project: str = "unifloral"
@@ -144,8 +148,8 @@ def create_train_state(args, rng, network, dummy_input):
 def eval_agent(args, rng, env, agent_state):
     # --- Reset environment ---
     step = 0
-    returned = onp.zeros(args.eval_workers).astype(bool)
-    cum_reward = onp.zeros(args.eval_workers)
+    returned = np.zeros(args.eval_workers).astype(bool)
+    cum_reward = np.zeros(args.eval_workers)
     rng, rng_reset = jax.random.split(rng)
     rng_reset = jax.random.split(rng_reset, args.eval_workers)
     obs = env.reset()
@@ -165,7 +169,7 @@ def eval_agent(args, rng, env, agent_state):
         rng, rng_step = jax.random.split(rng)
         rng_step = jax.random.split(rng_step, args.eval_workers)
         action = _policy_step(rng_step, jnp.array(obs))
-        obs, reward, done, info = env.step(onp.array(action))
+        obs, reward, done, info = env.step(np.array(action))
 
         # --- Track cumulative reward ---
         cum_reward += reward * ~returned
@@ -335,7 +339,10 @@ if __name__ == "__main__":
 
         # --- Log metrics ---
         step = (eval_idx + 1) * args.eval_interval
-        print("Step:", step, f"\t Score: {scores.mean():.2f}")
+        print(
+            f"Step: {step} / {args.num_updates} ({eval_idx + 1:02d}/{num_evals}) | "
+            f"Score: {scores.mean():.2f} ± {scores.std():.2f}"
+        )
         if args.log:
             log_dict = {
                 "return": returns.mean(),
@@ -348,20 +355,28 @@ if __name__ == "__main__":
 
     # --- Evaluate final agent ---
     if args.eval_final_episodes > 0:
-        final_iters = int(onp.ceil(args.eval_final_episodes / args.eval_workers))
+        final_iters = int(np.ceil(args.eval_final_episodes / args.eval_workers))
         print(f"Evaluating final agent for {final_iters} iterations...")
         _rng = jax.random.split(rng, final_iters)
-        rets = onp.concat([eval_agent(args, _rng, env, agent_state) for _rng in _rng])
+        rets = np.concatenate(
+            [eval_agent(args, _rng, env, agent_state) for _rng in _rng]
+        )
         scores = d4rl.get_normalized_score(args.dataset, rets) * 100.0
         agg_fn = lambda x, k: {k: x, f"{k}_mean": x.mean(), f"{k}_std": x.std()}
         info = agg_fn(rets, "final_returns") | agg_fn(scores, "final_scores")
+        print(
+            f"{args.dataset}\n"
+            f"  {args.eval_final_episodes} episodes {args.eval_workers} workers\n"
+            f"  final returns: {rets.mean():.2f} ± {rets.std():.2f}\n"
+            f"  final scores: {scores.mean():.2f} ± {scores.std():.2f}\n"
+        )
 
         # --- Write final returns to file ---
         os.makedirs("final_returns", exist_ok=True)
         time_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         filename = f"{args.algorithm}_{args.dataset}_{time_str}.npz"
         with open(os.path.join("final_returns", filename), "wb") as f:
-            onp.savez_compressed(f, **info, args=asdict(args))
+            np.savez_compressed(f, **info, args=asdict(args))
 
         if args.log:
             wandb.save(os.path.join("final_returns", filename))
