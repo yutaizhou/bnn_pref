@@ -69,13 +69,6 @@ class RewardNet(nn.Module):
         split_size = T // n_splits
         x_chunks = jnp.split(x, n_splits, axis=1)  # List[(B,Tp,D)]
 
-        # preallocated version
-        # out = jnp.empty((n_splits, B, split_size, 1))
-        # for i, x_chunk in enumerate(x_chunks):
-        #     x_chunk = self.layers(x_chunk)  # (B,Tp,D) -> (B,Tp,1)
-        #     out = out.at[i, :, :, :].set(x_chunk)
-
-        # list version
         out = [self.layers(x_chunk) for x_chunk in x_chunks]
         x = rearrange(out, "k B Tp D -> B (k Tp) D", k=n_splits, Tp=split_size)
 

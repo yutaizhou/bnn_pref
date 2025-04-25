@@ -5,6 +5,8 @@ import jax.numpy as jnp
 import jax.random as jr
 import numpy as np
 import torch
+from einops import rearrange
+from jaxtyping import Array, Float
 from tensordict import TensorDict
 
 from bnn_pref.data.pref_utils import QueryIndexAndResponses, create_pref_data
@@ -45,6 +47,9 @@ def make_prefcc_data(key, cfg) -> ArrayDict:
         tokeep=data_cfg["tokeep"],
     )
 
+    if data_cfg["segment_size"] != -1:
+        ds = jax.tree.map(lambda x: _segment_traj(x, data_cfg["segment_size"]), ds)
+
     # * split into train/test
     key, key_split = jr.split(key, 2)
     train_trajs, test_trajs = split_dataset(key_split, ds, demo_train_frac)
@@ -72,21 +77,16 @@ def make_prefcc_data(key, cfg) -> ArrayDict:
     }
 
 
-def process_prefcc_data(
-    td: TensorDict,
-    rank: bool = False,
-) -> ArrayDict:
+def process_prefcc_data(td: TensorDict, rank: bool = False) -> ArrayDict:
     """
     Tensordict only contains obs, act, rew, and are already sorted by returns.
     """
-    rewards = jnp.asarray(td["rewards"])  # (N, T)
-    returns = rewards.sum(axis=-1)  # (N,)
     ds = {
-        "observations": jnp.asarray(td["obs"]),
-        # "actions": jnp.asarray(td["actions"]),
-        "rewards": rewards,
-        "returns": returns,
+        "observations": jnp.asarray(td["obs"]),  # (N, T, D)
+        # "actions": jnp.asarray(td["actions"]),  # (N, T, A)
+        "rewards": jnp.asarray(td["rewards"]),  # (N, T)
     }
+    ds["returns"] = ds["rewards"].sum(axis=1)  # (N,)
 
     # * sort trajectories by return (ascending)
     if rank:
@@ -94,6 +94,25 @@ def process_prefcc_data(
         ds = jax.tree.map(lambda x: x[sorted_idxes], ds)
 
     return ds
+
+
+def _segment_traj(traj: Float[Array, "N T ..."], seg_size: int = 50):
+    """
+    traj: (N, T, ...)
+    return array of shape (N * n_chunks, seg_size, ...)
+        where n_chunks = T // seg_size
+        T must be divisible by seg_size
+    """
+    N, T, *_ = traj.shape
+    n_chunks = T // seg_size
+    splits = jnp.split(traj, n_chunks, axis=1)  # List[(N, chunk_size, ...)]
+    return rearrange(
+        splits,
+        "n_chunks N seg ... -> (N n_chunks) seg ...",
+        n_chunks=n_chunks,
+        N=N,
+        seg=seg_size,
+    )
 
 
 def split_dataset(

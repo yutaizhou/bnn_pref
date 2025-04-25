@@ -60,8 +60,8 @@ def main(cfg):
         data_dict = dataset_creators[cfg["task"]["ds_type"]](key_data, cfg)
 
         # * plot histogram of returns
-        train_returns = data_dict["train_trajs"]["returns"]
-        test_returns = data_dict["test_trajs"]["returns"]
+        train_trajs, test_trajs = data_dict["train_trajs"], data_dict["test_trajs"]
+        train_returns, test_returns = train_trajs["returns"], test_trajs["returns"]
         train_prefs, test_prefs = data_dict["train_prefs"], data_dict["test_prefs"]
         nt_train, nt_test = train_returns.shape[0], test_returns.shape[0]
         nq_train, nq_test = (
@@ -74,6 +74,9 @@ def main(cfg):
             f"{task:13}: train/test {nt_train} / {nt_test} trajs, {nq_train} / {nq_test} queries, {nq_train_mislabel} / {nq_train} train mislabels ({mistake_ratio:.2%})\n"
             f"  obs: {data_dict['train_trajs']['observations'].shape}"
         )
+
+        print(f"  Best traj return: {train_returns[-1]}")
+        print(f"  Best traj rewards: {train_trajs['rewards'][-1]}")
 
         # * plot histogram
         ax = axs[i]
