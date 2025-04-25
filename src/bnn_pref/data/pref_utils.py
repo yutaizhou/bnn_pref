@@ -113,7 +113,7 @@ def create_pref_data(
     use_delta: bool = False,  # skip by delta_rank or delta_reward
     delta_rank: int = 1,
     delta_reward: float = 0,
-    noisy_label: bool = False,  # noisy preferences
+    noisy_label: bool = False,  # if False, equivalent to beta=inf in BT Likelihood
     bt_beta: float = 1.0,
     mistake_prob: float = 0.0,  # label flip mistake (not rly used)
 ) -> QueryIndexAndResponses:
@@ -160,7 +160,7 @@ def create_pref_data(
                 if (ranked_returns[tj] - ranked_returns[ti]) < delta_reward:
                     continue
 
-        # * noisily rational prefs (beta=1 in the Bradley-Terry model)
+        # * noisily rational prefs (finite beta in the BT Likelihood)
         if noisy_label:
             prob = bt_likelihood(ranked_returns[ti], ranked_returns[tj], bt_beta)
 
