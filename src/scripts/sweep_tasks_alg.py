@@ -77,7 +77,6 @@ def main(cfg):
         # # "reacherEasy",
         # # "reacherHard",
         # "walkerWalk",
-        # # "ogbench",
     ]
     algs = ["ekf", "sgd"]
     is_als = [False, True]

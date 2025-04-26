@@ -56,7 +56,6 @@ def make_ogbench_data(key, cfg) -> ArrayDict:
 def process_ogbench(
     ds: ArrayDict,
     rank: bool = False,
-    thin: int = 1,
 ) -> ArrayDict:
     """
     observations (5000000, 29) -> (10000, 500, 29)
@@ -70,13 +69,10 @@ def process_ogbench(
     Number of trajectories: 10000
     """
     # * seperate trajectories via terminals field
-    starts = jnp.where(ds["terminals"])[0]
-    ends = jnp.concatenate([jnp.array([-1]), starts[:-1]])
-    separator_fn = lambda x: jnp.array([x[s + 1 : e + 1] for s, e in zip(ends, starts)])
+    ends = jnp.where(ds["terminals"])[0]
+    bgns = jnp.concatenate([jnp.array([-1]), ends[:-1]])
+    separator_fn = lambda x: jnp.array([x[s + 1 : e + 1] for s, e in zip(bgns, ends)])
     ds = jax.tree.map(separator_fn, ds)
-
-    # * thin out trajectories?
-    ds = jax.tree.map(lambda x: x[:, ::thin], ds)
 
     # * sum rewards to get returns
     ds["returns"] = ds["rewards"].sum(axis=-1)

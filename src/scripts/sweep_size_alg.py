@@ -49,7 +49,6 @@ def main(cfg):
         # "hopperHop",
         # "pendulum",
         # "walkerWalk",
-        # "ogbench",
     ]
     algs = ["ekf", "sgd"]
     networks = ["small", "medium", "large"]

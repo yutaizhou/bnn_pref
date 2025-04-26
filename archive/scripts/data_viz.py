@@ -28,19 +28,27 @@ def main(cfg):
     key = jr.key(seed)
 
     tasks = [
-        "reacher",
-        "lunar",
-        "cheetah",
-        "acrobot",
-        "ball",
-        "cartpoleSwing",
-        "cheetahDMC",
-        "hopperHop",
-        "pendulum",
-        "reacherEasy",
-        "reacherHard",
-        "walkerWalk",
-        # "ogbench",
+        # * Gym
+        # "reacher",
+        # "lunar",
+        # "cheetah",
+        # * Deepmind Control
+        # "acrobot",
+        # "ball",
+        # "cartpoleSwing",
+        # "cheetahDMC",
+        # "hopperHop",
+        # "pendulum",
+        # "reacherEasy",
+        # "reacherHard",
+        # "walkerWalk",
+        # * D4RL
+        "cheetahRand",
+        "cheetahMedExp",
+        "hopperRand",
+        "hopperMed",
+        "walkerRand",
+        "walkerMedReplay",
     ]
 
     fig, axs = plt.subplots(4, 4, figsize=(12, 8))  # 13 tasks total
@@ -75,8 +83,8 @@ def main(cfg):
             f"  obs: {data_dict['train_trajs']['observations'].shape}"
         )
 
-        print(f"  Best traj return: {train_returns[-1]}")
-        print(f"  Best traj rewards: {train_trajs['rewards'][-1]}")
+        # print(f"  Best traj return: {train_returns[-1]}")
+        # print(f"  Best traj rewards: {train_trajs['rewards'][-1]}")
 
         # * plot histogram
         ax = axs[i]

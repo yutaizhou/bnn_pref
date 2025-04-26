@@ -82,7 +82,6 @@ def main(cfg):
         # "reacherEasy",
         # "reacherHard",
         "walkerWalk",
-        # "ogbench",
     ]
     stats = nested_defaultdict()
 

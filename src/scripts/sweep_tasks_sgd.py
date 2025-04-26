@@ -108,7 +108,6 @@ def main(cfg):
         "reacherEasy",
         "reacherHard",
         "walkerWalk",
-        "ogbench",
     ]
     stats = defaultdict(lambda: defaultdict(dict))
     data_cfg = cfg["data"]

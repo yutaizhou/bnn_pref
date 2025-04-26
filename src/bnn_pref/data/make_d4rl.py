@@ -1,8 +1,15 @@
+import os
+import warnings
+
+os.environ["D4RL_SUPPRESS_IMPORT_ERROR"] = "1"
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", category=UserWarning)
+
+import d4rl
+import gym
 import jax
 import jax.numpy as jnp
 import jax.random as jr
-import torch
-from tensordict import TensorDict
 
 from bnn_pref.data.pref_utils import QueryIndexAndResponses, create_pref_data
 from bnn_pref.data.traj_utils import (
@@ -14,22 +21,25 @@ from bnn_pref.data.traj_utils import (
 from bnn_pref.utils.type import ArrayDict
 
 
-def make_prefcc_data(key, cfg) -> ArrayDict:
+def make_d4rl_data(key, cfg) -> ArrayDict:
+    """
+    d4rl returns dict with keys:
+        "observations": (N, T, D)
+        "actions": (N, T, A)
+        "next_observations": (N, T, D)
+        "rewards": (N, T)
+        "terminals": (N, T)
+    """
     task_cfg = cfg["task"]
     data_cfg = cfg["data"]
-    path = task_cfg["tensordict_path"]
     demo_train_frac = data_cfg["demo_train_frac"]
     nq_train, nq_test = data_cfg["nq_train"], data_cfg["nq_test"]
 
-    # * load trajectory data, sort by return
-    td = torch.load(path, weights_only=False)
-    ds = process_prefcc_data(td)
+    ds = gym.make(task_cfg["name"]).get_dataset()
+    ds = process_d4rl_data(ds)
 
     # * optionally normalize observations
-    if task_cfg["name"] not in [
-        "Reacher-v4",
-    ]:
-        ds.update({"observations": normalize_NTD(ds["observations"])})
+    ds.update({"observations": normalize_NTD(ds["observations"])})
 
     # * optional pruning
     key, key_rebalance = jr.split(key, 2)
@@ -72,23 +82,33 @@ def make_prefcc_data(key, cfg) -> ArrayDict:
     }
 
 
-def process_prefcc_data(td: TensorDict, rank: bool = False) -> ArrayDict:
+def process_d4rl_data(ds: ArrayDict, rank: bool = False) -> ArrayDict:
     """
-    Tensordict only contains obs, act, rew, and are already sorted by returns.
+    Convert d4rl dataset to ArrayDict
+    Inputs
+      observations: (n_samples, observation_dim)
+      actions: (n_samples, action_dim)
+      next_observations: (n_samples, observation_dim)
+      rewards: (n_samples,)
+      terminals: (n_samples,)
+      timeouts: (n_samples,)
     """
-    ds = {
-        "observations": jnp.asarray(td["obs"]),  # (N, T, D)
-        # "actions": jnp.asarray(td["actions"]),  # (N, T, A)
-        "rewards": jnp.asarray(td["rewards"]),  # (N, T)
+    # * seperate trajectories via timeouts field
+    ends = jnp.where(ds["timeouts"] | ds["terminals"])[0]
+    bgns = jnp.concatenate([jnp.array([-1]), ends[:-1]])
+    separator_fn = lambda x: jnp.array([x[s + 1 : e + 1] for s, e in zip(bgns, ends)])
+    ds = jax.tree.map(separator_fn, ds)
+
+    output = {
+        "observations": jnp.asarray(ds["observations"]),
+        # "actions": jnp.asarray(ds["actions"]),
+        "rewards": jnp.asarray(ds["rewards"]),
     }
-    ds["returns"] = ds["rewards"].sum(axis=1)  # (N,)
-
-    # * sort trajectories by return (ascending)
+    output["returns"] = output["rewards"].sum(axis=1)
     if rank:
-        sorted_idxes = jnp.argsort(ds["returns"])
-        ds = jax.tree.map(lambda x: x[sorted_idxes], ds)
-
-    return ds
+        sorted_idxes = jnp.argsort(output["returns"])
+        output = jax.tree.map(lambda x: x[sorted_idxes], output)
+    return output
 
 
 if __name__ == "__main__":
@@ -97,11 +117,12 @@ if __name__ == "__main__":
     from bnn_pref.utils.utils import get_random_seed
 
     with initialize(version_base=None, config_path="../../cfg"):
-        cfg = compose(config_name="config", overrides=["data=lunar"])
+        cfg = compose(config_name="config", overrides=["task=cheetah_medexp"])
 
     key = jr.key(get_random_seed())
-    output = make_prefcc_data(key, cfg)
-    train_data, test_data = output["train_prefs"], output["test_prefs"]
-    print(train_data.queries_Q2TD.shape, train_data.responses_Q1.shape)
-    print(test_data.queries_Q2TD.shape, test_data.responses_Q1.shape)
-    print()
+    data = make_d4rl_data(key, cfg)
+    train_trajs, test_trajs = data["train_trajs"], data["test_trajs"]
+    train_prefs, test_prefs = data["train_prefs"], data["test_prefs"]
+    import ipdb
+
+    ipdb.set_trace()

@@ -1,5 +1,5 @@
 import dataclasses
-from typing import Dict
+from typing import Dict, NamedTuple
 
 import flax
 import jax

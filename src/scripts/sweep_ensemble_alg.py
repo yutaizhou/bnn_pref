@@ -49,7 +49,6 @@ def main(cfg):
         # "hopperHop",
         # "pendulum",
         # "walkerWalk",
-        # "ogbench",
     ]
     algs = ["ekf", "sgd"]
     Ms = [3, 8, 15, 30, 50, 100, 150, 200]

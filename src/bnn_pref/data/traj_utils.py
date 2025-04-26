@@ -1,6 +1,10 @@
+from typing import Tuple
+
 import jax
 import jax.numpy as jnp
 import jax.random as jr
+from einops import rearrange
+from jaxtyping import Array, Float
 
 from bnn_pref.utils.type import ArrayDict
 
@@ -17,6 +21,62 @@ tasks_to_rebalance = [
     "reacher-hard-v0",
     "walker-walk-v0",
 ]
+
+
+def split_dataset(
+    key,
+    ds: ArrayDict,
+    train_frac: float = 0.8,
+) -> Tuple[ArrayDict, ArrayDict]:
+    """
+    take (optionally ranked) ds, split into train/test, each sorted by return (ascending)
+
+    ds = {
+        "observations": (N, T, D),
+        "actions": (N, T, A),
+        "rewards": (N, T),
+        "returns": (N,),
+    }
+    """
+    n = len(ds["returns"])
+    idxs = jr.permutation(key, n)
+    n_train = int(n * train_frac)
+    train_idxs, test_idxs = idxs[:n_train], idxs[n_train:]
+    train_ds = jax.tree.map(lambda x: x[train_idxs], ds)
+    test_ds = jax.tree.map(lambda x: x[test_idxs], ds)
+
+    # sort by return (ascending)
+    train_sorted_idxes = jnp.argsort(train_ds["returns"])
+    test_sorted_idxes = jnp.argsort(test_ds["returns"])
+    train_ds = jax.tree.map(lambda x: x[train_sorted_idxes], train_ds)
+    test_ds = jax.tree.map(lambda x: x[test_sorted_idxes], test_ds)
+
+    return train_ds, test_ds
+
+
+def normalize_NTD(x: Float[Array, "N T D"]) -> Float[Array, "N T D"]:
+    mean = jnp.mean(x, axis=(0, 1), keepdims=True)
+    std = jnp.std(x, axis=(0, 1), keepdims=True)
+    return (x - mean) / std
+
+
+def segment_traj(traj: Float[Array, "N T ..."], seg_size: int = 50):
+    """
+    traj: (N, T, ...)
+    return array of shape (N * n_chunks, seg_size, ...)
+        where n_chunks = T // seg_size
+        T must be divisible by seg_size
+    """
+    N, T, *_ = traj.shape
+    n_chunks = T // seg_size
+    splits = jnp.split(traj, n_chunks, axis=1)  # List[(N, chunk_size, ...)]
+    return rearrange(
+        splits,
+        "n_chunks N seg ... -> (N n_chunks) seg ...",
+        n_chunks=n_chunks,
+        N=N,
+        seg=seg_size,
+    )
 
 
 def rebalance(
