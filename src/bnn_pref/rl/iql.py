@@ -6,6 +6,8 @@ from datetime import datetime
 from functools import partial
 
 os.environ["D4RL_SUPPRESS_IMPORT_ERROR"] = "1"
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", category=UserWarning)
 
 import d4rl
 import distrax

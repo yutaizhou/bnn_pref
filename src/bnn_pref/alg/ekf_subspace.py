@@ -1,6 +1,7 @@
 from functools import partial
 from typing import Union
 
+import distrax
 import jax
 import jax.numpy as jnp
 import jax.random as jr
@@ -14,7 +15,6 @@ from flax.training.train_state import TrainState
 from jax.flatten_util import ravel_pytree
 from jaxtyping import Array, Float, Int
 from sklearn.decomposition import PCA
-from tensorflow_probability.substrates import jax as tfp
 
 from bnn_pref.alg.agent_utils import (
     Agent,
@@ -27,8 +27,6 @@ from bnn_pref.alg.agent_utils import (
 from bnn_pref.data.data_env import PreferenceEnv
 from bnn_pref.utils.network import count_params
 from bnn_pref.utils.type import CARL, unpackable_dataclass
-
-tfd = tfp.distributions
 
 
 @unpackable_dataclass
@@ -323,7 +321,7 @@ class SubspaceEKF(Agent):
         # * sample M (subspace) models from posterior
         M = self.n_models  # number of models to sample
         mean, cov = bel.mean, bel.cov
-        distr = tfd.MultivariateNormalFullCovariance(mean, cov)
+        distr = distrax.MultivariateNormalFullCovariance(mean, cov)
         key, key_sample = jr.split(key, 2)
         ss_params = distr.sample(seed=key_sample, sample_shape=(M,))
 
@@ -389,7 +387,7 @@ class SubspaceEKF(Agent):
         # * sample model parameters
         M = self.n_models
         mean, cov, t = bel
-        dist = tfd.MultivariateNormalFullCovariance(mean, cov)
+        dist = distrax.MultivariateNormalFullCovariance(mean, cov)
         key, key_sample = jr.split(key, 2)
         ss_params = dist.sample(seed=key_sample, sample_shape=(M,))
 

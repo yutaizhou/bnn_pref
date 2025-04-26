@@ -1,14 +1,12 @@
 from datetime import date
 
 import blackjax
+import distrax
 import jax
 import jax.numpy as jnp
 import jax.scipy.stats as stats
 import matplotlib.pyplot as plt
 import numpy as np
-from tensorflow_probability.substrates import jax as tfp
-
-tfd = tfp.distributions
 
 
 class BimodalGaussian:
@@ -25,9 +23,9 @@ class BimodalGaussian:
         self.std = jnp.sqrt(variance)
 
         # Create TFP distribution using MixtureSameFamily
-        self._dist = tfd.MixtureSameFamily(
-            mixture_distribution=tfd.Categorical(probs=self.weights),
-            components_distribution=tfd.Normal(
+        self._dist = distrax.MixtureSameFamily(
+            mixture_distribution=distrax.Categorical(probs=self.weights),
+            components_distribution=distrax.Normal(
                 loc=self.means,  # Shape [2]
                 scale=self.std,  # Shared scalar -> broadcast to [2]
             ),
