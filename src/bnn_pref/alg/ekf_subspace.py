@@ -34,6 +34,8 @@ class EKFBeliefState:
     mean: Float[Array, "system_dim"]
     cov: Float[Array, "system_dim system_dim"]
     t: int
+    proj_matrix: Float[Array, "sub_dim full_dim"]
+    offset_ts: TrainState
 
 
 class SubspaceEKF(Agent):
@@ -154,7 +156,7 @@ class SubspaceEKF(Agent):
         self.param_count = count_params(initial_params)
         self.subspace_param_count = sub_dim
 
-        params_full_init, reconstruct_tree_params = ravel_pytree(warm_ts.params)
+        params_offset, params_unravel_fn = ravel_pytree(warm_ts.params)
         self.warmed_params = warm_ts.params
 
         def sub2full_predict_return(
@@ -162,9 +164,9 @@ class SubspaceEKF(Agent):
             traj: Float[Array, "T D"],
         ) -> Float[Array, "1"]:
             params_full = subspace2full_params(
-                params_subspace, proj_matrix, params_full_init
+                params_subspace, proj_matrix, params_offset
             )
-            params = reconstruct_tree_params(params_full)
+            params = params_unravel_fn(params_full)
             outputs = self.model.apply(
                 {"params": params},
                 rearrange(traj, "T D -> 1 T D"),
@@ -181,9 +183,9 @@ class SubspaceEKF(Agent):
             to get logits for both trajectories
             """
             params_full = subspace2full_params(
-                params_subspace, proj_matrix, params_full_init
+                params_subspace, proj_matrix, params_offset
             )
-            params = reconstruct_tree_params(params_full)
+            params = params_unravel_fn(params_full)
 
             inputs = rearrange(inputs, "K T D -> 1 K T D", K=2)
             outputs = self.model.apply({"params": params}, inputs)
@@ -261,7 +263,13 @@ class SubspaceEKF(Agent):
         #     emission_cov_function=emission_cov_cmgf,
         # )
 
-        bel = EKFBeliefState(mean=init_mean, cov=init_cov, t=0)
+        bel = EKFBeliefState(
+            mean=init_mean,
+            cov=init_cov,
+            t=0,
+            proj_matrix=proj_matrix,
+            offset_ts=warm_ts,
+        )
         return bel
 
     @partial(jax.jit, static_argnames=["self"])
@@ -270,7 +278,7 @@ class SubspaceEKF(Agent):
         bel: EKFBeliefState,
         batch: CARL,
     ) -> EKFBeliefState:
-        prior_mean, prior_cov, t = bel
+        prior_mean, prior_cov, t = bel.mean, bel.cov, bel.t
         context, *_, label = batch
 
         inputs = rearrange(context, "K T D -> 1 (K T D)", K=2)
@@ -304,7 +312,8 @@ class SubspaceEKF(Agent):
 
         posterior_mean = posterior.filtered_means[-1]
         posterior_cov = posterior.filtered_covariances[-1]
-        bel = EKFBeliefState(mean=posterior_mean, cov=posterior_cov, t=t + 1)
+        # bel = EKFBeliefState(mean=posterior_mean, cov=posterior_cov, t=t + 1)
+        bel = bel.replace(mean=posterior_mean, cov=posterior_cov, t=t + 1)
         return bel
 
     @partial(jax.jit, static_argnames=["self", "env"])
@@ -320,8 +329,7 @@ class SubspaceEKF(Agent):
         """
         # * sample M (subspace) models from posterior
         M = self.n_models  # number of models to sample
-        mean, cov = bel.mean, bel.cov
-        distr = distrax.MultivariateNormalFullCovariance(mean, cov)
+        distr = distrax.MultivariateNormalFullCovariance(bel.mean, bel.cov)
         key, key_sample = jr.split(key, 2)
         ss_params = distr.sample(seed=key_sample, sample_shape=(M,))
 
@@ -386,8 +394,7 @@ class SubspaceEKF(Agent):
         """sample params from posterior, then compute predictive"""
         # * sample model parameters
         M = self.n_models
-        mean, cov, t = bel
-        dist = distrax.MultivariateNormalFullCovariance(mean, cov)
+        dist = distrax.MultivariateNormalFullCovariance(bel.mean, bel.cov)
         key, key_sample = jr.split(key, 2)
         ss_params = dist.sample(seed=key_sample, sample_shape=(M,))
 

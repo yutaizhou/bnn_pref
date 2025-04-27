@@ -8,7 +8,10 @@ from jaxtyping import Array, Num
 
 from bnn_pref.utils.type import D
 
-nested_defaultdict = lambda: defaultdict(nested_defaultdict)
+
+def nested_defaultdict():
+    """module level defaultdict of defaultdicts, pickleable"""
+    return defaultdict(nested_defaultdict)
 
 
 def get_random_seed() -> int:

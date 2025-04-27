@@ -1,5 +1,6 @@
 import itertools as it
 import os
+import pickle as pkl
 from functools import partial
 from typing import Tuple
 
@@ -13,6 +14,8 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 import matplotlib.pyplot as plt
+import orbax
+from flax.training import orbax_utils
 from hydra.core.hydra_config import HydraConfig
 
 from bnn_pref.data import dataset_creators
@@ -66,20 +69,20 @@ def main(cfg):
     }
     tasks = [
         # * gym
-        # "reacher",
-        # "lunar",
-        # "cheetah",
-        # * Deepmind Control
+        "reacher",
+        "lunar",
+        "cheetah",
+        # # * Deepmind Control
         "acrobot",
-        # "ball",
-        # "cartpoleSwing",
-        # "cheetahDMC",
-        # "hopperHop",
-        # "pendulum",
-        # # "reacherEasy",
-        # # "reacherHard",
-        # "walkerWalk",
-        # * D4RL
+        "ball",
+        "cartpoleSwing",
+        "cheetahDMC",
+        "hopperHop",
+        "pendulum",
+        "reacherEasy",
+        "reacherHard",
+        "walkerWalk",
+        # # * D4RL
         "cheetahRand",
         "cheetahMedExp",
         "hopperRand",
@@ -178,27 +181,28 @@ def main(cfg):
             # (n_seeds, 1 + nq_update)
             res = {
                 "task": task,
-                "active": is_al,
+                "is_active": is_al,
                 "nq_train": nq_train,
                 "nq_test": nq_test,
                 "duration": duration,
                 # * logpdf
                 "test_logpdf_all": res_m["test_logpdf"],
-                "test_logpdf_final": MeanStd(res_m["test_logpdf"][:, -1]),
+                "test_logpdf_final": MeanStd(res_m["test_logpdf"][:, -1]).get_stats(),
                 # * acc
                 "test_acc_all": res_m["test_acc"],
-                "test_acc_final": MeanStd(res_m["test_acc"][:, -1]),
+                "test_acc_final": MeanStd(res_m["test_acc"][:, -1]).get_stats(),
+                # * bel_trace
+                "model": res_m["model"],
             }
 
             stats[task][alg][is_al] = res
-
             test_logpdf_all = res_m["test_logpdf"]
             nans = ~jnp.isfinite(test_logpdf_all)
 
             print(
                 f"  {alg} active={str(is_al):5}, "
-                f"acc: {res['test_acc_final'].mean:.2%} ± {res['test_acc_final'].std:.2%}, "
-                f"logpdf: {res['test_logpdf_final'].mean:.2f} ± {res['test_logpdf_final'].std:.2f}; "
+                f"acc: {res['test_acc_final']['mean']:.2%} ± {res['test_acc_final']['std']:.2%}, "
+                f"logpdf: {res['test_logpdf_final']['mean']:.2f} ± {res['test_logpdf_final']['std']:.2f}; "
                 f"{get_param_count_msg(cfg, alg, res_m)}, "
                 f"({res['duration']:.1f}s)"
             )
@@ -207,8 +211,14 @@ def main(cfg):
     total_duration = (datetime.now() - total_duration).total_seconds()
     print(f"Total duration: {total_duration:.1f}s")
 
+    orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
+    save_args = orbax_utils.save_args_from_target(stats)
+    orbax_checkpointer.save(
+        f"{cfg.paths.output_dir}/orbax_stats", stats, save_args=save_args
+    )
+
     # * plot logpdf learning curve
-    fig, axs = plt.subplots(3, 4, figsize=(12, 8))
+    fig, axs = plt.subplots(5, 4, figsize=(12, 10))
     axs = axs.flatten()
 
     def get_label(alg: str, is_al: bool) -> str:
@@ -263,7 +273,7 @@ def main(cfg):
     plt.savefig(f"{cfg.paths.output_dir}/logpdf_vs_queries.png")
 
     # * plot acc eval curve
-    fig, axs = plt.subplots(3, 4, figsize=(12, 8))
+    fig, axs = plt.subplots(5, 4, figsize=(12, 10))
     axs = axs.flatten()
     for i, task in enumerate(tasks):
         ax = axs[i]
@@ -298,7 +308,7 @@ def main(cfg):
     plt.savefig(f"{cfg.paths.output_dir}/acc_vs_queries.png")
 
     # * bar plot duration for each task
-    fig, axs = plt.subplots(3, 4, figsize=(12, 8))
+    fig, axs = plt.subplots(5, 4, figsize=(12, 10))
     axs = axs.flatten()
 
     # Update legend elements to match logpdf plot style

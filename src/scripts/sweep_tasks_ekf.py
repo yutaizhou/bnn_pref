@@ -14,7 +14,7 @@ import jax.random as jr
 import matplotlib.pyplot as plt
 from hydra.core.hydra_config import HydraConfig
 
-from bnn_pref.alg.ekf_subspace import SubspaceEKF
+from bnn_pref.alg.ekf_subspace import EKFBeliefState, SubspaceEKF
 from bnn_pref.alg.trainer import alg_pipeline
 from bnn_pref.data import dataset_creators
 from bnn_pref.data.data_env import PreferenceEnv
@@ -37,10 +37,9 @@ def run_ekf(key, cfg, data_dict, env):
     bel_trace, bandit = alg_pipeline(key_pipe, SubspaceEKF, env, ekf_cfg, data_cfg)
 
     # * compute metrics
-    def eval_bel(_, bel):
+    def eval_bel(_, bel: EKFBeliefState):
         # * sample model parameters
-        *_, t = bel
-        key = jr.fold_in(key_bma, t)
+        key = jr.fold_in(key_bma, bel.t)
         prob_Q2 = bandit.compute_predictive(
             key, bel, test_trajs_obs, test_prefs.queries_Q2
         )
@@ -59,10 +58,12 @@ def run_ekf(key, cfg, data_dict, env):
 
     *_, al_results = jax.lax.scan(eval_bel, init=(), xs=bel_trace)
 
+    model = jax.tree.map(lambda x: x[-1], bel_trace)  # get only the final model
     results = {
         **al_results,  # (n_seeds, nq_update)
         "param_count": bandit.param_count,
         "subspace_param_count": bandit.subspace_param_count,
+        "model": model,
     }
 
     return results

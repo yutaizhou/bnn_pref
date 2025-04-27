@@ -56,10 +56,12 @@ def run_ensemble(key, cfg, data_dict, env):
 
     *_, al_results = jax.lax.scan(eval_bel, init=(), xs=ts_trace)
 
+    model = jax.tree.map(lambda x: x[-1], ts_trace)  # get only the final model
     results = {
         **al_results,  # (n_seeds, 1 + nq_update)
         "param_count": bandit.param_count,
         "ensemble_param_count": bandit.ensemble_param_count,
+        "model": model,
     }
     return results
 

@@ -24,6 +24,9 @@ class MeanStd:
         self.mean = self.array.mean(axis=0)
         self.std = self.array.std(axis=0)
 
+    def get_stats(self):
+        return {"mean": self.mean, "std": self.std}
+
 
 def compute_reward_nn(fn: Callable, demos_NTD: NTD):
     """
