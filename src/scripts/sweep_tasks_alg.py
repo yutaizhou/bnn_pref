@@ -65,10 +65,12 @@ def main(cfg):
         "sgd": run_ensemble,
     }
     tasks = [
-        "reacher",
+        # * gym
+        # "reacher",
         # "lunar",
         # "cheetah",
-        # "acrobot",
+        # * Deepmind Control
+        "acrobot",
         # "ball",
         # "cartpoleSwing",
         # "cheetahDMC",
@@ -77,6 +79,13 @@ def main(cfg):
         # # "reacherEasy",
         # # "reacherHard",
         # "walkerWalk",
+        # * D4RL
+        "cheetahRand",
+        "cheetahMedExp",
+        "hopperRand",
+        "hopperMed",
+        "walkerRand",
+        "walkerMedReplay",
     ]
     algs = ["ekf", "sgd"]
     is_als = [False, True]

@@ -12,7 +12,8 @@ line-length = 88
 # F722: multidimensional array annotation (jaxtyping)
 # F821: single-dimensional array annotation (jaxtyping)
 # E731: do not assign a lambda function to a variable
+# E402: module level import not at top of file
 [tool.ruff.lint]
 extend-select = ["I"] 
 unfixable = ["F401", "F841"] 
-ignore = ["F722", "F821", "E731"]
+ignore = ["F722", "F821", "E731", "E402"]

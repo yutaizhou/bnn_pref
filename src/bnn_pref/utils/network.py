@@ -63,17 +63,17 @@ class RewardNet(nn.Module):
         return logits
 
     def predict_traj_rewards(self, x: BTD) -> BT:
-        # * split T n_splits chunks, avoid OOM
-        B, T, D = x.shape
-        n_splits = 5
-        split_size = T // n_splits
-        x_chunks = jnp.split(x, n_splits, axis=1)  # List[(B,Tp,D)]
+        # * split T into `n_splits` chunks, avoid OOM
+        # B, T, D = x.shape
+        # n_splits = 5
+        # split_size = T // n_splits
+        # x_chunks = jnp.split(x, n_splits, axis=1)  # List[(B,Tp,D)]
 
-        out = [self.layers(x_chunk) for x_chunk in x_chunks]
-        x = rearrange(out, "k B Tp D -> B (k Tp) D", k=n_splits, Tp=split_size)
+        # out = [self.layers(x_chunk) for x_chunk in x_chunks]
+        # x = rearrange(out, "k B Tp D -> B (k Tp) D", k=n_splits, Tp=split_size)
 
-        # * original, batch MLP over T dimension
-        # x = self.layers(x)  # (B,T,D) -> (B,T,1)
+        # * batch MLP over T dimension
+        x = self.layers(x)  # (B,T,D) -> (B,T,1)
 
         # todo: stability trick
         # if T > 1:

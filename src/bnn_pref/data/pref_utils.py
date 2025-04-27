@@ -82,7 +82,7 @@ def bt_likelihood(r1: float, r2: float, beta: float = 1.0) -> float:
     return jnp.exp(jax.nn.log_softmax(logits))[1]
 
 
-def random_query_iterator_sample(key, n_trajs: int, n_queries: int):
+def random_query_iter_sample(key, n_trajs: int, n_queries: int):
     """
     Note this does not return ti=tj, and might return duplicates
     """
@@ -93,7 +93,7 @@ def random_query_iterator_sample(key, n_trajs: int, n_queries: int):
         yield ti, tj
 
 
-def random_query_iterator_perm(key, n_trajs: int, n_queries: int):
+def random_query_iter_perm(key, n_trajs: int, n_queries: int):
     _, key_perm = jr.split(key)
 
     queries_gen = it.combinations(range(n_trajs), 2)
@@ -143,8 +143,8 @@ def create_pref_data(
     labels = []
     n_mislabels = 0
 
-    # for ti, tj in random_query_iterator_sample(key, n_demos, n_queries):
-    for ti, tj in random_query_iterator_perm(key, n_demos, n_queries):
+    iterator = random_query_iter_perm if n_demos <= 1000 else random_query_iter_sample
+    for ti, tj in iterator(key, n_demos, n_queries):
         label = 1  # label=1 means tj > ti
 
         # * skip if both are bad

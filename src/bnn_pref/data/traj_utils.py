@@ -4,7 +4,7 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 from einops import rearrange
-from jaxtyping import Array, Float
+from jaxtyping import Array, Bool, Float
 
 from bnn_pref.utils.type import ArrayDict
 
@@ -60,23 +60,147 @@ def normalize_NTD(x: Float[Array, "N T D"]) -> Float[Array, "N T D"]:
     return (x - mean) / std
 
 
-def segment_traj(traj: Float[Array, "N T ..."], seg_size: int = 50):
+def segment_traj(
+    traj: Float[Array, "N T ..."],
+    segment_size: int = 50,
+):
     """
     traj: (N, T, ...)
     return array of shape (N * n_chunks, seg_size, ...)
         where n_chunks = T // seg_size
         T must be divisible by seg_size
     """
-    N, T, *_ = traj.shape
-    n_chunks = T // seg_size
+    assert traj.ndim >= 2
+    traj = jnp.atleast_3d(traj)  # for rewards (N, T) -> (N, T, 1)
+    N, T, *D = traj.shape
+    assert T >= segment_size > 0, f"{segment_size=} must be <= {T=} and positive"
+    assert T % segment_size == 0, f"{T=} must be divisible by {segment_size=}"
+    n_chunks = T // segment_size
     splits = jnp.split(traj, n_chunks, axis=1)  # List[(N, chunk_size, ...)]
     return rearrange(
         splits,
         "n_chunks N seg ... -> (N n_chunks) seg ...",
         n_chunks=n_chunks,
         N=N,
-        seg=seg_size,
+        seg=segment_size,
     )
+
+
+def segment_traj_masked(
+    traj: Float[Array, "N T ..."],
+    mask: Bool[Array, "N T"],
+    segment_size: int = 50,
+):
+    """
+    Segment trajectory into non-overlapping chunks of size segment_size.
+    The last segment for each trajectory will be anchored at its last valid timestep.
+
+    Args:
+        traj: (N, T, ...) trajectory array, may be padded
+        mask: (N, T) boolean mask indicating valid timesteps
+        segment_size: size of each chunk
+
+    Returns:
+        segments_STD: (S, segment_size, ...) array of segments, where S is the total
+                     number of valid segments across all trajectories
+    """
+    assert traj.ndim >= 2, "traj must have at least 2 dimensions"
+    traj = jnp.atleast_3d(traj)  # for rewards (N, T) -> (N, T, 1)
+    N, T, *D = traj.shape
+    assert T >= segment_size > 0, f"{segment_size=} must be <= {T=} and positive"
+
+    # Calculate number of full non-overlapping segments per trajectory
+    n_full_segments = T // segment_size
+
+    # Create segment start indices for non-overlapping segments [0, sz, 2*sz, ...]
+    full_segment_bgns = jnp.arange(n_full_segments) * segment_size
+
+    # Initialize lists to store valid segments and their masks
+    all_valid_segments = []
+
+    # Process each trajectory separately
+    for i in range(N):
+        traj_i = traj[i]  # (T, ...)
+        mask_i = mask[i]  # (T,)
+
+        # Find last valid index for this trajectory
+        last_valid_idx = jnp.max(jnp.where(mask_i, jnp.arange(T), -1))
+
+        # Calculate last segment bgn for this trajectory
+        # Ensure it captures the last valid timestep
+        last_segment_bgn = jnp.maximum(0, last_valid_idx - segment_size + 1)
+
+        # Determine segment beginnings for this trajectory
+        if last_segment_bgn > full_segment_bgns[-1]:
+            # Add last segment if it's beyond the full segments
+            segment_bgns = jnp.concatenate(
+                [full_segment_bgns, jnp.array([last_segment_bgn])]
+            )
+        else:
+            segment_bgns = full_segment_bgns
+
+        # Create indices for all segments in this trajectory
+        segment_indices = segment_bgns[:, None] + jnp.arange(segment_size)[None, :]
+
+        # Extract segments
+        segments = traj_i[segment_indices]  # (n_segments, segment_size, ...)
+
+        # Check which segments are fully valid
+        segment_masks = jnp.all(mask_i[segment_indices], axis=1)  # (n_segments,)
+
+        # Only keep valid segments
+        valid_segments = segments[segment_masks]
+
+        if len(valid_segments) > 0:
+            all_valid_segments.append(valid_segments)
+
+    # Combine valid segments from all trajectories
+    if all_valid_segments:
+        valid_segments_STD = jnp.concatenate(all_valid_segments, axis=0)
+    else:
+        # Return empty array with correct shape if no valid segments
+        valid_segments_STD = jnp.zeros((0, segment_size, *D))
+
+    return valid_segments_STD
+
+
+# def compute_pad_size(T: int, segment_size: int) -> int:
+#     """
+#     calculate pad_width required to pad up to next divisor of segment_size. Good for jnp.split
+#     T % segment_size == 0. e.g. compute_pad_size(138, 50) -> 12
+#     """
+#     assert T > segment_size > 0, f"{segment_size=} must be <= {T=} and positive"
+#     return (T + segment_size - 1) // segment_size * segment_size - T
+
+
+# def segment_traj_masked(
+#     traj: Float[Array, "N T ..."],
+#     mask: Bool[Array, "N T"],
+#     segment_size: int = 50,
+# ):
+#     """
+#     segment traj into chunks of size segment_size, but only include chunks where mask is True
+
+#     traj: (N, T, ...) may already be padded
+#     mask: (N, T) indicates valid (unpadded) steps in traj
+#     """
+#     # * pad traj & mask to ensure T is divisible by segment_size
+#     N, T, *_ = traj.shape
+#     assert T > segment_size > 0, f"{segment_size=} must be <= {T=} and positive"
+#     pad_sz = compute_pad_size(T, segment_size)
+#     traj = jnp.pad(traj, ((0, 0), (0, pad_sz), *((0, 0) for _ in range(traj.ndim - 2))))
+#     mask = jnp.pad(mask, ((0, 0), (0, pad_sz)))
+#     assert traj.shape[1] % segment_size == 0, "T must be divisible by segment_size"
+
+#     # * split into chunks
+#     n_chunks = traj.shape[1] // segment_size
+#     splits = jnp.split(traj, n_chunks, axis=1)  # List[(N, chunk_size, ...)]
+#     return rearrange(
+#         splits,
+#         "n_chunks N seg ... -> (N n_chunks) seg ...",
+#         n_chunks=n_chunks,
+#         N=N,
+#     )
 
 
 def rebalance(
@@ -89,7 +213,7 @@ def rebalance(
 ):
     """
     For tasks with skewed return distributions, prune trajectories (by bins) to maintain
-    a more balanced distribution of returns. Then subsample to keep only `tokeep` trajectories.
+    a more balanced distribution of returns. Then uniformly subsample to keep only `tokeep` trajectories.
     """
 
     return_bins = jnp.histogram_bin_edges(ds["returns"], bins=n_bins)
@@ -99,7 +223,7 @@ def rebalance(
         key, key_prune = jr.split(key, 2)
         ds = prune_bin(key_prune, ds, return_bins, max_count_per_bin)
 
-    # subsample to keep only `tokeep` trajectories
+    # uniformly subsample to keep only `tokeep` trajectories
     key, key_subsample = jr.split(key, 2)
     ds = subsample(key_subsample, ds, tokeep)
 

@@ -29,11 +29,11 @@ def main(cfg):
 
     tasks = [
         # * Gym
-        # "reacher",
-        # "lunar",
+        "reacher",
+        "lunar",
         # "cheetah",
         # * Deepmind Control
-        # "acrobot",
+        "acrobot",
         # "ball",
         # "cartpoleSwing",
         # "cheetahDMC",
@@ -44,11 +44,11 @@ def main(cfg):
         # "walkerWalk",
         # * D4RL
         "cheetahRand",
-        "cheetahMedExp",
-        "hopperRand",
-        "hopperMed",
-        "walkerRand",
-        "walkerMedReplay",
+        # "cheetahMedExp",
+        # "hopperRand",
+        # "hopperMed",
+        # "walkerRand",
+        # "walkerMedReplay",
     ]
 
     fig, axs = plt.subplots(4, 4, figsize=(12, 8))  # 13 tasks total
@@ -80,7 +80,8 @@ def main(cfg):
         mistake_ratio = nq_train_mislabel / nq_train
         print(
             f"{task:13}: train/test {nt_train} / {nt_test} trajs, {nq_train} / {nq_test} queries, {nq_train_mislabel} / {nq_train} train mislabels ({mistake_ratio:.2%})\n"
-            f"  obs: {data_dict['train_trajs']['observations'].shape}"
+            f"  train traj obs: {data_dict['train_trajs']['observations'].shape}"
+            f"\n"
         )
 
         # print(f"  Best traj return: {train_returns[-1]}")
@@ -90,7 +91,7 @@ def main(cfg):
         ax = axs[i]
         ax.hist(train_returns, bins=n_bins, edgecolor="black")
         ax.hist(test_returns, bins=n_bins, edgecolor="black")
-        ax.set_title(f"{task} ({nt_train} / {nt_test} trajs)")
+        ax.set_title(f"{task} ({nt_train} / {nt_test} trajs)", fontsize=8)
         ax.set_xlabel("Return")
         ax.set_ylabel("Frequency")
 

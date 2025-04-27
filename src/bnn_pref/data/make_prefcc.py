@@ -2,6 +2,7 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 import torch
+from einops import rearrange
 from tensordict import TensorDict
 
 from bnn_pref.data.pref_utils import QueryIndexAndResponses, create_pref_data
@@ -20,34 +21,45 @@ def make_prefcc_data(key, cfg) -> ArrayDict:
     path = task_cfg["tensordict_path"]
     demo_train_frac = data_cfg["demo_train_frac"]
     nq_train, nq_test = data_cfg["nq_train"], data_cfg["nq_test"]
+    sz = data_cfg["segment_size"]
 
     # * load trajectory data, sort by return
     td = torch.load(path, weights_only=False)
-    ds = process_prefcc_data(td)
+    if sz > td.shape[1]:
+        sz = td.shape[1]
+
+    trajs = process_prefcc_data(td)
 
     # * optionally normalize observations
     if task_cfg["name"] not in [
         "Reacher-v4",
     ]:
-        ds.update({"observations": normalize_NTD(ds["observations"])})
+        trajs.update({"observations": normalize_NTD(trajs["observations"])})
 
     # * optional pruning
     key, key_rebalance = jr.split(key, 2)
-    ds = rebalance(
+    trajs = rebalance(
         key_rebalance,
         task_cfg["name"],
-        ds=ds,
+        ds=trajs,
         n_bins=data_cfg["n_bins"],
         max_count_per_bin=data_cfg["max_count_per_bin"],
         tokeep=data_cfg["tokeep"],
     )
 
-    if data_cfg["segment_size"] != -1:
-        ds = jax.tree.map(lambda x: segment_traj(x, data_cfg["segment_size"]), ds)
+    if sz != -1:
+        # print(
+        #     f"  Whole trajs: {trajs['observations'].shape} (after short length filtering and distribution pruning)"
+        # )
+        seg_fn = lambda x: segment_traj(x, sz)
+        trajs["observations"] = seg_fn(trajs["observations"])
+        trajs["rewards"] = rearrange(seg_fn(trajs["rewards"]), "S sz 1-> S sz")
+        trajs["returns"] = trajs["rewards"].sum(1)
+        # print(f"  Segments:    {trajs['observations'].shape}")
 
     # * split into train/test
     key, key_split = jr.split(key, 2)
-    train_trajs, test_trajs = split_dataset(key_split, ds, demo_train_frac)
+    train_trajs, test_trajs = split_dataset(key_split, trajs, demo_train_frac)
 
     # * turn train/test trajs into preference data
     key, key_train, key_test = jr.split(key, 3)
