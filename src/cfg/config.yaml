@@ -1,11 +1,12 @@
 defaults:
 - _self_
 - task: synthetic
+- data: base
 - network: small
 - mcmc: mh
 - ekf: ekf
 - sgd: sgd
-- data: base
+- rl: iql
 - optional local: default # specifies project dir & wandb login, goes after wandb
 # - optional run: debug
 - hydra: default

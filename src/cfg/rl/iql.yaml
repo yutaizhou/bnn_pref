@@ -1,0 +1,27 @@
+name: iql
+use_rm: False # use pref-learned reward model
+# * training
+n_updates: 1_000_000
+eval_interval: 25_000 
+n_eval_workers: 4
+n_eval_episodes: 10
+
+# * optimization
+lr: 3e-4
+batch_size: 256
+gamma: 0.99
+polyak_step_size: 0.005
+
+# * IQL 
+beta: 3.0
+iql_tau: 0.7
+exp_adv_clip: 100.0
+
+# * logging
+use_wandb: False
+wandb_project: "unifloral"
+wandb_team: "flair"
+wandb_group: "debug"
+
+
+

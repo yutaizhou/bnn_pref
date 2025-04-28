@@ -69,19 +69,17 @@ def main(cfg):
     }
     tasks = [
         # * gym
-        "reacher",
-        "lunar",
-        "cheetah",
+        # "reacher",
+        # "lunar",
+        # "cheetah",
         # # * Deepmind Control
-        "acrobot",
-        "ball",
-        "cartpoleSwing",
-        "cheetahDMC",
-        "hopperHop",
-        "pendulum",
-        "reacherEasy",
-        "reacherHard",
-        "walkerWalk",
+        # "acrobot",
+        # "ball",
+        # "cartpoleSwing",
+        # "cheetahDMC",
+        # "hopperHop",
+        # "pendulum",
+        # "walkerWalk",
         # # * D4RL
         "cheetahRand",
         "cheetahMedExp",

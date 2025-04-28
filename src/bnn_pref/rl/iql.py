@@ -1,9 +1,9 @@
 import os
 import warnings
-from collections import namedtuple
-from dataclasses import asdict, dataclass
+from dataclasses import asdict
 from datetime import datetime
 from functools import partial
+from typing import Callable, List, NamedTuple, Tuple
 
 os.environ["D4RL_SUPPRESS_IMPORT_ERROR"] = "1"
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -13,57 +13,34 @@ import d4rl
 import distrax
 import flax.linen as nn
 import gym
+import hydra
 import jax
 import jax.numpy as jnp
+import jax.random as jr
 import numpy as np
 import optax
-import tyro
 import wandb
 from flax.training.train_state import TrainState
+from jaxtyping import Array, Bool, Float, PRNGKeyArray
+
+from bnn_pref.utils.utils import get_random_seed
 
 os.environ["XLA_FLAGS"] = "--xla_gpu_triton_gemm_any=True"
 
 
-@dataclass
-class Args:
-    # --- Experiment ---
-    seed: int = 0
-    dataset: str = "halfcheetah-medium-v2"
-    # dataset: str = "bullet-halfcheetah-medium-v0"
-    # dataset: str = "antmaze-large-diverse-v2"
-    algorithm: str = "iql"
-    num_updates: int = 1_000_000
-    eval_interval: int = 20_000
-    eval_workers: int = 4
-    eval_final_episodes: int = 10
-    # --- Logging ---
-    log: bool = False
-    wandb_project: str = "unifloral"
-    wandb_team: str = "flair"
-    wandb_group: str = "debug"
-    # --- Generic optimization ---
-    lr: float = 3e-4
-    batch_size: int = 256
-    gamma: float = 0.99
-    polyak_step_size: float = 0.005
-    # --- IQL ---
-    beta: float = 3.0
-    iql_tau: float = 0.7
-    exp_adv_clip: float = 100.0
+class AgentTrainState(NamedTuple):
+    actor: TrainState
+    dual_q: TrainState
+    dual_q_target: TrainState
+    value: TrainState
 
 
-r"""
-     |\  __
-     \| /_/
-      \|
-    ___|_____
-    \       /
-     \     /
-      \___/     Preliminaries
-"""
-
-AgentTrainState = namedtuple("AgentTrainState", "actor dual_q dual_q_target value")
-Transition = namedtuple("Transition", "obs action reward next_obs done")
+class Transition(NamedTuple):
+    obs: Float[Array, "N O"]  # N = number of transitions
+    action: Float[Array, "N A"]
+    reward: Float[Array, "N"]
+    next_obs: Float[Array, "N O"]
+    done: Bool[Array, "N"]
 
 
 class SoftQNetwork(nn.Module):
@@ -138,8 +115,13 @@ class TanhGaussianActor(nn.Module):
         return distrax.Normal(x, std)
 
 
-def create_train_state(args, rng, network, dummy_input):
-    lr_schedule = optax.cosine_decay_schedule(args.lr, args.num_updates)
+def create_ts(
+    rl_cfg,
+    rng: PRNGKeyArray,
+    network: nn.Module,
+    dummy_input: List[jnp.ndarray],
+) -> TrainState:
+    lr_schedule = optax.cosine_decay_schedule(rl_cfg.lr, rl_cfg.n_updates)
     return TrainState.create(
         apply_fn=network.apply,
         params=network.init(rng, *dummy_input),
@@ -147,13 +129,18 @@ def create_train_state(args, rng, network, dummy_input):
     )
 
 
-def eval_agent(args, rng, env, agent_state):
+def eval_agent(
+    rl_cfg,
+    rng: PRNGKeyArray,
+    env: gym.Env,
+    agent_state: AgentTrainState,
+) -> Float[Array, "n_workers"]:
     # --- Reset environment ---
     step = 0
-    returned = np.zeros(args.eval_workers).astype(bool)
-    cum_reward = np.zeros(args.eval_workers)
-    rng, rng_reset = jax.random.split(rng)
-    rng_reset = jax.random.split(rng_reset, args.eval_workers)
+    returned = np.zeros(rl_cfg.n_eval_workers).astype(bool)
+    cum_reward = np.zeros(rl_cfg.n_eval_workers)
+    rng, rng_reset = jr.split(rng)
+    rng_reset = jr.split(rng_reset, rl_cfg.n_eval_workers)
     obs = env.reset()
 
     # --- Rollout agent ---
@@ -168,8 +155,8 @@ def eval_agent(args, rng, env, agent_state):
     while step < max_episode_steps and not returned.all():
         # --- Take step in environment ---
         step += 1
-        rng, rng_step = jax.random.split(rng)
-        rng_step = jax.random.split(rng_step, args.eval_workers)
+        rng, rng_step = jr.split(rng)
+        rng_step = jr.split(rng_step, rl_cfg.n_eval_workers)
         action = _policy_step(rng_step, jnp.array(obs))
         obs, reward, done, info = env.step(np.array(action))
 
@@ -182,41 +169,32 @@ def eval_agent(args, rng, env, agent_state):
     return cum_reward
 
 
-r"""
-          __/)
-       .-(__(=:
-    |\ |    \)
-    \ ||
-     \||
-      \|
-    ___|_____
-    \       /
-     \     /
-      \___/     Agent
-"""
-
-
-def make_train_step(args, actor_apply_fn, q_apply_fn, value_apply_fn, dataset):
+def make_train_step(
+    rl_cfg,
+    actor_apply_fn: Callable,
+    q_apply_fn: Callable,
+    value_apply_fn: Callable,
+    dataset: Transition,
+) -> Callable:
     """Make JIT-compatible agent train step."""
 
-    def _train_step(runner_state, _):
-        rng, agent_state = runner_state
+    def _train_step(carry: Tuple[PRNGKeyArray, AgentTrainState], _):
+        rng, agent_state = carry
 
         # --- Sample batch ---
-        rng, rng_batch = jax.random.split(rng)
-        batch_indices = jax.random.randint(
-            rng_batch, (args.batch_size,), 0, len(dataset.obs)
-        )
-        batch = jax.tree_util.tree_map(lambda x: x[batch_indices], dataset)
+        rng, rng_batch = jr.split(rng)
+        batch_indices = jr.randint(rng_batch, (rl_cfg.batch_size,), 0, len(dataset.obs))
+        batch = jax.tree.map(lambda x: x[batch_indices], dataset)
 
         # --- Update Q target network ---
         updated_q_target_params = optax.incremental_update(
             agent_state.dual_q.params,
             agent_state.dual_q_target.params,
-            args.polyak_step_size,
+            rl_cfg.polyak_step_size,
         )
         updated_q_target = agent_state.dual_q_target.replace(
-            step=agent_state.dual_q_target.step + 1, params=updated_q_target_params
+            step=agent_state.dual_q_target.step + 1,
+            params=updated_q_target_params,
         )
         agent_state = agent_state._replace(dual_q_target=updated_q_target)
 
@@ -224,7 +202,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, value_apply_fn, dataset):
         v_target = q_apply_fn(agent_state.dual_q_target.params, batch.obs, batch.action)
         v_target = v_target.min(-1)
         next_v_target = value_apply_fn(agent_state.value.params, batch.next_obs)
-        q_targets = batch.reward + args.gamma * (1 - batch.done) * next_v_target
+        q_targets = batch.reward + rl_cfg.gamma * (1 - batch.done) * next_v_target
 
         # --- Update Q and value functions ---
         def _q_loss_fn(params):
@@ -237,7 +215,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, value_apply_fn, dataset):
         def _value_loss_fn(params):
             adv = v_target - value_apply_fn(params, batch.obs)
             # Asymmetric L2 loss
-            value_loss = jnp.abs(args.iql_tau - (adv < 0.0).astype(float)) * (adv**2)
+            value_loss = jnp.abs(rl_cfg.iql_tau - (adv < 0.0).astype(float)) * (adv**2)
             return jnp.mean(value_loss), adv
 
         q_loss, q_grad = jax.value_and_grad(_q_loss_fn)(agent_state.dual_q.params)
@@ -248,7 +226,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, value_apply_fn, dataset):
         )
 
         # --- Update actor ---
-        exp_adv = jnp.exp(adv * args.beta).clip(max=args.exp_adv_clip)
+        exp_adv = jnp.exp(adv * rl_cfg.beta).clip(max=rl_cfg.exp_adv_clip)
 
         @jax.value_and_grad
         def _actor_loss_function(params):
@@ -274,24 +252,26 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, value_apply_fn, dataset):
     return _train_step
 
 
-if __name__ == "__main__":
+@hydra.main(config_name="config", config_path="../../cfg")
+def main(cfg):
     # --- Parse arguments ---
-    args = tyro.cli(Args)
-    rng = jax.random.PRNGKey(args.seed)
-
+    seed = get_random_seed() if cfg["seed"] == -1 else cfg["seed"]
+    rng = jr.key(seed)
+    rl_cfg = cfg["rl"]
+    task_cfg = cfg["task"]
     # --- Initialize logger ---
-    if args.log:
+    if rl_cfg.use_wandb:
         wandb.init(
-            config=args,
-            project=args.wandb_project,
-            entity=args.wandb_team,
-            group=args.wandb_group,
+            config=rl_cfg,
+            project=rl_cfg.wandb_project,
+            entity=rl_cfg.wandb_team,
+            group=rl_cfg.wandb_group,
             job_type="train_agent",
         )
 
     # --- Initialize environment and dataset ---
-    env = gym.vector.make(args.dataset, num_envs=args.eval_workers)
-    dataset = d4rl.qlearning_dataset(gym.make(args.dataset), terminate_on_end=True)
+    env = gym.vector.make(task_cfg.name, num_envs=rl_cfg.n_eval_workers)
+    dataset = d4rl.qlearning_dataset(gym.make(task_cfg.name))
     dataset = Transition(
         obs=jnp.array(dataset["observations"]),
         action=jnp.array(dataset["actions"]),
@@ -311,41 +291,40 @@ if __name__ == "__main__":
     value_net = StateValueFunction(obs_mean, obs_std)
 
     # Target networks share seeds to match initialization
-    rng, rng_actor, rng_q, rng_value = jax.random.split(rng, 4)
+    rng, rng_actor, rng_q, rng_value = jr.split(rng, 4)
     agent_state = AgentTrainState(
-        actor=create_train_state(args, rng_actor, actor_net, [dummy_obs]),
-        dual_q=create_train_state(args, rng_q, q_net, [dummy_obs, dummy_action]),
-        dual_q_target=create_train_state(args, rng_q, q_net, [dummy_obs, dummy_action]),
-        value=create_train_state(args, rng_value, value_net, [dummy_obs]),
+        actor=create_ts(rl_cfg, rng_actor, actor_net, [dummy_obs]),
+        dual_q=create_ts(rl_cfg, rng_q, q_net, [dummy_obs, dummy_action]),
+        dual_q_target=create_ts(rl_cfg, rng_q, q_net, [dummy_obs, dummy_action]),
+        value=create_ts(rl_cfg, rng_value, value_net, [dummy_obs]),
     )
 
     # --- Make train step ---
     _agent_train_step_fn = make_train_step(
-        args, actor_net.apply, q_net.apply, value_net.apply, dataset
+        rl_cfg, actor_net.apply, q_net.apply, value_net.apply, dataset
     )
 
-    num_evals = args.num_updates // args.eval_interval
+    num_evals = rl_cfg.n_updates // rl_cfg.eval_interval
     for eval_idx in range(num_evals):
         # --- Execute train loop ---
         (rng, agent_state), loss = jax.lax.scan(
             _agent_train_step_fn,
-            (rng, agent_state),
-            None,
-            args.eval_interval,
+            init=(rng, agent_state),
+            length=rl_cfg.eval_interval,
         )
 
         # --- Evaluate agent ---
-        rng, rng_eval = jax.random.split(rng)
-        returns = eval_agent(args, rng_eval, env, agent_state)
-        scores = d4rl.get_normalized_score(args.dataset, returns) * 100.0
+        rng, rng_eval = jr.split(rng)
+        returns = eval_agent(rl_cfg, rng_eval, env, agent_state)
+        scores = d4rl.get_normalized_score(task_cfg.name, returns) * 100.0
 
         # --- Log metrics ---
-        step = (eval_idx + 1) * args.eval_interval
+        step = (eval_idx + 1) * rl_cfg.eval_interval
         print(
-            f"Step: {step} / {args.num_updates} ({eval_idx + 1:02d}/{num_evals}) | "
+            f"Step: {step} / {rl_cfg.n_updates} ({eval_idx + 1:02d}/{num_evals}) | "
             f"Score: {scores.mean():.2f} ± {scores.std():.2f}"
         )
-        if args.log:
+        if rl_cfg.use_wandb:
             log_dict = {
                 "return": returns.mean(),
                 "score": scores.mean(),
@@ -356,32 +335,34 @@ if __name__ == "__main__":
             wandb.log(log_dict)
 
     # --- Evaluate final agent ---
-    if args.eval_final_episodes > 0:
-        final_iters = int(np.ceil(args.eval_final_episodes / args.eval_workers))
+    if rl_cfg.n_eval_episodes > 0:
+        final_iters = int(np.ceil(rl_cfg.n_eval_episodes / rl_cfg.n_eval_workers))
         print(f"Evaluating final agent for {final_iters} iterations...")
-        _rng = jax.random.split(rng, final_iters)
+        _rng = jr.split(rng, final_iters)
         rets = np.concatenate(
-            [eval_agent(args, _rng, env, agent_state) for _rng in _rng]
-        )
-        scores = d4rl.get_normalized_score(args.dataset, rets) * 100.0
+            [eval_agent(rl_cfg, _rng, env, agent_state) for _rng in _rng]
+        )  # (n_eval_workers * final_iters)
+        scores = d4rl.get_normalized_score(task_cfg.name, rets) * 100.0
         agg_fn = lambda x, k: {k: x, f"{k}_mean": x.mean(), f"{k}_std": x.std()}
         info = agg_fn(rets, "final_returns") | agg_fn(scores, "final_scores")
         print(
-            f"{args.dataset}\n"
-            f"  {args.eval_final_episodes} episodes {args.eval_workers} workers\n"
+            f"{task_cfg.name}\n"
+            f"  {rl_cfg.n_eval_episodes} episodes {rl_cfg.n_eval_workers} workers\n"
             f"  final return: {rets.mean():.2f} ± {rets.std():.2f}\n"
             f"  final normalized score: {scores.mean():.2f} ± {scores.std():.2f}\n"
         )
 
         # --- Write final returns to file ---
-        os.makedirs("final_returns", exist_ok=True)
-        time_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        filename = f"{args.algorithm}_{args.dataset}_{time_str}.npz"
-        with open(os.path.join("final_returns", filename), "wb") as f:
-            np.savez_compressed(f, **info, args=asdict(args))
+        filename = f"{rl_cfg.name}_{task_cfg.name}.npz"
+        with open(f"{cfg.paths.output_dir}/{filename}", "wb") as f:
+            np.savez_compressed(f, **info, args=rl_cfg)
 
-        if args.log:
-            wandb.save(os.path.join("final_returns", filename))
+        if rl_cfg.use_wandb:
+            wandb.save(f"{cfg.paths.output_dir}/{filename}")
 
-    if args.log:
+    if rl_cfg.use_wandb:
         wandb.finish()
+
+
+if __name__ == "__main__":
+    main()

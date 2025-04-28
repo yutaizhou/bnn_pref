@@ -33,6 +33,8 @@ def make_prefcc_data(key, cfg) -> ArrayDict:
     # * optionally normalize observations
     if task_cfg["name"] not in [
         "Reacher-v4",
+        "reacher-easy-v0",
+        "reacher-hard-v0",
     ]:
         trajs.update({"observations": normalize_NTD(trajs["observations"])})
 
