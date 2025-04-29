@@ -24,7 +24,7 @@ def main(cfg):
     Plot histogram of returns for each task
     """
     n_bins = 10
-    seed = get_random_seed() if cfg["seed"] == -1 else cfg["seed"]
+    seed = get_random_seed(cfg["seed"])
     key = jr.key(seed)
 
     tasks = [

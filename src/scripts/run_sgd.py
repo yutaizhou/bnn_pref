@@ -28,7 +28,7 @@ jnp.set_printoptions(precision=2)
 
 @hydra.main(version_base=None, config_name="config", config_path="../cfg")
 def main(cfg):
-    seed = get_random_seed() if cfg["seed"] == -1 else cfg["seed"]
+    seed = get_random_seed(cfg["seed"])
     key = jr.key(seed)
     data_cfg = cfg["data"]
     ekf_cfg = cfg["ekf"]

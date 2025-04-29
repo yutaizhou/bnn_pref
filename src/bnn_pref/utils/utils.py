@@ -14,8 +14,14 @@ def nested_defaultdict():
     return defaultdict(nested_defaultdict)
 
 
-def get_random_seed() -> int:
-    return int(datetime.now().timestamp())
+def get_random_seed(seed: int = -1) -> int:
+    """
+    If seed is -1, use the current time as the seed. Otherwise, use the seed provided.
+    """
+    if seed == -1:
+        return int(datetime.now().timestamp())
+    else:
+        return seed
 
 
 def get_gaussian_vector(key, dim: int, normalize: bool = True) -> D:

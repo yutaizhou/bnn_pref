@@ -35,7 +35,7 @@ def main(cfg):
     task_cfg = cfg["task"]
     dist = BradleyTerry()
 
-    seed = get_random_seed() if cfg["seed"] == -1 else cfg["seed"]
+    seed = get_random_seed(cfg["seed"])
     key = jr.key(seed)
 
     # * generate true params + preference data

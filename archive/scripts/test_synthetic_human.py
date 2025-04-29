@@ -24,7 +24,7 @@ def main(cfg):
     dist = BradleyTerry()
 
     # * generate true params + preference data
-    seed = get_random_seed() if cfg["seed"] == -1 else cfg["seed"]
+    seed = get_random_seed(cfg["seed"])
     key = jr.key(seed)
     key, key_data = jr.split(key)
     data = make_synthetic_data(key_data, cfg)
