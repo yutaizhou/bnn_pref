@@ -43,7 +43,7 @@ def load_reward_model(
     model ts shape: (n_seeds, ensemble_size, ...)
         DEPRECATED: n_seeds axis is now removed, only best seed per run is saved
 
-    Assumes ckpts are named as:
+    Assumes ckpts are named as follows, and exists in <run_dir>/ckpts/
         <run_dir>/ckpts/<task_name>_<alg>_al=<is_al>
     """
 
@@ -98,7 +98,7 @@ def load_reward_model(
         out_MT = jax.vmap(apply_fn, in_axes=(0, None))(params, obs)
         return out_MT.mean(axis=0)
 
-    return reward_fn
+    return reward_fn, ckpt_fp
 
 
 def relabel_rewards(
@@ -122,7 +122,7 @@ if __name__ == "__main__":
 
     key = jr.key(0)
     for alg in ["ekf", "sgd"]:
-        reward_fn = load_reward_model(
+        reward_fn, ckpt_fp = load_reward_model(
             key=key,
             run_dir=run_dir,
             task_name=task_name,
@@ -133,3 +133,4 @@ if __name__ == "__main__":
         obs = jnp.zeros((50, 17))
         reward = reward_fn(obs)
         print(reward.shape)
+        print(ckpt_fp)

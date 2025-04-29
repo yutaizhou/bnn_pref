@@ -1,17 +1,17 @@
 name: iql
 
 # * reward information
-reward: gt # gt, pref, or zero
-run_dir: "${paths.results_dir}/20250428_171621" # for pref reward model loading
+reward: gt # gt, pref, or zero; next four fields only used if reward == "pref"
+run_dir: "/Users/yutai/dev/projects/bnn_pref/results/pref/20250428_171621" # for pref reward model loading
 task_name: "${task.name}" # set via CLI override or compose API
-alg: ekf # ekf, sgd
-is_al: True # True, False
+pref_alg: ekf # ekf, sgd
+pref_is_al: True # True, False
 
 # * training
 n_updates: 1_000_000
 eval_interval: 25_000 
-n_eval_workers: 4
-n_eval_episodes: 10
+n_eval_workers: 10 # parallel eval envs
+n_final_eval_episodes: 10
 
 # * optimization
 lr: 3e-4
@@ -25,6 +25,7 @@ beta: 3.0 # temperature for advantage in actor loss
 exp_adv_clip: 100.0 # clip for advantage in actor loss
 
 # * logging
+log: True
 use_wandb: False
 wandb_project: "unifloral"
 wandb_team: "flair"

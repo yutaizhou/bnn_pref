@@ -172,13 +172,12 @@ def make_train_step(
     return _train_step
 
 
-@hydra.main(config_name="configOfflineRL", config_path="../../cfg")
-def main(cfg):
+def run_iql(rng, cfg):
     # --- Parse arguments ---
-    seed = get_random_seed() if cfg["seed"] == -1 else cfg["seed"]
-    rng = jr.key(seed)
     rl_cfg = cfg["rl"]
     task_cfg = cfg["task"]
+    assert rl_cfg["reward"] in ["gt", "pref", "zero"]
+
     # --- Initialize logger ---
     if rl_cfg.use_wandb:
         wandb.init(
@@ -200,26 +199,23 @@ def main(cfg):
         done=jnp.array(dataset["terminals"]),
     )
 
-    alg = "ekf"
-    is_al = True
     if rl_cfg["reward"] == "gt":
         pass
     elif rl_cfg["reward"] == "pref":
         rng, rng_reward = jr.split(rng)
-        reward_fn = load_reward_model(
+        reward_fn, ckpt_fp = load_reward_model(
             key=rng_reward,
             run_dir=rl_cfg["run_dir"],
-            task_name=task_cfg.name,
-            alg=alg,
-            is_al=is_al,
+            task_name=rl_cfg["task_name"],
+            alg=rl_cfg["pref_alg"],
+            is_al=rl_cfg["pref_is_al"],
         )
 
         rhat = relabel_rewards(reward_fn, normalize(dataset.obs, axis=(0,)))
         dataset = dataset._replace(reward=rhat)
     elif rl_cfg["reward"] == "zero":
-        dataset = dataset._replace(reward=jnp.zeros_like(dataset.reward))
-    else:
-        raise ValueError(f"Invalid reward type: {rl_cfg['reward']=}")
+        rhat = jnp.zeros_like(dataset.reward)
+        dataset = dataset._replace(reward=rhat)
 
     # --- Initialize agent and value networks ---
     num_actions = env.single_action_space.shape[0]
@@ -246,6 +242,14 @@ def main(cfg):
     )
 
     num_evals = rl_cfg.n_updates // rl_cfg.eval_interval
+    alg_str = (
+        f"{rl_cfg.pref_alg}_al={rl_cfg.pref_is_al}"
+        if rl_cfg.reward == "pref"
+        else rl_cfg.reward
+    )
+    if rl_cfg.log:
+        print(f"Training {alg_str} policy for {num_evals} iterations...")
+    scores_list = []
     for eval_idx in range(num_evals):
         # --- Execute train loop ---
         (rng, agent_state), loss = jax.lax.scan(
@@ -256,15 +260,16 @@ def main(cfg):
 
         # --- Evaluate agent ---
         rng, rng_eval = jr.split(rng)
-        returns = eval_agent(rl_cfg, rng_eval, env, agent_state)
+        returns = eval_agent(rl_cfg, rng_eval, env, agent_state)  # (n_eval_workers,)
         scores = d4rl.get_normalized_score(task_cfg.name, returns) * 100.0
-
+        scores_list.append(scores)
         # --- Log metrics ---
         step = (eval_idx + 1) * rl_cfg.eval_interval
-        print(
-            f"Step: {step} / {rl_cfg.n_updates} ({eval_idx + 1:02d}/{num_evals}) | "
-            f"Score: {scores.mean():.2f} ± {scores.std():.2f}"
-        )
+        if rl_cfg.log:
+            print(
+                f"Step: {step} / {rl_cfg.n_updates} ({eval_idx + 1:02d}/{num_evals}) | "
+                f"Score: {scores.mean():.2f} ± {scores.std():.2f}"
+            )
         if rl_cfg.use_wandb:
             log_dict = {
                 "return": returns.mean(),
@@ -276,25 +281,32 @@ def main(cfg):
             wandb.log(log_dict)
 
     # --- Evaluate final agent ---
-    if rl_cfg.n_eval_episodes > 0:
-        final_iters = int(np.ceil(rl_cfg.n_eval_episodes / rl_cfg.n_eval_workers))
-        print(f"Evaluating final agent for {final_iters} iterations...")
+    if rl_cfg.n_final_eval_episodes > 0:
+        final_iters = int(np.ceil(rl_cfg.n_final_eval_episodes / rl_cfg.n_eval_workers))
+        if rl_cfg.log:
+            print(f"  Evaluating final agent for {final_iters} iterations...")
         _rng = jr.split(rng, final_iters)
         rets = np.concatenate(
             [eval_agent(rl_cfg, _rng, env, agent_state) for _rng in _rng]
         )  # (n_eval_workers * final_iters)
         scores = d4rl.get_normalized_score(task_cfg.name, rets) * 100.0
-        agg_fn = lambda x, k: {k: x, f"{k}_mean": x.mean(), f"{k}_std": x.std()}
+        scores_list.append(scores)
+        agg_fn = lambda x, k: {
+            k: x,
+            f"{k}_mean": x.mean(),
+            f"{k}_std": x.std(),
+        }
         info = agg_fn(rets, "final_returns") | agg_fn(scores, "final_scores")
-        print(
-            f"{task_cfg.name}\n"
-            f"  {rl_cfg.n_eval_episodes} episodes {rl_cfg.n_eval_workers} workers\n"
-            f"  final return: {rets.mean():.2f} ± {rets.std():.2f}\n"
-            f"  final normalized score: {scores.mean():.2f} ± {scores.std():.2f}\n"
-        )
+        if rl_cfg.log:
+            print(
+                f"{task_cfg.name}\n"
+                f"  {rl_cfg.n_final_eval_episodes} episodes {rl_cfg.n_eval_workers} workers\n"
+                f"  final return: {rets.mean():.2f} ± {rets.std():.2f}\n"
+                f"  final normalized score: {scores.mean():.2f} ± {scores.std():.2f}\n"
+            )
 
         # --- Write final returns to file ---
-        filename = f"{rl_cfg.name}_{task_cfg.name}.npz"
+        filename = f"{task_cfg.name}_{alg_str}.npz"
         with open(f"{cfg.paths.output_dir}/{filename}", "wb") as f:
             np.savez_compressed(f, **info, args=rl_cfg)
 
@@ -303,6 +315,19 @@ def main(cfg):
 
     if rl_cfg.use_wandb:
         wandb.finish()
+
+    results = {
+        "scores": np.array(scores_list),
+    }
+
+    return results
+
+
+@hydra.main(config_name="configOfflineRL", config_path="../../cfg")
+def main(cfg):
+    seed = get_random_seed(cfg["seed"])
+    key = jr.key(seed)
+    run_iql(key, cfg)
 
 
 if __name__ == "__main__":
