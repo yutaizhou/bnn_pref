@@ -66,11 +66,12 @@ class DeepEnsemble(Agent):
 
     @partial(jax.jit, static_argnames=["self"])
     def init_bel(self, key, warmup_data: CARL) -> TrainState:
+        # todo precompute logits for all items
         key, *keys_init = jr.split(key, 1 + self.n_models)
         ts = jax.vmap(init_model, in_axes=(0, None, None, None))(
             jnp.array(keys_init),
             self.model,
-            warmup_data.contexts.shape[1:],
+            warmup_data.contexts.shape[1:],  # (2, T, D)
             self.opt,
         )
         self.ensemble_param_count = count_params(ts.params)

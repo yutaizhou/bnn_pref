@@ -78,7 +78,8 @@ class RewardNet(nn.Module):
         # todo: stability trick
         # if T > 1:
         #     x = nn.tanh(x)
-        return rearrange(x, "B T 1 -> B T")
+        # return rearrange(x, "B T 1 -> B T")
+        return jnp.squeeze(x, axis=-1)  # works also for TD -> T
 
     # def predict_traj_rewards_scan(self, x: BTD) -> B:
     #     _, rewards = self.scanned_net(None, x)

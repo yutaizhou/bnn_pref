@@ -23,6 +23,7 @@ paths:
   results_dir: ${paths.root_dir}/results
   sweep_dir: ${paths.root_dir}/results_sweep
   output_dir: ${hydra:runtime.output_dir}
+  ckpts_dir: ${paths.output_dir}/ckpts
 
   prefcc:
     data_dir: ${paths.prefcc_dir}

@@ -1,19 +1,17 @@
 import os
 import warnings
-from dataclasses import asdict
-from datetime import datetime
 from functools import partial
-from typing import Callable, List, NamedTuple, Tuple
+from typing import Callable, List, Tuple
 
 os.environ["D4RL_SUPPRESS_IMPORT_ERROR"] = "1"
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 
 import d4rl
-import distrax
 import flax.linen as nn
 import gym
 import hydra
+import ipdb
 import jax
 import jax.numpy as jnp
 import jax.random as jr
@@ -21,98 +19,19 @@ import numpy as np
 import optax
 import wandb
 from flax.training.train_state import TrainState
-from jaxtyping import Array, Bool, Float, PRNGKeyArray
+from jax.flatten_util import ravel_pytree
+from jaxtyping import Array, Float, PRNGKeyArray
 
+from bnn_pref.rl.common import (
+    AgentState,
+    DualQNetwork,
+    StateValueFunction,
+    TanhGaussianActor,
+    Transition,
+)
 from bnn_pref.utils.utils import get_random_seed
 
 os.environ["XLA_FLAGS"] = "--xla_gpu_triton_gemm_any=True"
-
-
-class AgentTrainState(NamedTuple):
-    actor: TrainState
-    dual_q: TrainState
-    dual_q_target: TrainState
-    value: TrainState
-
-
-class Transition(NamedTuple):
-    obs: Float[Array, "N O"]  # N = number of transitions
-    action: Float[Array, "N A"]
-    reward: Float[Array, "N"]
-    next_obs: Float[Array, "N O"]
-    done: Bool[Array, "N"]
-
-
-class SoftQNetwork(nn.Module):
-    obs_mean: jax.Array
-    obs_std: jax.Array
-
-    @nn.compact
-    def __call__(self, obs, action):
-        obs = (obs - self.obs_mean) / (self.obs_std + 1e-3)
-        x = jnp.concatenate([obs, action], axis=-1)
-        for _ in range(2):
-            x = nn.Dense(256)(x)
-            x = nn.relu(x)
-        q = nn.Dense(1)(x)
-        return q.squeeze(-1)
-
-
-class DualQNetwork(nn.Module):
-    obs_mean: jax.Array
-    obs_std: jax.Array
-
-    @nn.compact
-    def __call__(self, obs, action):
-        vmap_critic = nn.vmap(
-            SoftQNetwork,
-            variable_axes={"params": 0},  # Parameters not shared between critics
-            split_rngs={"params": True, "dropout": True},  # Different initializations
-            in_axes=None,
-            out_axes=-1,
-            axis_size=2,  # Two Q networks
-        )
-        q_values = vmap_critic(self.obs_mean, self.obs_std)(obs, action)
-        return q_values
-
-
-class StateValueFunction(nn.Module):
-    obs_mean: jax.Array
-    obs_std: jax.Array
-
-    @nn.compact
-    def __call__(self, x):
-        x = (x - self.obs_mean) / (self.obs_std + 1e-3)
-        for _ in range(2):
-            x = nn.Dense(256)(x)
-            x = nn.relu(x)
-        v = nn.Dense(1)(x)
-        return v.squeeze(-1)
-
-
-class TanhGaussianActor(nn.Module):
-    num_actions: int
-    obs_mean: jax.Array
-    obs_std: jax.Array
-    log_std_max: float = 2.0
-    log_std_min: float = -20.0
-
-    @nn.compact
-    def __call__(self, x, eval=False):
-        x = (x - self.obs_mean) / (self.obs_std + 1e-3)
-        for _ in range(2):
-            x = nn.Dense(256)(x)
-            x = nn.relu(x)
-        x = nn.Dense(self.num_actions)(x)
-        x = nn.tanh(x)
-        if eval:
-            return distrax.Deterministic(x)
-        logstd = self.param(
-            "logstd",
-            init_fn=lambda key: jnp.zeros(self.num_actions, dtype=jnp.float32),
-        )
-        std = jnp.exp(jnp.clip(logstd, self.log_std_min, self.log_std_max))
-        return distrax.Normal(x, std)
 
 
 def create_ts(
@@ -133,7 +52,7 @@ def eval_agent(
     rl_cfg,
     rng: PRNGKeyArray,
     env: gym.Env,
-    agent_state: AgentTrainState,
+    agent_state: AgentState,
 ) -> Float[Array, "n_workers"]:
     # --- Reset environment ---
     step = 0
@@ -178,7 +97,7 @@ def make_train_step(
 ) -> Callable:
     """Make JIT-compatible agent train step."""
 
-    def _train_step(carry: Tuple[PRNGKeyArray, AgentTrainState], _):
+    def _train_step(carry: Tuple[PRNGKeyArray, AgentState], _):
         rng, agent_state = carry
 
         # --- Sample batch ---
@@ -205,6 +124,7 @@ def make_train_step(
         q_targets = batch.reward + rl_cfg.gamma * (1 - batch.done) * next_v_target
 
         # --- Update Q and value functions ---
+        @jax.value_and_grad
         def _q_loss_fn(params):
             # Compute loss for both critics
             q_pred = q_apply_fn(params, batch.obs, batch.action)
@@ -218,11 +138,11 @@ def make_train_step(
             value_loss = jnp.abs(rl_cfg.iql_tau - (adv < 0.0).astype(float)) * (adv**2)
             return jnp.mean(value_loss), adv
 
-        q_loss, q_grad = jax.value_and_grad(_q_loss_fn)(agent_state.dual_q.params)
-        (value_loss, adv), value_grad = _value_loss_fn(agent_state.value.params)
+        q_loss, q_grad = _q_loss_fn(agent_state.dual_q.params)
+        (v_loss, adv), v_grad = _value_loss_fn(agent_state.value.params)
         agent_state = agent_state._replace(
             dual_q=agent_state.dual_q.apply_gradients(grads=q_grad),
-            value=agent_state.value.apply_gradients(grads=value_grad),
+            value=agent_state.value.apply_gradients(grads=v_grad),
         )
 
         # --- Update actor ---
@@ -243,7 +163,7 @@ def make_train_step(
         agent_state = agent_state._replace(actor=updated_actor)
 
         loss = {
-            "value_loss": value_loss,
+            "value_loss": v_loss,
             "q_loss": q_loss,
             "actor_loss": actor_loss,
         }
@@ -292,7 +212,7 @@ def main(cfg):
 
     # Target networks share seeds to match initialization
     rng, rng_actor, rng_q, rng_value = jr.split(rng, 4)
-    agent_state = AgentTrainState(
+    agent_state = AgentState(
         actor=create_ts(rl_cfg, rng_actor, actor_net, [dummy_obs]),
         dual_q=create_ts(rl_cfg, rng_q, q_net, [dummy_obs, dummy_action]),
         dual_q_target=create_ts(rl_cfg, rng_q, q_net, [dummy_obs, dummy_action]),
@@ -364,5 +284,104 @@ def main(cfg):
         wandb.finish()
 
 
+def load_reward_model(
+    key: PRNGKeyArray,
+    ckpts_dir: str,
+    cfg,
+    task_name: str = "halfcheetah-random-v2",
+    alg: str = "ekf",
+    is_al: bool = False,
+) -> Callable[
+    [Float[Array, "T D"]],
+    Float[Array, "T"],
+]:
+    """
+    model shape (n_seeds, ensemble_size, ...)
+    key will be used to sample models for ekf
+    """
+    import distrax
+    import orbax
+    import orbax.checkpoint
+
+    from bnn_pref.alg.agent_utils import subspace2full_params
+    from bnn_pref.alg.ekf_subspace import EKFBeliefState
+    from bnn_pref.alg.ensemble import init_model
+    from bnn_pref.utils.network import RewardNet
+
+    ckpt_fp = f"{ckpts_dir}/{task_name}_{alg}_al={is_al}"
+
+    cktper = orbax.checkpoint.PyTreeCheckpointer()
+    empty_stats = cktper.restore(ckpt_fp)
+
+    obs_shape = gym.make(task_name).observation_space.shape
+    if alg == "sgd":
+        key, *keys = jr.split(key, 1 + cfg["sgd"]["M"])
+        keys = jnp.array(keys)
+        model = RewardNet(cfg["sgd"]["hidden_sizes"])
+        item = jax.vmap(init_model, in_axes=(0, None, None, None))(
+            keys, model, (2, 50, *obs_shape), optax.adam(cfg["sgd"]["learning_rate"])
+        )
+        ts = cktper.restore(ckpt_fp, item=item)
+        params = {"params": ts.params}
+
+    elif alg == "ekf":
+        model = RewardNet(cfg["ekf"]["hidden_sizes"])
+        item = EKFBeliefState(
+            mean=empty_stats["mean"],
+            cov=empty_stats["cov"],
+            t=empty_stats["t"],
+            proj_matrix=empty_stats["proj_matrix"],
+            offset_ts=init_model(
+                key, model, (2, 50, *obs_shape), optax.adam(cfg["ekf"]["learning_rate"])
+            ),
+        )
+        bel = cktper.restore(ckpt_fp, item=item)
+        ts = bel.offset_ts
+
+        params_offset, unravel_fn = ravel_pytree(ts.params)
+
+        distr = distrax.MultivariateNormalFullCovariance(bel.mean, bel.cov)
+        ss_params = distr.sample(seed=key, sample_shape=(cfg["ekf"]["M"],))
+        full_params_flattened = jax.vmap(subspace2full_params, in_axes=(0, None, None))(
+            ss_params, bel.proj_matrix, params_offset
+        )
+        params = jax.vmap(unravel_fn)(full_params_flattened)
+        params = {"params": params}
+
+    else:
+        raise ValueError(f"Algorithm {alg} not supported")
+
+    def predict_reward(obs: Float[Array, "T D"]) -> Float[Array, "T"]:
+        """M = ensemble size"""
+        apply_fn = partial(ts.apply_fn, method=model.predict_traj_rewards)
+        out_MT = jax.vmap(apply_fn, in_axes=(0, None))(params, obs)
+        return out_MT.mean(axis=0)
+
+    return predict_reward
+
+
 if __name__ == "__main__":
-    main()
+    # main()
+
+    from omegaconf import OmegaConf
+
+    output_dir = "/Users/yutai/dev/projects/bnn_pref/results/20250428_171621"
+    ckpts_dir = f"{output_dir}/ckpts"
+    cfg = OmegaConf.load(f"{output_dir}/.hydra/config.yaml")
+
+    task_name = "halfcheetah-random-v2"
+    alg = "sgd"
+    is_al = False
+
+    key = jr.key(0)
+    predict_reward = load_reward_model(
+        key=key,
+        ckpts_dir=ckpts_dir,
+        cfg=cfg,
+        task_name=task_name,
+        alg=alg,
+        is_al=is_al,
+    )  # (T,D) -> (T,)
+
+    obs = jnp.zeros((50, 17))
+    reward = predict_reward(obs)

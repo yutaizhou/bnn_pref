@@ -1,13 +1,13 @@
 import itertools as it
+import logging
 import os
-import pickle as pkl
+from datetime import datetime
 from functools import partial
 from typing import Tuple
 
 os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
 os.environ["DISABLE_CODESIGN_WARNING"] = "1"
-import logging
-from datetime import datetime
+logging.getLogger("absl").setLevel(logging.WARNING)
 
 import hydra
 import jax
@@ -15,6 +15,7 @@ import jax.numpy as jnp
 import jax.random as jr
 import matplotlib.pyplot as plt
 import orbax
+import orbax.checkpoint
 from flax.training import orbax_utils
 from hydra.core.hydra_config import HydraConfig
 
@@ -119,6 +120,7 @@ def main(cfg):
         f"  init: bs={sgd_cfg['bs']}, niters={sgd_cfg['niters']}\n"
     )
 
+    ckpter = orbax.checkpoint.PyTreeCheckpointer()
     total_duration = datetime.now()
     for task in tasks:
         # * update cfg
@@ -189,9 +191,17 @@ def main(cfg):
                 # * acc
                 "test_acc_all": res_m["test_acc"],
                 "test_acc_final": MeanStd(res_m["test_acc"][:, -1]).get_stats(),
-                # * bel_trace
-                "model": res_m["model"],
             }
+            best_seed = jnp.argmax(res_m["test_logpdf"][:, -1])
+            best_model = jax.tree.map(lambda x: x[best_seed], res_m["model"])
+
+            save_args = orbax_utils.save_args_from_target(best_model)
+            ckpt_name = f"{cfg['task']['name']}_{alg}_al={is_al}"
+            ckpter.save(
+                f"{cfg.paths.ckpts_dir}/{ckpt_name}",
+                best_model,
+                save_args=save_args,
+            )
 
             stats[task][alg][is_al] = res
             test_logpdf_all = res_m["test_logpdf"]
@@ -208,12 +218,7 @@ def main(cfg):
                 print(f"nans: {nans.sum(1)}")
     total_duration = (datetime.now() - total_duration).total_seconds()
     print(f"Total duration: {total_duration:.1f}s")
-
-    orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
-    save_args = orbax_utils.save_args_from_target(stats)
-    orbax_checkpointer.save(
-        f"{cfg.paths.output_dir}/orbax_stats", stats, save_args=save_args
-    )
+    jnp.savez(f"{cfg.paths.output_dir}/stats.npz", **stats)
 
     # * plot logpdf learning curve
     fig, axs = plt.subplots(5, 4, figsize=(12, 10))
