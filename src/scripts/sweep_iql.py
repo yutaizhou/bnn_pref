@@ -45,10 +45,10 @@ def main(cfg):
         # # * D4RL
         "cheetahRand",
         "cheetahMedExp",
-        # "hopperRand",
-        # "hopperMed",
-        # "walkerRand",
-        # "walkerMedReplay",
+        "hopperRand",
+        "hopperMed",
+        "walkerRand",
+        "walkerMedReplay",
     ]
     algs = ["ekf", "sgd"]
     is_als = [False, True]

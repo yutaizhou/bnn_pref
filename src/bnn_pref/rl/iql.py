@@ -248,7 +248,9 @@ def run_iql(rng, cfg):
         else rl_cfg.reward
     )
     if rl_cfg.log:
-        print(f"Training {alg_str} policy for {num_evals} iterations...")
+        print(
+            f"{task_cfg.name}: Training {alg_str} policy for {num_evals} iterations..."
+        )
     scores_list = []
     for eval_idx in range(num_evals):
         # --- Execute train loop ---
@@ -299,7 +301,7 @@ def run_iql(rng, cfg):
         info = agg_fn(rets, "final_returns") | agg_fn(scores, "final_scores")
         if rl_cfg.log:
             print(
-                f"{task_cfg.name}\n"
+                f"{task_cfg.name}: {alg_str}\n"
                 f"  {rl_cfg.n_final_eval_episodes} episodes {rl_cfg.n_eval_workers} workers\n"
                 f"  final return: {rets.mean():.2f} ± {rets.std():.2f}\n"
                 f"  final normalized score: {scores.mean():.2f} ± {scores.std():.2f}\n"
