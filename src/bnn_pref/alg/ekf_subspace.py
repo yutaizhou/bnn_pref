@@ -214,8 +214,6 @@ class SubspaceEKF(Agent):
             probs_2 = jnp.exp(jax.nn.log_softmax(logits))
             return probs_2
 
-            # return rearrange(probs_2[1], " -> 1")
-
         # def emission_mean_cmgf(params, inputs):
         #     """
         #     emission model where

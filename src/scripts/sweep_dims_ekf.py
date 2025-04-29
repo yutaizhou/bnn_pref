@@ -67,7 +67,7 @@ def run_ekf(key, cfg):
     return results, metadata
 
 
-@hydra.main(version_base=None, config_name="config", config_path="../cfg")
+@hydra.main(version_base=None, config_name="configScaling", config_path="../cfg")
 def main(cfg):
     seed = get_random_seed() if cfg["seed"] == -1 else cfg["seed"]
     key = jr.key(seed)

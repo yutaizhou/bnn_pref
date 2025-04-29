@@ -1,0 +1,7 @@
+defaults:
+- config
+
+paths:
+  results_dir: ${paths.root_dir}/results/pref
+  sweep_dir: ${paths.root_dir}/results_sweep/pref
+

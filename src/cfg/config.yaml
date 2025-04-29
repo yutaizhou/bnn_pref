@@ -22,7 +22,7 @@ sanity_frac: 0.01 # fraction of non-duplicates in the query pool. 1% of nq_train
 paths:
   results_dir: ${paths.root_dir}/results
   sweep_dir: ${paths.root_dir}/results_sweep
-  output_dir: ${hydra:runtime.output_dir}
+  output_dir: ${hydra:runtime.output_dir} # set by results_dir & sweep_dir in hydra config
   ckpts_dir: ${paths.output_dir}/ckpts
 
   prefcc:

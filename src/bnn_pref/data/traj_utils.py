@@ -54,9 +54,18 @@ def split_dataset(
     return train_ds, test_ds
 
 
-def normalize_NTD(x: Float[Array, "N T D"]) -> Float[Array, "N T D"]:
-    mean = jnp.mean(x, axis=(0, 1), keepdims=True)
-    std = jnp.std(x, axis=(0, 1), keepdims=True)
+def normalize(
+    x: Float[Array, "... D"],
+    axis: Tuple[int, ...],
+) -> Float[Array, "... D"]:
+    """
+    Designed to work with both trajectoy data (N, T, D) where axis=(0, 1)
+    and samples data (N, D) where axis=(0,)
+    """
+    eps = 1e-8
+    mean = jnp.mean(x, axis=axis, keepdims=True)
+    std = jnp.std(x, axis=axis, keepdims=True)
+    std = jnp.maximum(std, eps)
     return (x - mean) / std
 
 

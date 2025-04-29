@@ -15,7 +15,7 @@ from jaxtyping import Array, Float
 
 from bnn_pref.data.pref_utils import QueryIndexAndResponses, create_pref_data
 from bnn_pref.data.traj_utils import (
-    normalize_NTD,
+    normalize,
     rebalance,
     segment_traj_masked,
     split_dataset,
@@ -28,14 +28,14 @@ def segment_arraydict_masked(trajs: ArrayDict, sz: int) -> ArrayDict:
     segment each traj in traj dict into chunks of size sz
     """
     assert sz > 0, f"segment size {sz=} must be positive"
-    print(f"  Whole trajs: {trajs['observations'].shape}")
+    # print(f"  Whole trajs: {trajs['observations'].shape}")
     seg_fn = lambda x: segment_traj_masked(x, trajs["masks"], sz)
     trajs["observations"] = seg_fn(trajs["observations"])
     trajs["rewards"] = rearrange(seg_fn(trajs["rewards"]), "S sz 1-> S sz")
     trajs["returns"] = trajs["rewards"].sum(1)
-    print(
-        f"  Segments:    {trajs['observations'].shape} (avg whole traj length={trajs['masks'].sum(1).mean()})"
-    )
+    # print(
+    #     f"  Segments:    {trajs['observations'].shape} (avg whole traj length={trajs['masks'].sum(1).mean()})"
+    # )
     return trajs
 
 
@@ -66,7 +66,7 @@ def make_d4rl_data(key, cfg) -> ArrayDict:
     trajs = process_d4rl_data(ds, min_traj_len=data_cfg["min_traj_len"])
 
     # * optionally normalize observations
-    trajs.update({"observations": normalize_NTD(trajs["observations"])})
+    trajs.update({"observations": normalize(trajs["observations"], axis=(0, 1))})
 
     # * optional pruning
     key, key_rebalance = jr.split(key, 2)

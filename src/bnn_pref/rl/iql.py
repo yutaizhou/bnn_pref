@@ -11,7 +11,6 @@ import d4rl
 import flax.linen as nn
 import gym
 import hydra
-import ipdb
 import jax
 import jax.numpy as jnp
 import jax.random as jr
@@ -19,9 +18,9 @@ import numpy as np
 import optax
 import wandb
 from flax.training.train_state import TrainState
-from jax.flatten_util import ravel_pytree
 from jaxtyping import Array, Float, PRNGKeyArray
 
+from bnn_pref.data.traj_utils import normalize
 from bnn_pref.rl.common import (
     AgentState,
     DualQNetwork,
@@ -29,6 +28,7 @@ from bnn_pref.rl.common import (
     TanhGaussianActor,
     Transition,
 )
+from bnn_pref.rl.rm_util import load_reward_model, relabel_rewards
 from bnn_pref.utils.utils import get_random_seed
 
 os.environ["XLA_FLAGS"] = "--xla_gpu_triton_gemm_any=True"
@@ -172,7 +172,7 @@ def make_train_step(
     return _train_step
 
 
-@hydra.main(config_name="config", config_path="../../cfg")
+@hydra.main(config_name="configOfflineRL", config_path="../../cfg")
 def main(cfg):
     # --- Parse arguments ---
     seed = get_random_seed() if cfg["seed"] == -1 else cfg["seed"]
@@ -199,6 +199,27 @@ def main(cfg):
         next_obs=jnp.array(dataset["next_observations"]),
         done=jnp.array(dataset["terminals"]),
     )
+
+    alg = "ekf"
+    is_al = True
+    if rl_cfg["reward"] == "gt":
+        pass
+    elif rl_cfg["reward"] == "pref":
+        rng, rng_reward = jr.split(rng)
+        reward_fn = load_reward_model(
+            key=rng_reward,
+            run_dir=rl_cfg["run_dir"],
+            task_name=task_cfg.name,
+            alg=alg,
+            is_al=is_al,
+        )
+
+        rhat = relabel_rewards(reward_fn, normalize(dataset.obs, axis=(0,)))
+        dataset = dataset._replace(reward=rhat)
+    elif rl_cfg["reward"] == "zero":
+        dataset = dataset._replace(reward=jnp.zeros_like(dataset.reward))
+    else:
+        raise ValueError(f"Invalid reward type: {rl_cfg['reward']=}")
 
     # --- Initialize agent and value networks ---
     num_actions = env.single_action_space.shape[0]
@@ -284,104 +305,5 @@ def main(cfg):
         wandb.finish()
 
 
-def load_reward_model(
-    key: PRNGKeyArray,
-    ckpts_dir: str,
-    cfg,
-    task_name: str = "halfcheetah-random-v2",
-    alg: str = "ekf",
-    is_al: bool = False,
-) -> Callable[
-    [Float[Array, "T D"]],
-    Float[Array, "T"],
-]:
-    """
-    model shape (n_seeds, ensemble_size, ...)
-    key will be used to sample models for ekf
-    """
-    import distrax
-    import orbax
-    import orbax.checkpoint
-
-    from bnn_pref.alg.agent_utils import subspace2full_params
-    from bnn_pref.alg.ekf_subspace import EKFBeliefState
-    from bnn_pref.alg.ensemble import init_model
-    from bnn_pref.utils.network import RewardNet
-
-    ckpt_fp = f"{ckpts_dir}/{task_name}_{alg}_al={is_al}"
-
-    cktper = orbax.checkpoint.PyTreeCheckpointer()
-    empty_stats = cktper.restore(ckpt_fp)
-
-    obs_shape = gym.make(task_name).observation_space.shape
-    if alg == "sgd":
-        key, *keys = jr.split(key, 1 + cfg["sgd"]["M"])
-        keys = jnp.array(keys)
-        model = RewardNet(cfg["sgd"]["hidden_sizes"])
-        item = jax.vmap(init_model, in_axes=(0, None, None, None))(
-            keys, model, (2, 50, *obs_shape), optax.adam(cfg["sgd"]["learning_rate"])
-        )
-        ts = cktper.restore(ckpt_fp, item=item)
-        params = {"params": ts.params}
-
-    elif alg == "ekf":
-        model = RewardNet(cfg["ekf"]["hidden_sizes"])
-        item = EKFBeliefState(
-            mean=empty_stats["mean"],
-            cov=empty_stats["cov"],
-            t=empty_stats["t"],
-            proj_matrix=empty_stats["proj_matrix"],
-            offset_ts=init_model(
-                key, model, (2, 50, *obs_shape), optax.adam(cfg["ekf"]["learning_rate"])
-            ),
-        )
-        bel = cktper.restore(ckpt_fp, item=item)
-        ts = bel.offset_ts
-
-        params_offset, unravel_fn = ravel_pytree(ts.params)
-
-        distr = distrax.MultivariateNormalFullCovariance(bel.mean, bel.cov)
-        ss_params = distr.sample(seed=key, sample_shape=(cfg["ekf"]["M"],))
-        full_params_flattened = jax.vmap(subspace2full_params, in_axes=(0, None, None))(
-            ss_params, bel.proj_matrix, params_offset
-        )
-        params = jax.vmap(unravel_fn)(full_params_flattened)
-        params = {"params": params}
-
-    else:
-        raise ValueError(f"Algorithm {alg} not supported")
-
-    def predict_reward(obs: Float[Array, "T D"]) -> Float[Array, "T"]:
-        """M = ensemble size"""
-        apply_fn = partial(ts.apply_fn, method=model.predict_traj_rewards)
-        out_MT = jax.vmap(apply_fn, in_axes=(0, None))(params, obs)
-        return out_MT.mean(axis=0)
-
-    return predict_reward
-
-
 if __name__ == "__main__":
-    # main()
-
-    from omegaconf import OmegaConf
-
-    output_dir = "/Users/yutai/dev/projects/bnn_pref/results/20250428_171621"
-    ckpts_dir = f"{output_dir}/ckpts"
-    cfg = OmegaConf.load(f"{output_dir}/.hydra/config.yaml")
-
-    task_name = "halfcheetah-random-v2"
-    alg = "sgd"
-    is_al = False
-
-    key = jr.key(0)
-    predict_reward = load_reward_model(
-        key=key,
-        ckpts_dir=ckpts_dir,
-        cfg=cfg,
-        task_name=task_name,
-        alg=alg,
-        is_al=is_al,
-    )  # (T,D) -> (T,)
-
-    obs = jnp.zeros((50, 17))
-    reward = predict_reward(obs)
+    main()

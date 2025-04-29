@@ -26,7 +26,7 @@ logging.getLogger("jax._src.xla_bridge").setLevel(logging.ERROR)
 jnp.set_printoptions(precision=2)
 
 
-@hydra.main(version_base=None, config_name="config", config_path="../cfg")
+@hydra.main(version_base=None, config_name="configPref", config_path="../cfg")
 def main(cfg):
     seed = get_random_seed() if cfg["seed"] == -1 else cfg["seed"]
     key = jr.key(seed)

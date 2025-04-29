@@ -6,12 +6,7 @@ from einops import rearrange
 from tensordict import TensorDict
 
 from bnn_pref.data.pref_utils import QueryIndexAndResponses, create_pref_data
-from bnn_pref.data.traj_utils import (
-    normalize_NTD,
-    rebalance,
-    segment_traj,
-    split_dataset,
-)
+from bnn_pref.data.traj_utils import normalize, rebalance, segment_traj, split_dataset
 from bnn_pref.utils.type import ArrayDict
 
 
@@ -20,12 +15,12 @@ def segment_arraydict(trajs: ArrayDict, sz: int) -> ArrayDict:
     segment each traj in traj dict into chunks of size sz
     """
     assert sz > 0, f"segment size {sz=} must be positive"
-    print(f"  Whole trajs: {trajs['observations'].shape}")
+    # print(f"  Whole trajs: {trajs['observations'].shape}")
     seg_fn = lambda x: segment_traj(x, sz)
     trajs["observations"] = seg_fn(trajs["observations"])
     trajs["rewards"] = rearrange(seg_fn(trajs["rewards"]), "S sz 1-> S sz")
     trajs["returns"] = trajs["rewards"].sum(1)
-    print(f"  Segments:    {trajs['observations'].shape}")
+    # print(f"  Segments:    {trajs['observations'].shape}")
     return trajs
 
 
@@ -50,7 +45,7 @@ def make_prefcc_data(key, cfg) -> ArrayDict:
         "reacher-easy-v0",
         "reacher-hard-v0",
     ]:
-        trajs.update({"observations": normalize_NTD(trajs["observations"])})
+        trajs.update({"observations": normalize(trajs["observations"], axis=(0, 1))})
 
     # * optional pruning
     key, key_rebalance = jr.split(key, 2)

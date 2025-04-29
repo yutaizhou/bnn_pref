@@ -1,5 +1,11 @@
 name: iql
-use_rm: False # use pref-learned reward model
+
+# * reward information
+reward: gt # gt, pref, or zero
+run_dir: "${paths.results_dir}/20250428_171621" # for pref reward model loading
+task_name: "${task.name}" # set via CLI override or compose API
+alg: ekf # ekf, sgd
+is_al: True # True, False
 
 # * training
 n_updates: 1_000_000
@@ -23,6 +29,3 @@ use_wandb: False
 wandb_project: "unifloral"
 wandb_team: "flair"
 wandb_group: "debug"
-
-
-

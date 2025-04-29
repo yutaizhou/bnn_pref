@@ -1,0 +1,7 @@
+defaults:
+- config
+
+paths:
+  results_dir: ${paths.root_dir}/results/offline_rl
+  sweep_dir: ${paths.root_dir}/results_sweep/offline_rl
+
