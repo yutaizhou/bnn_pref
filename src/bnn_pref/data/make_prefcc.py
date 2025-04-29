@@ -15,6 +15,20 @@ from bnn_pref.data.traj_utils import (
 from bnn_pref.utils.type import ArrayDict
 
 
+def segment_arraydict(trajs: ArrayDict, sz: int) -> ArrayDict:
+    """
+    segment each traj in traj dict into chunks of size sz
+    """
+    assert sz > 0, f"segment size {sz=} must be positive"
+    print(f"  Whole trajs: {trajs['observations'].shape}")
+    seg_fn = lambda x: segment_traj(x, sz)
+    trajs["observations"] = seg_fn(trajs["observations"])
+    trajs["rewards"] = rearrange(seg_fn(trajs["rewards"]), "S sz 1-> S sz")
+    trajs["returns"] = trajs["rewards"].sum(1)
+    print(f"  Segments:    {trajs['observations'].shape}")
+    return trajs
+
+
 def make_prefcc_data(key, cfg) -> ArrayDict:
     task_cfg = cfg["task"]
     data_cfg = cfg["data"]
@@ -49,19 +63,18 @@ def make_prefcc_data(key, cfg) -> ArrayDict:
         tokeep=data_cfg["tokeep"],
     )
 
+    # * optionally segment trajectories: (N, T, ...) -> (N * n_chunks, sz, ...)
+    # * can be done before or after splitting into train/test
     if sz != -1:
-        # print(
-        #     f"  Whole trajs: {trajs['observations'].shape} (after short length filtering and distribution pruning)"
-        # )
-        seg_fn = lambda x: segment_traj(x, sz)
-        trajs["observations"] = seg_fn(trajs["observations"])
-        trajs["rewards"] = rearrange(seg_fn(trajs["rewards"]), "S sz 1-> S sz")
-        trajs["returns"] = trajs["rewards"].sum(1)
-        # print(f"  Segments:    {trajs['observations'].shape}")
+        trajs = segment_arraydict(trajs, sz)
 
     # * split into train/test
     key, key_split = jr.split(key, 2)
     train_trajs, test_trajs = split_dataset(key_split, trajs, demo_train_frac)
+
+    # if sz != -1:
+    #     train_trajs = segment_arraydict(train_trajs, sz)
+    #     test_trajs = segment_arraydict(test_trajs, sz)
 
     # * turn train/test trajs into preference data
     key, key_train, key_test = jr.split(key, 3)
