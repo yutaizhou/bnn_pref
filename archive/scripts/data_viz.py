@@ -29,11 +29,11 @@ def main(cfg):
 
     tasks = [
         # * Gym
-        "reacher",
-        "lunar",
+        # "reacher",
+        # "lunar",
         # "cheetah",
         # * Deepmind Control
-        "acrobot",
+        # "acrobot",
         # "ball",
         # "cartpoleSwing",
         # "cheetahDMC",
@@ -43,12 +43,18 @@ def main(cfg):
         # "reacherHard",
         # "walkerWalk",
         # * D4RL
-        "cheetahRand",
-        # "cheetahMedExp",
-        # "hopperRand",
-        # "hopperMed",
-        # "walkerRand",
-        # "walkerMedReplay",
+        "cheetahRandom",
+        "cheetahMediumReplay",
+        "cheetahMediumExpert",
+        "hopperRandom",
+        "hopperMediumReplay",
+        "hopperMediumExpert",
+        "walkerRandom",
+        "walkerMediumReplay",
+        "walkerMediumExpert",
+        "penHuman",
+        "penExpert",
+        "penCloned",
     ]
 
     fig, axs = plt.subplots(4, 4, figsize=(12, 8))  # 13 tasks total

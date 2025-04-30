@@ -16,7 +16,7 @@ import warnings
 
 os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
 os.environ["DISABLE_CODESIGN_WARNING"] = "1"
-logging.getLogger("absl").setLevel(logging.WARNING)
+logging.getLogger("absl").setLevel(logging.ERROR)
 
 
 import hydra
@@ -43,17 +43,24 @@ def main(cfg):
     loaded_cfg = OmegaConf.load(f"{rl_cfg['run_dir']}/.hydra/config.yaml")
     tasks = [
         # # * D4RL
-        "cheetahRand",
-        "cheetahMedExp",
-        "hopperRand",
-        "hopperMed",
-        "walkerRand",
-        "walkerMedReplay",
+        "cheetahRandom",
+        "cheetahMediumReplay",
+        "cheetahMediumExpert",
+        "hopperRandom",
+        "hopperMediumReplay",
+        "hopperMediumExpert",
+        "walkerRandom",
+        "walkerMediumReplay",
+        "walkerMediumExpert",
+        "penHuman",
+        "penExpert",
+        "penCloned",
     ]
     algs = ["ekf", "sgd"]
     is_als = [False, True]
 
     # algs = ["ekf"]
+    # algs = ["sgd"]
     # is_als = [False]
 
     stats = nested_defaultdict()

@@ -81,12 +81,12 @@ def main(cfg):
         # "pendulum",
         # "walkerWalk",
         # # * D4RL
-        "cheetahRand",
-        "cheetahMedExp",
-        "hopperRand",
-        "hopperMed",
-        "walkerRand",
-        "walkerMedReplay",
+        "cheetahRandom",
+        "cheetahMediumExpert",
+        "hopperRandom",
+        "hopperMedium",
+        "walkerRandom",
+        "walkerMediumReplay",
     ]
     algs = ["ekf", "sgd"]
     is_als = [False, True]
