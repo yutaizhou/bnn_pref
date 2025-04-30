@@ -217,13 +217,13 @@ class DeepEnsemble(Agent):
 if __name__ == "__main__":
     import ipdb
 
-    def init_model(key, model, input_shape):
+    def init_model(key, model, input_shape, tx):
         dummy_input = jnp.ones((1, *input_shape))
         params = model.init(key, dummy_input)["params"]
         ts = TrainState.create(
             apply_fn=model.apply,
             params=params,
-            tx=optax.adam(3e-4),
+            tx=tx,
         )
         return ts
 
@@ -264,7 +264,10 @@ if __name__ == "__main__":
     # * Model initialization
     key, *keys_model = jr.split(key, 1 + n_models)
     keys_model = jnp.array(keys_model)
-    ts = jax.vmap(init_model, in_axes=(0, None, None))(keys_model, model, input_shape)
+    tx = optax.adam(3e-4)
+    ts = jax.vmap(init_model, in_axes=(0, None, None, None))(
+        keys_model, model, input_shape, tx
+    )
     print(jax.tree.map(lambda x: x.shape, ts.params))
     train_step_vj = jax.jit(jax.vmap(train_step, in_axes=(0, None)))
 

@@ -14,8 +14,7 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 import matplotlib.pyplot as plt
-import orbax
-import orbax.checkpoint
+import orbax.checkpoint as ocp
 from flax.training import orbax_utils
 from hydra.core.hydra_config import HydraConfig
 
@@ -123,7 +122,7 @@ def main(cfg):
         f"  init: bs={sgd_cfg['bs']}, niters={sgd_cfg['niters']}\n"
     )
 
-    ckpter = orbax.checkpoint.PyTreeCheckpointer()
+    ckpter = ocp.PyTreeCheckpointer()
     total_duration = datetime.now()
     for task in tasks:
         # * update cfg
@@ -198,6 +197,7 @@ def main(cfg):
             best_seed = jnp.argmax(res_m["test_logpdf"][:, -1])
             best_model = jax.tree.map(lambda x: x[best_seed], res_m["model"])
 
+            # * save best model
             save_args = orbax_utils.save_args_from_target(best_model)
             ckpt_name = f"{cfg['task']['name']}_{alg}_al={is_al}"
             ckpter.save(

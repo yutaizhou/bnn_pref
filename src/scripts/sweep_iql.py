@@ -105,9 +105,12 @@ def main(cfg):
 
             results = run_iql(key_run, cfg)
             scores = results["scores"]  # (n_evals_steps, n_eval_workers)
+            reward_src = results["reward_src"]
             final_score = scores[-1]  # (n_eval_workers,)
             print(
-                f"{task}: {alg}_al={is_al} final score: {final_score.mean():.2f} ± {final_score.std():.2f}"
+                f"{cfg['task']['name']}: {alg}_al={is_al}\n"
+                f"  reward: {reward_src}\n"
+                f"  final score: {final_score.mean():.2f} ± {final_score.std():.2f}"
             )
 
             stats[task][alg][is_al] = results

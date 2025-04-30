@@ -2,6 +2,7 @@ results*/
 .vscode/
 */cfg/local/default.yaml
 *.npz
+_runs/
 
 
 # Byte-compiled / optimized / DLL files

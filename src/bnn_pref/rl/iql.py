@@ -199,8 +199,9 @@ def run_iql(rng, cfg):
         done=jnp.array(dataset["terminals"]),
     )
 
+    reward_src = None
     if rl_cfg["reward"] == "gt":
-        pass
+        reward_src = "gt"
     elif rl_cfg["reward"] == "pref":
         rng, rng_reward = jr.split(rng)
         reward_fn, ckpt_fp = load_reward_model(
@@ -210,10 +211,15 @@ def run_iql(rng, cfg):
             alg=rl_cfg["pref_alg"],
             is_al=rl_cfg["pref_is_al"],
         )
-
+        reward_src = ckpt_fp
         rhat = relabel_rewards(reward_fn, normalize(dataset.obs, axis=(0,)))
         dataset = dataset._replace(reward=rhat)
+        rhat_name = (
+            f"{task_cfg.name}_{rl_cfg['pref_alg']}_al={rl_cfg['pref_is_al']}_rhat.npz"
+        )
+        jnp.savez(f"{cfg.paths.output_dir}/rhat/{rhat_name}", rhat=rhat)
     elif rl_cfg["reward"] == "zero":
+        reward_src = "zeros"
         rhat = jnp.zeros_like(dataset.reward)
         dataset = dataset._replace(reward=rhat)
 
@@ -320,6 +326,7 @@ def run_iql(rng, cfg):
 
     results = {
         "scores": np.array(scores_list),
+        "reward_src": reward_src,
     }
 
     return results
