@@ -258,6 +258,7 @@ def run_iql(rng, cfg):
         print(
             f"{task_cfg.name}: Training {alg_str} policy for {num_evals} iterations..."
         )
+    returns_list = []
     scores_list = []
     for eval_idx in range(num_evals):
         # --- Execute train loop ---
@@ -271,6 +272,7 @@ def run_iql(rng, cfg):
         rng, rng_eval = jr.split(rng)
         returns = eval_agent(rl_cfg, rng_eval, env, agent_state)  # (n_eval_workers,)
         scores = d4rl.get_normalized_score(task_cfg.name, returns) * 100.0
+        returns_list.append(returns)
         scores_list.append(scores)
         # --- Log metrics ---
         step = (eval_idx + 1) * rl_cfg.eval_interval
@@ -291,6 +293,7 @@ def run_iql(rng, cfg):
             wandb.log(log_dict)
 
     # --- Evaluate final agent ---
+    info = {}
     if rl_cfg.n_final_eval_episodes > 0:
         final_iters = int(np.ceil(rl_cfg.n_final_eval_episodes / rl_cfg.n_eval_workers))
         if rl_cfg.log:
@@ -300,6 +303,7 @@ def run_iql(rng, cfg):
             [eval_agent(rl_cfg, _rng, env, agent_state) for _rng in _rng]
         )  # (n_eval_workers * final_iters)
         scores = d4rl.get_normalized_score(task_cfg.name, rets) * 100.0
+        returns_list.append(rets)
         scores_list.append(scores)
         agg_fn = lambda x, k: {
             k: x,
@@ -315,22 +319,21 @@ def run_iql(rng, cfg):
                 f"  final normalized score: {scores.mean():.2f} ± {scores.std():.2f}\n"
             )
 
-        # --- Write final returns to file ---
-        filename = f"{task_alg_str}.npz"
-        metric_fp = f"{cfg.paths.output_dir}/{filename}"
-        with open(metric_fp, "wb") as f:
-            np.savez_compressed(f, **info, args=rl_cfg)
+    results = {
+        "returns": np.array(returns_list),  # (n_evals_steps, n_eval_workers)
+        "scores": np.array(scores_list),  # (n_evals_steps, n_eval_workers)
+        "reward_src": reward_src,  # str
+        **(info if info else {}),
+    }
 
-        if rl_cfg.use_wandb:
-            wandb.save(metric_fp)
+    # --- Write final returns to file ---
+    metric_fp = f"{cfg.paths.output_dir}/stats.npz"
+    with open(metric_fp, "wb") as f:
+        np.savez_compressed(f, **results)
 
     if rl_cfg.use_wandb:
+        wandb.save(metric_fp)
         wandb.finish()
-
-    results = {
-        "scores": np.array(scores_list),
-        "reward_src": reward_src,
-    }
 
     return results
 

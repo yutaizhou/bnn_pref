@@ -3,6 +3,7 @@ import os
 from functools import partial
 from typing import Tuple
 
+os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
 os.environ["DISABLE_CODESIGN_WARNING"] = "1"
 import logging

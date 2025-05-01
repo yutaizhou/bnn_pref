@@ -49,13 +49,18 @@ def slurm_auto_scancel():
     """
     Call at the end of scripts to prevent completed jobs from hanging on slurm.
     """
-    if os.environ.get("SLURM_ARRAY_JOB_ID"):
-        slurm_job_id = (
-            f"{os.environ['SLURM_ARRAY_JOB_ID']}_{os.environ['SLURM_ARRAY_TASK_ID']}"
-        )
+    is_slurm = bool(os.environ.get("SLURM_JOB_ID")) or bool(
+        os.environ.get("SLURM_ARRAY_JOB_ID")
+    )
+
+    if is_slurm:
+        if os.environ.get("SLURM_ARRAY_JOB_ID"):
+            slurm_job_id = f"{os.environ['SLURM_ARRAY_JOB_ID']}_{os.environ['SLURM_ARRAY_TASK_ID']}"
+        else:
+            slurm_job_id = os.environ["SLURM_JOB_ID"]
+        os.system(f"scancel {slurm_job_id}")
     else:
-        slurm_job_id = os.environ["SLURM_JOB_ID"]
-    os.system(f"scancel {slurm_job_id}")
+        pass
 
 
 def get_cuda_visible_devices():
