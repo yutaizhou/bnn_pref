@@ -37,21 +37,21 @@ def main(cfg):
         "sgd": run_ensemble,
     }
 
-    tasks = [
-        "reacher",
-        # "lunar",
-        # "cheetah",
-        # "acrobot",
-        # "ball",
-        # "cartpoleSwing",
-        # "cheetahDMC",
-        # "hopperHop",
-        # "pendulum",
-        # "walkerWalk",
-    ]
+    # "reacher",
+    # "lunar",
+    # "cheetah",
+    # "acrobot",
+    # "ball",
+    # "cartpoleSwing",
+    # "cheetahDMC",
+    # "hopperHop",
+    # "pendulum",
+    # "walkerWalk",
+    # "cheetahRandom",
+    task = "cheetahRandom"
     algs = ["ekf", "sgd"]
     Ms = [3, 8, 15, 30, 50, 100, 150, 200]
-    # Ms = [3, 8, 15]
+    # Ms = [3, 8, 10]
 
     stats = nested_defaultdict()
 
@@ -82,100 +82,90 @@ def main(cfg):
     )
 
     total_duration = datetime.now()
-    for task in tasks:
-        # * update cfg
-        new_cfg = hydra.compose("config", overrides=[f"task={task}"])
-        cfg["task"].update(new_cfg["task"])
+    # * update cfg
+    new_cfg = hydra.compose("config", overrides=[f"task={task}"])
+    cfg["task"].update(new_cfg["task"])
 
-        # * create dataset
-        key, key_data = jr.split(key, 2)
-        data_dict = dataset_creators[cfg["task"]["ds_type"]](key_data, cfg)
+    # * create dataset
+    key, key_data = jr.split(key, 2)
+    data_dict = dataset_creators[cfg["task"]["ds_type"]](key_data, cfg)
 
-        # * create env
-        train_trajs, test_trajs = data_dict["train_trajs"], data_dict["test_trajs"]
-        train_prefs, test_prefs = data_dict["train_prefs"], data_dict["test_prefs"]
+    # * create env
+    train_trajs, test_trajs = data_dict["train_trajs"], data_dict["test_trajs"]
+    train_prefs, test_prefs = data_dict["train_prefs"], data_dict["test_prefs"]
 
-        nt_train, T, D = train_trajs["observations"].shape
-        nt_test = test_trajs["observations"].shape[0]
-        nq_train = train_prefs.queries_Q2.shape[0]
-        nq_test = test_prefs.queries_Q2.shape[0]
+    nt_train, T, D = train_trajs["observations"].shape
+    nt_test = test_trajs["observations"].shape[0]
+    nq_train = train_prefs.queries_Q2.shape[0]
+    nq_test = test_prefs.queries_Q2.shape[0]
 
-        n_dups = 0
-        if cfg["sanity"]:
-            train_prefs, n_dups = modify_queries(
-                train_prefs,
-                real_frac=cfg["sanity_frac"],
-                nq_train=nq_train,
-                nq_init=nq_init,
-            )
-        mislabel_ratio = train_prefs.n_mislabels / nq_train
+    mislabel_ratio = train_prefs.n_mislabels / nq_train
+    print(
+        f"{task:13} ({T=}, {D=}): train/test nt=({nt_train}/{nt_test}), nq=({nq_train}/{nq_test}), {train_prefs.n_mislabels} mislabels ({mislabel_ratio:.1%})"
+    )
+
+    env = PreferenceEnv(
+        items=train_trajs["observations"],
+        X=train_prefs.queries_Q2,
+        Y=jax.nn.one_hot(train_prefs.responses_Q1.squeeze(), num_classes=2),
+    )
+    # * run
+    key, *key_seeds = jr.split(key, 1 + cfg["seeds"])
+    seeds = jnp.array(key_seeds)
+    # combine these two loops into one
+    for alg, M in it.product(algs, Ms):
+        new_cfg = hydra.compose(
+            "config",
+            overrides=[f"task={task}", f"ekf.M={M}", f"sgd.M={M}"],
+        )
+        cfg["ekf"]["M"] = new_cfg["ekf"]["M"]
+        cfg["sgd"]["M"] = new_cfg["sgd"]["M"]
+
+        start = datetime.now()
+
+        run_fn = partial(run_fns[alg], cfg=cfg, data_dict=data_dict, env=env)
+        res_m = (
+            jax.block_until_ready(jax.vmap(run_fn)(seeds))
+            if cfg["seed_vmap"]
+            else jax.block_until_ready(jax.lax.map(run_fn, seeds))
+        )
+
+        duration = (datetime.now() - start).total_seconds()
+
+        # (n_seeds, 1 + nq_update)
+        res = {
+            "task": task,
+            "task_name": cfg["task"]["name"],
+            "nq_train": nq_train,
+            "nq_test": nq_test,
+            "duration": duration,
+            # * logpdf
+            "test_logpdf_all": res_m["test_logpdf"],
+            "test_logpdf_final": MeanStd(res_m["test_logpdf"][:, -1]),
+            # * acc
+            "test_acc_all": res_m["test_acc"],
+            "test_acc_final": MeanStd(res_m["test_acc"][:, -1]),
+        }
+
+        stats[task][alg][M] = res
+
+        test_logpdf_all = res_m["test_logpdf"]
+        nans = ~jnp.isfinite(test_logpdf_all)
+
         print(
-            f"{task:13} ({T=}, {D=}): train/test nt=({nt_train}/{nt_test}), nq=({nq_train}/{nq_test}), {train_prefs.n_mislabels} mislabels ({mislabel_ratio:.1%}), {n_dups} dups"
+            f"  {alg} ({M=}), "
+            f"acc: {res['test_acc_final'].mean:.2%} ± {res['test_acc_final'].std:.2%}, "
+            f"logpdf: {res['test_logpdf_final'].mean:.2f} ± {res['test_logpdf_final'].std:.2f}; "
+            f"{get_param_count_msg(cfg, alg, res_m)}, "
+            f"({res['duration']:.1f}s)"
         )
-
-        env = PreferenceEnv(
-            items=train_trajs["observations"],
-            X=train_prefs.queries_Q2,
-            Y=jax.nn.one_hot(train_prefs.responses_Q1.squeeze(), num_classes=2),
-        )
-        # * run
-        key, *key_seeds = jr.split(key, 1 + cfg["seeds"])
-        seeds = jnp.array(key_seeds)
-        # combine these two loops into one
-        for alg in algs:
-            for M in Ms:
-                new_cfg = hydra.compose(
-                    "config",
-                    overrides=[f"task={task}", f"ekf.M={M}", f"sgd.M={M}"],
-                )
-                cfg["ekf"]["M"] = new_cfg["ekf"]["M"]
-                cfg["sgd"]["M"] = new_cfg["sgd"]["M"]
-
-                start = datetime.now()
-
-                run_fn = partial(run_fns[alg], cfg=cfg, data_dict=data_dict, env=env)
-                res_m = (
-                    jax.block_until_ready(jax.vmap(run_fn)(seeds))
-                    if cfg["seed_vmap"]
-                    else jax.block_until_ready(jax.lax.map(run_fn, seeds))
-                )
-
-                duration = (datetime.now() - start).total_seconds()
-
-                # (n_seeds, 1 + nq_update)
-                res = {
-                    "task": task,
-                    "nq_train": nq_train,
-                    "nq_test": nq_test,
-                    "duration": duration,
-                    # * logpdf
-                    "test_logpdf_all": res_m["test_logpdf"],
-                    "test_logpdf_final": MeanStd(res_m["test_logpdf"][:, -1]),
-                    # * acc
-                    "test_acc_all": res_m["test_acc"],
-                    "test_acc_final": MeanStd(res_m["test_acc"][:, -1]),
-                }
-
-                stats[task][alg][M] = res
-
-                test_logpdf_all = res_m["test_logpdf"]
-                nans = ~jnp.isfinite(test_logpdf_all)
-
-                print(
-                    f"  {alg} ({M=}), "
-                    f"acc: {res['test_acc_final'].mean:.2%} ± {res['test_acc_final'].std:.2%}, "
-                    f"logpdf: {res['test_logpdf_final'].mean:.2f} ± {res['test_logpdf_final'].std:.2f}; "
-                    f"{get_param_count_msg(cfg, alg, res_m)}, "
-                    f"({res['duration']:.1f}s)"
-                )
-                if nans.any():
-                    print(f"nans: {nans.sum(1)}")
+        if nans.any():
+            print(f"nans: {nans.sum(1)}")
     total_duration = (datetime.now() - total_duration).total_seconds()
     print(f"Total duration: {total_duration:.1f}s")
 
     # * plot logpdf learning curve
-    fig, axs = plt.subplots(3, 4, figsize=(12, 8))
-    axs = axs.flatten()
+    fig, ax = plt.subplots(1, 1, figsize=(12, 8))
 
     def get_label(alg: str, M: int) -> str:
         alg_str = "EKF" if alg == "ekf" else "Ensemble"
@@ -185,26 +175,24 @@ def main(cfg):
         color = "blue" if alg == "ekf" else "orange"
         return {"color": color, "linestyle": "-", "linewidth": 1}
 
-    for i, task in enumerate(tasks):
-        ax = axs[i]
-        ax.set_ylim(-0.73, 0)  # ln(0.48)
-        ax.axhline(y=-0.69, linestyle=":", linewidth=1, color="red")  # ln(0.5) = -0.69
-        for alg, M in it.product(algs, Ms):
-            # (n_seeds, 1 + nq_update)
-            stat = stats[task][alg][M]
-            values = stat["test_logpdf_all"]
-            nans = ~jnp.isfinite(values)
-            if nans.any():
-                continue
-            label = get_label(alg, M)
-            style = get_style(alg)
-            mean, std = values.mean(0), values.std(0)
-            ax.plot(mean, label=label, **style)
-            ax.fill_between(
-                jnp.arange(len(mean)), mean - std, mean + std, alpha=0.2, **style
-            )
+    ax.set_ylim(-0.73, 0)  # ln(0.48)
+    ax.axhline(y=-0.69, linestyle=":", linewidth=1, color="red")  # ln(0.5) = -0.69
+    for alg, M in it.product(algs, Ms):
+        # (n_seeds, 1 + nq_update)
+        stat = stats[task][alg][M]
+        values = stat["test_logpdf_all"]
+        nans = ~jnp.isfinite(values)
+        if nans.any():
+            continue
+        label = get_label(alg, M)
+        style = get_style(alg)
+        mean, std = values.mean(0), values.std(0)
+        ax.plot(mean, label=label, **style)
+        ax.fill_between(
+            jnp.arange(len(mean)), mean - std, mean + std, alpha=0.2, **style
+        )
 
-        ax.set_title(f"{task} (nq={stat['nq_train']}/{stat['nq_test']})", fontsize=8)
+    ax.set_title(f"{task} (nq={stat['nq_train']}/{stat['nq_test']})", fontsize=8)
 
     dummy_lines = [
         plt.plot([], [], color="blue", linestyle="-", label="EKF (small)")[0],
@@ -234,24 +222,21 @@ def main(cfg):
     plt.savefig(f"{cfg.paths.output_dir}/logpdf_vs_queries.png")
 
     # * plot acc eval curve
-    fig, axs = plt.subplots(3, 4, figsize=(12, 8))
-    axs = axs.flatten()
-    for i, task in enumerate(tasks):
-        ax = axs[i]
-        ax.set_ylim(0.48, 1)
-        ax.axhline(y=0.5, linestyle=":", linewidth=1, color="red")
-        for alg, M in it.product(algs, Ms):
-            # (n_seeds, nq_update)
-            stat = stats[task][alg][M]
-            values = stat["test_acc_all"]
-            label = get_label(alg, M)
-            style = get_style(alg)
-            mean, std = values.mean(0), values.std(0)
-            ax.plot(mean, label=label, **style)
-            ax.fill_between(
-                jnp.arange(len(mean)), mean - std, mean + std, alpha=0.2, **style
-            )
-        ax.set_title(f"{task}")
+    fig, ax = plt.subplots(1, 1, figsize=(12, 8))
+    ax.set_ylim(0.48, 1)
+    ax.axhline(y=0.5, linestyle=":", linewidth=1, color="red")
+    for alg, M in it.product(algs, Ms):
+        # (n_seeds, nq_update)
+        stat = stats[task][alg][M]
+        values = stat["test_acc_all"]
+        label = get_label(alg, M)
+        style = get_style(alg)
+        mean, std = values.mean(0), values.std(0)
+        ax.plot(mean, label=label, **style)
+        ax.fill_between(
+            jnp.arange(len(mean)), mean - std, mean + std, alpha=0.2, **style
+        )
+    ax.set_title(f"{stat['task_name']}")
 
     dummy_lines = [
         plt.plot([], [], color="blue", linestyle="-", label="EKF (small)")[0],
@@ -279,8 +264,7 @@ def main(cfg):
     plt.savefig(f"{cfg.paths.output_dir}/acc_vs_queries.png")
 
     # * bar plot: duration for each task
-    fig, axs = plt.subplots(3, 4, figsize=(12, 8))
-    axs = axs.flatten()
+    fig, ax = plt.subplots(1, 1, figsize=(12, 8))
 
     # Update legend elements to match logpdf plot style
     legend_elements = [
@@ -288,17 +272,15 @@ def main(cfg):
         plt.Rectangle((0, 0), 1, 1, facecolor="orange", label="Ensemble"),
     ]
 
-    for i, task in enumerate(tasks):
-        ax = axs[i]
-        for j, (alg, M) in enumerate(it.product(algs, Ms)):
-            stat = stats[task][alg][M]
-            duration = stat["duration"]
-            nq_train, nq_test = stat["nq_train"], stat["nq_test"]
-            color = "blue" if alg == "ekf" else "orange"
-            bar = ax.bar(j, duration, color=color)
-        ax.set_xticks([])
-        # ax.set_ylabel("Duration (s)")
-        ax.set_title(f"{task} (nq={nq_train}/{nq_test})", fontsize=8)
+    for j, (alg, M) in enumerate(it.product(algs, Ms)):
+        stat = stats[task][alg][M]
+        duration = stat["duration"]
+        nq_train, nq_test = stat["nq_train"], stat["nq_test"]
+        color = "blue" if alg == "ekf" else "orange"
+        bar = ax.bar(j, duration, color=color)
+    ax.set_xticks([])
+    # ax.set_ylabel("Duration (s)")
+    ax.set_title(f"{task} (nq={nq_train}/{nq_test})", fontsize=8)
 
     fig.suptitle("Task Duration (s)")
     fig.legend(handles=legend_elements, loc="center right")
@@ -306,24 +288,21 @@ def main(cfg):
     plt.savefig(f"{cfg.paths.output_dir}/task_durations.png")
 
     # * plot ensemble size vs. duration
-    fig, axs = plt.subplots(3, 4, figsize=(12, 8))
-    axs = axs.flatten()
-    for i, task in enumerate(tasks):
-        ax = axs[i]
-        for alg in algs:
-            durations = []
-            for j, M in enumerate(Ms):
-                stat = stats[task][alg][M]
-                duration = stat["duration"]
-                nq_train, nq_test = stat["nq_train"], stat["nq_test"]
-                durations.append(duration)
-            style = get_style(alg)
-            label = get_label(alg, M)
-            ax.plot(durations, label=label, marker="o", markersize=3, **style)
-            ax.set_xticks(range(len(Ms)))
-            ax.set_xticklabels(Ms)
+    fig, ax = plt.subplots(1, 1, figsize=(12, 8))
+    for alg in algs:
+        durations = []
+        for j, M in enumerate(Ms):
+            stat = stats[task][alg][M]
+            duration = stat["duration"]
+            nq_train, nq_test = stat["nq_train"], stat["nq_test"]
+            durations.append(duration)
+        style = get_style(alg)
+        label = get_label(alg, M)
+        ax.plot(durations, label=label, marker="o", markersize=3, **style)
+        ax.set_xticks(range(len(Ms)))
+        ax.set_xticklabels(Ms)
 
-            ax.set_title(f"{task}")
+    ax.set_title(f"{stat['task_name']}")
 
     fig.suptitle("Task Duration (s) vs. Ensemble Size")
     dummy_lines = [
