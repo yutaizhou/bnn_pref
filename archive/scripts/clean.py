@@ -3,18 +3,18 @@ import shutil
 from pathlib import Path
 
 
-def clean_empty_dirs(root_dir):
+def clean_empty_dirs(dirp):
     """
     Delete directories that don't contain any PNG files.
 
     Args:
         root_dir (str): Path to the root directory to check
     """
-    root_path = Path(root_dir)
+    root_path = Path(dirp)
 
     # Ensure the root directory exists
     if not root_path.exists():
-        print(f"Directory {root_dir} does not exist!")
+        print(f"Directory {dirp} does not exist!")
         return
 
     # Get all directories in the root path
@@ -36,11 +36,17 @@ def clean_empty_dirs(root_dir):
 
 if __name__ == "__main__":
     # Get the directory path from user input
+    root_dir = "/scr/yutaizho/projects/bnn_pref"
     directories = [
-        "/Users/yutai/dev/projects/bnn_pref/results",
-        "/Users/yutai/dev/projects/bnn_pref/results/pref",
-        "/Users/yutai/dev/projects/bnn_pref/results/offline_rl",
-        "/Users/yutai/dev/projects/bnn_pref/results_sweep",
+        f"{root_dir}/{d}"
+        for d in [
+            "results",
+            "results/pref",
+            "results/offline_rl",
+            "results_sweep",
+            "results_sweep/pref",
+            "results_sweep/offline_rl",
+        ]
     ]
 
     # Confirm before proceeding

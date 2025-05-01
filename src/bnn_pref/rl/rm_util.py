@@ -39,11 +39,12 @@ def load_reward_model(
     """
     run_dir: hydra run output directory, e.g. "../results/2025***"
     key: used for flax.linen.init and EKF subspace parameter sampling
-    model ts shape: (n_seeds, ensemble_size, ...)
-        DEPRECATED: n_seeds axis is now removed, only best seed per run is saved
 
     Assumes ckpts are named as follows, and exists in <run_dir>/ckpts/
         <run_dir>/ckpts/<task_name>_<alg>_al=<is_al>
+
+    loaded model states have shape: (n_seeds, ensemble_size, ...)
+        DEPRECATED: n_seeds axis is now removed, only best seed per run is saved
     """
 
     cfg = OmegaConf.load(f"{run_dir}/.hydra/config.yaml")

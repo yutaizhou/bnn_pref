@@ -3,8 +3,7 @@ import warnings
 from functools import partial
 from typing import Callable, List, Tuple
 
-import omegaconf
-
+os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 os.environ["D4RL_SUPPRESS_IMPORT_ERROR"] = "1"
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -21,6 +20,7 @@ import optax
 import wandb
 from flax.training.train_state import TrainState
 from jaxtyping import Array, Float, PRNGKeyArray
+from omegaconf import OmegaConf
 
 from bnn_pref.data.traj_utils import normalize
 from bnn_pref.rl.common import (
@@ -31,9 +31,9 @@ from bnn_pref.rl.common import (
     Transition,
 )
 from bnn_pref.rl.rm_util import load_reward_model, relabel_rewards
-from bnn_pref.utils.utils import get_random_seed
+from bnn_pref.utils.utils import get_random_seed, slurm_auto_scancel
 
-os.environ["XLA_FLAGS"] = "--xla_gpu_triton_gemm_any=True"
+os.environ["XLA_FLAGS"] = "--xla_gpu_triton_gemm_any=True"  # from unifloral
 
 
 def create_ts(
@@ -190,7 +190,7 @@ def run_iql(rng, cfg):
     if rl_cfg.use_wandb:
         wandb.init(
             name=task_alg_str,
-            config=omegaconf.OmegaConf.to_container(rl_cfg, resolve=True),
+            config=OmegaConf.to_container(rl_cfg, resolve=True),
             entity=cfg.wandb.entity,
             project=cfg.wandb.project,
             group=cfg.wandb.group,
@@ -340,6 +340,7 @@ def main(cfg):
     seed = get_random_seed(cfg["seed"])
     key = jr.key(seed)
     run_iql(key, cfg)
+    slurm_auto_scancel()  # prevent completed jobs from hanging on slurm
 
 
 if __name__ == "__main__":
