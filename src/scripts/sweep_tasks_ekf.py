@@ -14,8 +14,7 @@ import jax.random as jr
 import matplotlib.pyplot as plt
 from hydra.core.hydra_config import HydraConfig
 
-from bnn_pref.alg.ekf_subspace import EKFBeliefState, SubspaceEKF
-from bnn_pref.alg.trainer import alg_pipeline
+from bnn_pref.alg.trainer import run_ekf
 from bnn_pref.data import dataset_creators
 from bnn_pref.data.data_env import PreferenceEnv
 from bnn_pref.utils.hydra_resolvers import *
@@ -24,49 +23,6 @@ from bnn_pref.utils.utils import get_random_seed, nested_defaultdict
 
 logging.getLogger("jax._src.xla_bridge").setLevel(logging.ERROR)
 jnp.set_printoptions(precision=2)
-
-
-def run_ekf(key, cfg, data_dict, env):
-    ekf_cfg = cfg["ekf"]
-    data_cfg = cfg["data"]
-    test_trajs_obs = data_dict["test_trajs"]["observations"]
-    test_prefs = data_dict["test_prefs"]
-
-    # * build + run bandit alg
-    key, key_pipe, key_bma = jr.split(key, 3)
-    bel_trace, bandit = alg_pipeline(key_pipe, SubspaceEKF, env, ekf_cfg, data_cfg)
-
-    # * compute metrics
-    def eval_bel(_, bel: EKFBeliefState):
-        # * sample model parameters
-        key = jr.fold_in(key_bma, bel.t)
-        prob_Q2 = bandit.compute_predictive(
-            key, bel, test_trajs_obs, test_prefs.queries_Q2
-        )
-        pred_Q = prob_Q2.argmax(axis=1)
-
-        test_acc = jnp.mean(pred_Q == test_prefs.responses_Q1.squeeze())
-        prob_Q1 = jnp.take_along_axis(prob_Q2, test_prefs.responses_Q1, axis=1)
-        test_logpdf = jnp.log(prob_Q1).mean()
-
-        # all arrays of (1 + nq_updates, )
-        result = {
-            "test_logpdf": test_logpdf,
-            "test_acc": test_acc,
-        }
-        return (), result
-
-    *_, al_results = jax.lax.scan(eval_bel, init=(), xs=bel_trace)
-
-    model = jax.tree.map(lambda x: x[-1], bel_trace)  # get only the final model
-    results = {
-        **al_results,  # (n_seeds, nq_update)
-        "param_count": bandit.param_count,
-        "subspace_param_count": bandit.subspace_param_count,
-        "model": model,
-    }
-
-    return results
 
 
 @hydra.main(version_base=None, config_name="configPref", config_path="../cfg")

@@ -10,61 +10,15 @@ import jax.random as jr
 import matplotlib.pyplot as plt
 
 from bnn_pref.alg.ekf_subspace import SubspaceEKF
-from bnn_pref.alg.trainer import alg_pipeline
+from bnn_pref.alg.trainer import alg_pipeline, run_ekf
 from bnn_pref.data import make_synthetic_data
 from bnn_pref.data.data_env import PreferenceEnv
 from bnn_pref.utils.hydra_resolvers import *
-from bnn_pref.utils.metrics import (
-    MeanStd,
-    compute_acc_nn,
-    compute_logpdf_nn,
-    compute_pref_ranking_acc,
-)
+from bnn_pref.utils.metrics import MeanStd
 from bnn_pref.utils.utils import get_random_seed
 
 logging.getLogger("jax._src.xla_bridge").setLevel(logging.ERROR)
 jnp.set_printoptions(precision=2)
-
-
-def run_ekf(key, cfg):
-    data_cfg = cfg["data"]
-    task_cfg = cfg["task"]
-    ekf_cfg = cfg["ekf"]
-
-    # * generate true params + preference data
-    output = make_synthetic_data(key, cfg)
-    train_prefs, test_prefs = output["train_prefs"], output["test_prefs"]
-
-    # * build + run bandit alg
-    key, key1 = jr.split(key, 2)
-    env = PreferenceEnv(
-        X=train_prefs.queries_Q2TD,
-        Y=jax.nn.one_hot(train_prefs.responses_Q1.squeeze(), num_classes=2),
-    )
-
-    bel_trace, bandit = alg_pipeline(key1, SubspaceEKF, env, ekf_cfg, data_cfg)
-    bel = jax.tree_util.tree_map(lambda x: x[-1], bel_trace)
-
-    pref_predictor = jax.vmap(partial(bandit.sub2full_predict_logits, bel.mean))
-    reward_predictor = jax.vmap(partial(bandit.sub2full_predict_return, bel.mean))
-    train_acc = compute_acc_nn(pref_predictor, train_prefs)
-    test_acc = compute_acc_nn(pref_predictor, test_prefs)
-    test_logpdf = compute_logpdf_nn(pref_predictor, test_prefs)
-    pref_acc = compute_pref_ranking_acc(reward_predictor, test_prefs)
-
-    results = {
-        "train_acc": train_acc,
-        "test_acc": test_acc,
-        "pref_acc": pref_acc,
-        "test_logpdf": test_logpdf,
-    }
-
-    metadata = {
-        "param_count": bandit.param_count,
-        "subspace_param_count": bandit.subspace_param_count,
-    }
-
-    return results, metadata
 
 
 @hydra.main(version_base=None, config_name="configScaling", config_path="../cfg")

@@ -11,7 +11,8 @@ from jax.random import split
 from jaxtyping import Key
 
 from bnn_pref.alg.agent_utils import Agent
-from bnn_pref.alg.ekf_subspace import EKFBeliefState
+from bnn_pref.alg.ekf_subspace import EKFBeliefState, SubspaceEKF
+from bnn_pref.alg.ensemble import DeepEnsemble
 from bnn_pref.data.data_env import PreferenceEnv
 from bnn_pref.utils.network import RewardNet
 from bnn_pref.utils.type import CARL
@@ -100,3 +101,84 @@ def run_bandit(
 
     # print(q_trace)
     return bel_trace
+
+
+def run_ekf(key, cfg, data_dict, env):
+    ekf_cfg = cfg["ekf"]
+    data_cfg = cfg["data"]
+    test_trajs_obs = data_dict["test_trajs"]["observations"]
+    test_prefs = data_dict["test_prefs"]
+
+    # * build + run bandit alg
+    key, key_pipe, key_bma = jr.split(key, 3)
+    bel_trace, bandit = alg_pipeline(key_pipe, SubspaceEKF, env, ekf_cfg, data_cfg)
+
+    # * compute metrics
+    def eval_bel(_, bel: EKFBeliefState):
+        # * sample model parameters
+        key = jr.fold_in(key_bma, bel.t)
+        prob_Q2 = bandit.compute_predictive(
+            key, bel, test_trajs_obs, test_prefs.queries_Q2
+        )
+        pred_Q = prob_Q2.argmax(axis=1)
+
+        test_acc = jnp.mean(pred_Q == test_prefs.responses_Q1.squeeze())
+        prob_Q1 = jnp.take_along_axis(prob_Q2, test_prefs.responses_Q1, axis=1)
+        test_logpdf = jnp.log(prob_Q1).mean()
+
+        # all arrays of (1 + nq_updates, )
+        result = {
+            "test_logpdf": test_logpdf,
+            "test_acc": test_acc,
+        }
+        return (), result
+
+    *_, al_results = jax.lax.scan(eval_bel, init=(), xs=bel_trace)
+
+    model = jax.tree.map(lambda x: x[-1], bel_trace)  # get only the final model
+    results = {
+        **al_results,  # (n_seeds, nq_update)
+        "param_count": bandit.param_count,
+        "subspace_param_count": bandit.subspace_param_count,
+        "model": model,
+    }
+
+    return results
+
+
+def run_ensemble(key, cfg, data_dict, env):
+    data_cfg = cfg["data"]
+    alg_cfg = cfg["sgd"]
+    test_trajs_obs = data_dict["test_trajs"]["observations"]
+    test_prefs = data_dict["test_prefs"]
+
+    # * build + run ensemble alg
+    key, key_pipe = jr.split(key, 2)
+    ts_trace, bandit = alg_pipeline(key_pipe, DeepEnsemble, env, alg_cfg, data_cfg)
+
+    # * compute metrics
+    def eval_bel(_, ts: TrainState):
+        prob_Q2 = bandit.compute_predictive(ts, test_trajs_obs, test_prefs.queries_Q2)
+        pred_Q = prob_Q2.argmax(axis=1)
+
+        test_acc = jnp.mean(pred_Q == test_prefs.responses_Q1.squeeze())
+        prob_Q1 = jnp.take_along_axis(prob_Q2, test_prefs.responses_Q1, axis=1)
+        test_logpdf = jnp.log(prob_Q1).mean()
+
+        # all arrays of (1 + nq_updates, )
+        result = {
+            "test_logpdf": test_logpdf,
+            "test_acc": test_acc,
+        }
+        return (), result
+
+    *_, al_results = jax.lax.scan(eval_bel, init=(), xs=ts_trace)
+
+    model = jax.tree.map(lambda x: x[-1], ts_trace)  # get only the final model
+    results = {
+        **al_results,  # (n_seeds, 1 + nq_update)
+        "param_count": bandit.param_count,
+        "ensemble_param_count": bandit.ensemble_param_count,
+        "model": model,
+    }
+    return results

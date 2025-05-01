@@ -13,11 +13,9 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 import matplotlib.pyplot as plt
-from flax.training.train_state import TrainState
 from hydra.core.hydra_config import HydraConfig
 
-from bnn_pref.alg.ensemble import DeepEnsemble
-from bnn_pref.alg.trainer import alg_pipeline
+from bnn_pref.alg.trainer import run_ensemble
 from bnn_pref.data import dataset_creators
 from bnn_pref.data.data_env import PreferenceEnv
 from bnn_pref.utils.hydra_resolvers import *
@@ -26,44 +24,6 @@ from bnn_pref.utils.utils import get_random_seed, nested_defaultdict
 
 logging.getLogger("jax._src.xla_bridge").setLevel(logging.ERROR)
 jnp.set_printoptions(precision=2)
-
-
-def run_ensemble(key, cfg, data_dict, env):
-    data_cfg = cfg["data"]
-    alg_cfg = cfg["sgd"]
-    test_trajs_obs = data_dict["test_trajs"]["observations"]
-    test_prefs = data_dict["test_prefs"]
-
-    # * build + run ensemble alg
-    key, key_pipe = jr.split(key, 2)
-    ts_trace, bandit = alg_pipeline(key_pipe, DeepEnsemble, env, alg_cfg, data_cfg)
-
-    # * compute metrics
-    def eval_bel(_, ts: TrainState):
-        prob_Q2 = bandit.compute_predictive(ts, test_trajs_obs, test_prefs.queries_Q2)
-        pred_Q = prob_Q2.argmax(axis=1)
-
-        test_acc = jnp.mean(pred_Q == test_prefs.responses_Q1.squeeze())
-        prob_Q1 = jnp.take_along_axis(prob_Q2, test_prefs.responses_Q1, axis=1)
-        test_logpdf = jnp.log(prob_Q1).mean()
-
-        # all arrays of (1 + nq_updates, )
-        result = {
-            "test_logpdf": test_logpdf,
-            "test_acc": test_acc,
-        }
-        return (), result
-
-    *_, al_results = jax.lax.scan(eval_bel, init=(), xs=ts_trace)
-
-    model = jax.tree.map(lambda x: x[-1], ts_trace)  # get only the final model
-    results = {
-        **al_results,  # (n_seeds, 1 + nq_update)
-        "param_count": bandit.param_count,
-        "ensemble_param_count": bandit.ensemble_param_count,
-        "model": model,
-    }
-    return results
 
 
 @hydra.main(version_base=None, config_name="configPref", config_path="../cfg")

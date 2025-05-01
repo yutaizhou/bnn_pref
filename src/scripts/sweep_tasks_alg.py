@@ -18,6 +18,7 @@ import orbax.checkpoint as ocp
 from flax.training import orbax_utils
 from hydra.core.hydra_config import HydraConfig
 
+from bnn_pref.alg.trainer import run_ekf, run_ensemble
 from bnn_pref.data import dataset_creators
 from bnn_pref.data.data_env import PreferenceEnv
 from bnn_pref.data.pref_utils import QueryIndexAndResponses
@@ -25,8 +26,6 @@ from bnn_pref.utils.hydra_resolvers import *
 from bnn_pref.utils.metrics import MeanStd
 from bnn_pref.utils.print_utils import get_param_count_msg
 from bnn_pref.utils.utils import get_random_seed, nested_defaultdict
-from scripts.sweep_tasks_ekf import run_ekf
-from scripts.sweep_tasks_ensemble import run_ensemble
 
 logging.getLogger("jax._src.xla_bridge").setLevel(logging.ERROR)
 jnp.set_printoptions(precision=2)
