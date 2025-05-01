@@ -1,3 +1,4 @@
+import os
 from collections import defaultdict
 from datetime import datetime
 
@@ -42,3 +43,22 @@ def tile_first_dim(x: jnp.ndarray, reps: int):
     expanded = x[None, ...]
     tile_seq = (reps,) + (1,) * x.ndim
     return jnp.tile(expanded, tile_seq)
+
+
+def slurm_auto_scancel():
+    """
+    Call at the end of scripts to prevent completed jobs from hanging on slurm.
+    """
+    if os.environ.get("SLURM_ARRAY_JOB_ID"):
+        slurm_job_id = (
+            f"{os.environ['SLURM_ARRAY_JOB_ID']}_{os.environ['SLURM_ARRAY_TASK_ID']}"
+        )
+    else:
+        slurm_job_id = os.environ["SLURM_JOB_ID"]
+    os.system(f"scancel {slurm_job_id}")
+
+
+def get_cuda_visible_devices():
+    cuda_visible_devices = os.environ.get("CUDA_VISIBLE_DEVICES")
+    local_device_ids = [int(i) for i in cuda_visible_devices.split(",")]
+    return local_device_ids
