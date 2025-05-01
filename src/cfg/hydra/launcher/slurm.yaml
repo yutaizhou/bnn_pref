@@ -4,7 +4,7 @@ defaults:
 # @package hydra.launcher
 submitit_folder: ${hydra.sweep.dir}/.submitit/%j
 timeout_min: 720 # 12 hours
-cpus_per_task: null
+cpus_per_task: 10
 gpus_per_node: null
 tasks_per_node: 1
 gpus_per_task: null
@@ -17,7 +17,7 @@ qos: null
 comment: null
 constraint: null
 exclude: null
-gres: shard:10 # 50 shards per GPU
+gres: shard:12 # 50 shards per GPU
 cpus_per_gpu: null
 mem_per_cpu: null
 account: null

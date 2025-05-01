@@ -14,8 +14,7 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 import optax
-import orbax
-import orbax.checkpoint
+import orbax.checkpoint as ocp
 from einops import rearrange
 from jax.flatten_util import ravel_pytree
 from jaxtyping import Array, Float, PRNGKeyArray
@@ -24,7 +23,7 @@ from omegaconf import OmegaConf
 from bnn_pref.alg.agent_utils import subspace2full_params
 from bnn_pref.alg.ekf_subspace import EKFBeliefState
 from bnn_pref.alg.ensemble import init_model
-from bnn_pref.utils.network import RewardNet
+from bnn_pref.utils.network import RewardNet, count_params
 
 
 def load_reward_model(
@@ -51,32 +50,50 @@ def load_reward_model(
     ckpts_dir = f"{run_dir}/ckpts"
     ckpt_fp = f"{ckpts_dir}/{task_name}_{alg}_al={is_al}"
 
-    cktper = orbax.checkpoint.PyTreeCheckpointer()
-    empty_stats = cktper.restore(ckpt_fp)
+    cktper = ocp.PyTreeCheckpointer()
+    sharding = jax.sharding.PositionalSharding(jax.local_devices())
 
     obs_shape = gym.make(task_name).observation_space.shape
+    input_shape = (2, 50, *obs_shape)
     if alg == "sgd":
         key, *keys = jr.split(key, 1 + cfg["sgd"]["M"])
         keys = jnp.array(keys)
         model = RewardNet(cfg["sgd"]["hidden_sizes"])
         dummy_item = jax.vmap(init_model, in_axes=(0, None, None, None))(
-            keys, model, (2, 50, *obs_shape), optax.adam(cfg["sgd"]["learning_rate"])
+            keys, model, input_shape, optax.adam(cfg["sgd"]["learning_rate"])
         )
-        ts = cktper.restore(ckpt_fp, item=dummy_item)
+        dummy_items = jax.tree.map(lambda x: jax.device_put(x, sharding), dummy_item)
+        restore_kw = {
+            "restore_args": ocp.checkpoint_utils.construct_restore_args(
+                dummy_items, jax.tree.map(lambda _: sharding, dummy_items)
+            )
+        }
+        ts = cktper.restore(ckpt_fp, item=dummy_items, **restore_kw)
         params = {"params": ts.params}
 
     elif alg == "ekf":
         model = RewardNet(cfg["ekf"]["hidden_sizes"])
+        dummy_input = jnp.zeros((1, *input_shape))
+        initial_params = model.init(key, dummy_input)["params"]
+        full_dim = count_params(initial_params)
+        sub_dim = cfg["ekf"]["sub_dim"]
+
         dummy_item = EKFBeliefState(
-            mean=empty_stats["mean"],
-            cov=empty_stats["cov"],
-            t=empty_stats["t"],
-            proj_matrix=empty_stats["proj_matrix"],
+            mean=jnp.zeros((sub_dim,)),
+            cov=jnp.eye(sub_dim),
+            t=0,
+            proj_matrix=jnp.zeros((sub_dim, full_dim)),
             offset_ts=init_model(
-                key, model, (2, 50, *obs_shape), optax.adam(cfg["ekf"]["learning_rate"])
+                key, model, input_shape, optax.adam(cfg["ekf"]["learning_rate"])
             ),
         )
-        bel = cktper.restore(ckpt_fp, item=dummy_item)
+        dummy_items = jax.tree.map(lambda x: jax.device_put(x, sharding), dummy_item)
+        restore_kw = {
+            "restore_args": ocp.checkpoint_utils.construct_restore_args(
+                dummy_items, jax.tree.map(lambda _: sharding, dummy_items)
+            )
+        }
+        bel = cktper.restore(ckpt_fp, item=dummy_items, **restore_kw)
         ts = bel.offset_ts
 
         params_offset, unravel_fn = ravel_pytree(ts.params)

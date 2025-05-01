@@ -19,6 +19,19 @@ seed_vmap: True # good for 3 seeds or under
 sanity: False
 sanity_frac: 0.01 # fraction of non-duplicates in the query pool. 1% of nq_train=5000 is 50, nq_update=50 
 
+wandb:
+  entity: "yutaizhou"
+  project: "bnn_pref"
+
+  # name: null # display name of run in GUI, set in code
+  # id: # for resuming
+  group: null # organize sweeps / group multiple runs as one experiment
+  # job_type: null # set in code
+  # tags:  # editable in GUI, as well as a resumed run 
+
+  # mode:  # online, offline, disabled
+
+
 paths:
   results_dir: ${paths.root_dir}/results
   sweep_dir: ${paths.root_dir}/results_sweep

@@ -3,6 +3,8 @@ import warnings
 from functools import partial
 from typing import Callable, List, Tuple
 
+import omegaconf
+
 os.environ["D4RL_SUPPRESS_IMPORT_ERROR"] = "1"
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -179,13 +181,20 @@ def run_iql(rng, cfg):
     assert rl_cfg["reward"] in ["gt", "pref", "zero"]
 
     # --- Initialize logger ---
+    alg_str = (
+        f"{rl_cfg.pref_alg}_al={rl_cfg.pref_is_al}"
+        if rl_cfg.reward == "pref"
+        else rl_cfg.reward
+    )
+    task_alg_str = f"{task_cfg.name}_{alg_str}"
     if rl_cfg.use_wandb:
         wandb.init(
-            config=rl_cfg,
-            project=rl_cfg.wandb_project,
-            entity=rl_cfg.wandb_team,
-            group=rl_cfg.wandb_group,
-            job_type="train_agent",
+            name=task_alg_str,
+            config=omegaconf.OmegaConf.to_container(rl_cfg, resolve=True),
+            entity=cfg.wandb.entity,
+            project=cfg.wandb.project,
+            group=cfg.wandb.group,
+            job_type="offlineRL",
         )
 
     # --- Initialize environment and dataset ---
@@ -214,10 +223,6 @@ def run_iql(rng, cfg):
         reward_src = ckpt_fp
         rhat = relabel_rewards(reward_fn, normalize(dataset.obs, axis=(0,)))
         dataset = dataset._replace(reward=rhat)
-        rhat_name = (
-            f"{task_cfg.name}_{rl_cfg['pref_alg']}_al={rl_cfg['pref_is_al']}_rhat.npz"
-        )
-        jnp.savez(f"{cfg.paths.output_dir}/rhat/{rhat_name}", rhat=rhat)
     elif rl_cfg["reward"] == "zero":
         reward_src = "zeros"
         rhat = jnp.zeros_like(dataset.reward)
@@ -248,11 +253,7 @@ def run_iql(rng, cfg):
     )
 
     num_evals = rl_cfg.n_updates // rl_cfg.eval_interval
-    alg_str = (
-        f"{rl_cfg.pref_alg}_al={rl_cfg.pref_is_al}"
-        if rl_cfg.reward == "pref"
-        else rl_cfg.reward
-    )
+
     if rl_cfg.log:
         print(
             f"{task_cfg.name}: Training {alg_str} policy for {num_evals} iterations..."
@@ -280,11 +281,12 @@ def run_iql(rng, cfg):
             )
         if rl_cfg.use_wandb:
             log_dict = {
-                "return": returns.mean(),
-                "score": scores.mean(),
-                "score_std": scores.std(),
+                "eval/return": returns.mean(),
+                "eval/return_std": returns.std(),
+                "eval/score": scores.mean(),
+                "eval/score_std": scores.std(),
                 "num_updates": step,
-                **{k: loss[k][-1] for k in loss},
+                **{f"train/{k}": loss[k][-1] for k in loss},
             }
             wandb.log(log_dict)
 
@@ -314,12 +316,13 @@ def run_iql(rng, cfg):
             )
 
         # --- Write final returns to file ---
-        filename = f"{task_cfg.name}_{alg_str}.npz"
-        with open(f"{cfg.paths.output_dir}/{filename}", "wb") as f:
+        filename = f"{task_alg_str}.npz"
+        metric_fp = f"{cfg.paths.output_dir}/{filename}"
+        with open(metric_fp, "wb") as f:
             np.savez_compressed(f, **info, args=rl_cfg)
 
         if rl_cfg.use_wandb:
-            wandb.save(f"{cfg.paths.output_dir}/{filename}")
+            wandb.save(metric_fp)
 
     if rl_cfg.use_wandb:
         wandb.finish()

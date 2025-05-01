@@ -82,11 +82,23 @@ def main(cfg):
         # "walkerWalk",
         # # * D4RL
         "cheetahRandom",
+        "cheetahMediumReplay",
         "cheetahMediumExpert",
         "hopperRandom",
-        "hopperMedium",
+        "hopperMediumReplay",
+        "hopperMediumExpert",
         "walkerRandom",
         "walkerMediumReplay",
+        "walkerMediumExpert",
+        "penHuman",
+        "penExpert",
+        "penCloned",
+        "kitchenComplete",
+        "kitchenPartial",
+        "kitchenMixed",
+        "mazeUDense",
+        "mazeMediumDense",
+        "mazeLargeDense",
     ]
     algs = ["ekf", "sgd"]
     is_als = [False, True]

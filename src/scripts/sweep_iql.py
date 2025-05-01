@@ -55,6 +55,12 @@ def main(cfg):
         "penHuman",
         "penExpert",
         "penCloned",
+        "kitchenComplete",
+        "kitchenPartial",
+        "kitchenMixed",
+        "mazeUDense",
+        "mazeMediumDense",
+        "mazeLargeDense",
     ]
     algs = ["ekf", "sgd"]
     is_als = [False, True]

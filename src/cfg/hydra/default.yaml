@@ -24,8 +24,12 @@ job:
         - mcmc
         - wandb.group
         - wandb.job_type
+        - wandb.tags
+        - rl.use_wandb
         - debug # debug_str is already in the dir name, dont' use for subdir
         - run
+        - rl.n_updates
+        - rl.eval_interval
 
 job_logging:
   handlers:

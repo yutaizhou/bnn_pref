@@ -2,7 +2,7 @@ name: iql
 
 # * reward information
 reward: gt # gt, pref, or zero; next four fields only used if reward == "pref"
-run_dir: "/Users/yutai/dev/projects/bnn_pref/results/pref/20250428_171621" # for pref reward model loading
+run_dir: "/scr/yutaizho/projects/bnn_pref/_runs/20250429_161144_rm_6tasks" # for pref reward model loading
 task_name: "${task.name}" # set via CLI override or compose API
 pref_alg: ekf # ekf, sgd
 pref_is_al: True # True, False
@@ -27,6 +27,3 @@ exp_adv_clip: 100.0 # clip for advantage in actor loss
 # * logging
 log: True
 use_wandb: False
-wandb_project: "unifloral"
-wandb_team: "flair"
-wandb_group: "debug"
