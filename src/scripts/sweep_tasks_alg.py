@@ -195,6 +195,7 @@ def main(cfg):
             # (n_seeds, 1 + nq_update)
             res = {
                 "task": task,
+                "task_name": cfg["task"]["name"],
                 "is_active": is_al,
                 "nq_train": nq_train,
                 "nq_test": nq_test,
@@ -270,7 +271,10 @@ def main(cfg):
                 jnp.arange(len(mean)), mean - std, mean + std, alpha=0.2, **style
             )
 
-        ax.set_title(f"{task} (nq={stat['nq_train']}/{stat['nq_test']})", fontsize=8)
+        task_name = stat["task_name"]
+        ax.set_title(
+            f"{task_name} (nq={stat['nq_train']}/{stat['nq_test']})", fontsize=8
+        )
 
     dummy_lines = [
         plt.plot([], [], color="blue", linestyle="--", label="EKF (Random)")[0],
@@ -307,7 +311,8 @@ def main(cfg):
             ax.fill_between(
                 jnp.arange(len(mean)), mean - std, mean + std, alpha=0.2, **style
             )
-        ax.set_title(f"{task}")
+        task_name = stat["task_name"]
+        ax.set_title(f"{task_name}")
 
     dummy_lines = [
         plt.plot([], [], color="blue", linestyle="--", label="EKF (Random)")[0],
@@ -351,7 +356,8 @@ def main(cfg):
                 bar.patches[0].set_hatch("//")
         ax.set_xticks([])
         # ax.set_ylabel("Duration (s)")
-        ax.set_title(f"{task} (nq={nq_train}/{nq_test})", fontsize=8)
+        task_name = stat["task_name"]
+        ax.set_title(f"{task_name} (nq={nq_train}/{nq_test})", fontsize=8)
 
     fig.suptitle("Task Duration (s)")
     fig.legend(handles=legend_elements, loc="center right")
