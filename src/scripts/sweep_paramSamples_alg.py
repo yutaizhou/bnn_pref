@@ -112,14 +112,14 @@ def main(cfg):
     # * run
     key, *key_seeds = jr.split(key, 1 + cfg["seeds"])
     seeds = jnp.array(key_seeds)
-    # combine these two loops into one
     for alg, M in it.product(algs, Ms):
         new_cfg = hydra.compose(
             "config",
-            overrides=[f"task={task}", f"ekf.M={M}", f"sgd.M={M}"],
+            overrides=[f"task={task}", f"{alg}.M={M}"],
         )
-        cfg["ekf"]["M"] = new_cfg["ekf"]["M"]
-        cfg["sgd"]["M"] = new_cfg["sgd"]["M"]
+
+        cfg[alg]["M"] = new_cfg[alg]["M"]
+        cfg[alg]["active"] = True
 
         start = datetime.now()
 
@@ -163,9 +163,7 @@ def main(cfg):
             print(f"nans: {nans.sum(1)}")
     total_duration = (datetime.now() - total_duration).total_seconds()
     print(f"Total duration: {total_duration:.1f}s")
-
-    # * plot logpdf learning curve
-    fig, ax = plt.subplots(1, 1, figsize=(12, 8))
+    jnp.savez(f"{cfg.paths.output_dir}/stats.npz", **stats)
 
     def get_label(alg: str, M: int) -> str:
         alg_str = "EKF" if alg == "ekf" else "Ensemble"
@@ -174,118 +172,6 @@ def main(cfg):
     def get_style(alg: str) -> dict:
         color = "blue" if alg == "ekf" else "orange"
         return {"color": color, "linestyle": "-", "linewidth": 1}
-
-    ax.set_ylim(-0.73, 0)  # ln(0.48)
-    ax.axhline(y=-0.69, linestyle=":", linewidth=1, color="red")  # ln(0.5) = -0.69
-    for alg, M in it.product(algs, Ms):
-        # (n_seeds, 1 + nq_update)
-        stat = stats[task][alg][M]
-        values = stat["test_logpdf_all"]
-        nans = ~jnp.isfinite(values)
-        if nans.any():
-            continue
-        label = get_label(alg, M)
-        style = get_style(alg)
-        mean, std = values.mean(0), values.std(0)
-        ax.plot(mean, label=label, **style)
-        ax.fill_between(
-            jnp.arange(len(mean)), mean - std, mean + std, alpha=0.2, **style
-        )
-
-    ax.set_title(f"{task} (nq={stat['nq_train']}/{stat['nq_test']})", fontsize=8)
-
-    dummy_lines = [
-        plt.plot([], [], color="blue", linestyle="-", label="EKF (small)")[0],
-        plt.plot([], [], color="blue", linestyle="-", label="EKF (medium)")[0],
-        plt.plot([], [], color="blue", linestyle="-", label="EKF (large)")[0],
-        plt.plot([], [], color="orange", linestyle="-", label="Ensemble (small)")[0],
-        plt.plot([], [], color="orange", linestyle="-", label="Ensemble (medium)")[0],
-        plt.plot([], [], color="orange", linestyle="-", label="Ensemble (large)")[0],
-    ]
-    fig.legend(
-        dummy_lines,
-        [
-            "EKF (small)",
-            "EKF (medium)",
-            "EKF (large)",
-            "Ensemble (small)",
-            "Ensemble (medium)",
-            "Ensemble (large)",
-        ],
-        loc="center right",
-    )
-    fig.suptitle(
-        f"log PDF vs. num queries (noise={data_cfg['noisy_label']}, sanity={cfg['sanity']})"
-    )
-    plt.tight_layout(rect=[0, 0, 0.9, 1])  # [left, bottom, right, top]
-    # plt.show()
-    plt.savefig(f"{cfg.paths.output_dir}/logpdf_vs_queries.png")
-
-    # * plot acc eval curve
-    fig, ax = plt.subplots(1, 1, figsize=(12, 8))
-    ax.set_ylim(0.48, 1)
-    ax.axhline(y=0.5, linestyle=":", linewidth=1, color="red")
-    for alg, M in it.product(algs, Ms):
-        # (n_seeds, nq_update)
-        stat = stats[task][alg][M]
-        values = stat["test_acc_all"]
-        label = get_label(alg, M)
-        style = get_style(alg)
-        mean, std = values.mean(0), values.std(0)
-        ax.plot(mean, label=label, **style)
-        ax.fill_between(
-            jnp.arange(len(mean)), mean - std, mean + std, alpha=0.2, **style
-        )
-    ax.set_title(f"{stat['task_name']}")
-
-    dummy_lines = [
-        plt.plot([], [], color="blue", linestyle="-", label="EKF (small)")[0],
-        plt.plot([], [], color="blue", linestyle="-", label="EKF (medium)")[0],
-        plt.plot([], [], color="blue", linestyle="-", label="EKF (large)")[0],
-        plt.plot([], [], color="orange", linestyle="-", label="Ensemble (small)")[0],
-        plt.plot([], [], color="orange", linestyle="-", label="Ensemble (medium)")[0],
-        plt.plot([], [], color="orange", linestyle="-", label="Ensemble (large)")[0],
-    ]
-    fig.legend(
-        dummy_lines,
-        [
-            "EKF (small)",
-            "EKF (medium)",
-            "EKF (large)",
-            "Ensemble (small)",
-            "Ensemble (medium)",
-            "Ensemble (large)",
-        ],
-        loc="center right",
-    )
-    fig.suptitle(f"Accuracy vs. num queries ({nq_train})")
-    plt.tight_layout(rect=[0, 0, 0.9, 1])  # [left, bottom, right, top]
-    # plt.show()
-    plt.savefig(f"{cfg.paths.output_dir}/acc_vs_queries.png")
-
-    # * bar plot: duration for each task
-    fig, ax = plt.subplots(1, 1, figsize=(12, 8))
-
-    # Update legend elements to match logpdf plot style
-    legend_elements = [
-        plt.Rectangle((0, 0), 1, 1, facecolor="blue", label="EKF"),
-        plt.Rectangle((0, 0), 1, 1, facecolor="orange", label="Ensemble"),
-    ]
-
-    for j, (alg, M) in enumerate(it.product(algs, Ms)):
-        stat = stats[task][alg][M]
-        duration = stat["duration"]
-        nq_train, nq_test = stat["nq_train"], stat["nq_test"]
-        color = "blue" if alg == "ekf" else "orange"
-        bar = ax.bar(j, duration, color=color)
-    ax.set_xticks([])
-    # ax.set_ylabel("Duration (s)")
-    ax.set_title(f"{task} (nq={nq_train}/{nq_test})", fontsize=8)
-
-    fig.suptitle("Task Duration (s)")
-    fig.legend(handles=legend_elements, loc="center right")
-    plt.tight_layout(rect=[0, 0, 0.9, 1])
-    plt.savefig(f"{cfg.paths.output_dir}/task_durations.png")
 
     # * plot ensemble size vs. duration
     fig, ax = plt.subplots(1, 1, figsize=(12, 8))
@@ -311,7 +197,7 @@ def main(cfg):
     ]
     fig.legend(dummy_lines, ["EKF", "Ensemble"], loc="center right")
     plt.tight_layout(rect=[0, 0, 0.9, 1])
-    plt.savefig(f"{cfg.paths.output_dir}/ensemble_size_vs_duration.png")
+    plt.savefig(f"{cfg.paths.output_dir}/paramSamples_vs_duration.png")
 
 
 if __name__ == "__main__":
