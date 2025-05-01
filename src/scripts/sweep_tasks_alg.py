@@ -236,7 +236,7 @@ def main(cfg):
     jnp.savez(f"{cfg.paths.output_dir}/stats.npz", **stats)
 
     # * plot logpdf learning curve
-    fig, axs = plt.subplots(4, 4, figsize=(12, 10))
+    fig, axs = plt.subplots(5, 4, figsize=(12, 10))
     axs = axs.flatten()
 
     def get_label(alg: str, is_al: bool) -> str:
@@ -291,7 +291,7 @@ def main(cfg):
     plt.savefig(f"{cfg.paths.output_dir}/logpdf_vs_queries.png")
 
     # * plot acc eval curve
-    fig, axs = plt.subplots(4, 4, figsize=(12, 10))
+    fig, axs = plt.subplots(5, 4, figsize=(12, 10))
     axs = axs.flatten()
     for i, task in enumerate(tasks):
         ax = axs[i]
@@ -326,7 +326,7 @@ def main(cfg):
     plt.savefig(f"{cfg.paths.output_dir}/acc_vs_queries.png")
 
     # * bar plot duration for each task
-    fig, axs = plt.subplots(4, 4, figsize=(12, 10))
+    fig, axs = plt.subplots(5, 4, figsize=(12, 10))
     axs = axs.flatten()
 
     # Update legend elements to match logpdf plot style

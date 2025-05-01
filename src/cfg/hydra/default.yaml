@@ -19,8 +19,12 @@ job:
       kv_sep: "="
       item_sep: ", "
       exclude_keys: # pl & data already in get_wandb_name
+        - seed
+        - seeds
         - save_fig
         - data
+        - data.nq_train
+        - data.nq_update
         - mcmc
         - wandb.group
         - wandb.job_type
