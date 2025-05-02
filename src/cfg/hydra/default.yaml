@@ -33,6 +33,8 @@ job:
         - run
         - rl.n_updates
         - rl.eval_interval
+        - rl.normalize_reward
+        - rl.clip_reward
 
 job_logging:
   handlers:

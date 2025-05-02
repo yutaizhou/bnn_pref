@@ -1,5 +1,6 @@
 import itertools as it
 import os
+from datetime import datetime
 from typing import List
 
 import ipdb
@@ -126,7 +127,8 @@ def main():
     # Adjust layout to make room for the legend
     plt.tight_layout()
     plt.subplots_adjust(right=0.88)  # Reduced right margin from 0.8 to 0.88
-    plt.savefig("offline_rl_scores.png", bbox_inches="tight", dpi=300)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    plt.savefig(f"offline_rl_scores_{timestamp}.png", bbox_inches="tight", dpi=300)
 
 
 def get_pref_score(dir_path: str, tasks: List[str]):

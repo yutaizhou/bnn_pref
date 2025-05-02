@@ -221,7 +221,11 @@ def run_iql(rng, cfg):
             is_al=rl_cfg["pref_is_al"],
         )
         reward_src = ckpt_fp
-        rhat = relabel_rewards(reward_fn, normalize(dataset.obs, axis=(0,)))
+        rhat = relabel_rewards(reward_fn, normalize(dataset.obs, axis=(0,)))  # (N,)
+        if rl_cfg["normalize_reward"]:
+            rhat = (rhat - rhat.mean()) / rhat.std()
+        if rl_cfg["clip_reward"]:
+            rhat = jnp.clip(rhat, -10.0, 10.0)
         dataset = dataset._replace(reward=rhat)
     elif rl_cfg["reward"] == "zero":
         reward_src = "zeros"

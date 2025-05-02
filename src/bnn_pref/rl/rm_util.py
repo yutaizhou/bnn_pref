@@ -128,7 +128,7 @@ def relabel_rewards(
         reward = reward_fn(obs_D)
         return reward
 
-    out = jax.lax.map(fn, obs).squeeze(axis=1)
+    out = jax.lax.map(fn, obs).squeeze(axis=1)  # (N,)
     return out
 
 

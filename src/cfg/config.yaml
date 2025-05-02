@@ -27,7 +27,7 @@ wandb:
   # id: # for resuming
   group: null # organize sweeps / group multiple runs as one experiment
   # job_type: null # set in code
-  # tags:  # editable in GUI, as well as a resumed run 
+  tags:  null # editable in GUI, as well as a resumed run 
 
   # mode:  # online, offline, disabled
 

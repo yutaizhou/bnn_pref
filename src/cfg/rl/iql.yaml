@@ -6,6 +6,8 @@ run_dir: "/scr/yutaizho/projects/bnn_pref/_runs/20250501_002234_rm_d4rl_18tasks"
 task_name: "${task.name}" # set via CLI override or compose API
 pref_alg: ekf # ekf, sgd
 pref_is_al: True # True, False
+normalize_reward: True # these two are for pref reward relabeling only, not GT
+clip_reward: True
 
 # * training
 n_updates: 1_000_000
