@@ -35,7 +35,7 @@ def alg_pipeline(
         alg_cfg["bs"] = 1
         # print(f"WARNING: {nq_init=} < {bs=}, setting alg_cfg.bs = 1")
 
-    model = RewardNet(alg_cfg["hidden_sizes"])
+    model = RewardNet(alg_cfg["hidden_sizes"], alg_cfg["n_splits"])
     opt = optax.adam(alg_cfg["learning_rate"])
     cls_kwargs = alg_cls.get_hydra_config(alg_cfg)
     bandit = alg_cls(model, opt, **cls_kwargs)

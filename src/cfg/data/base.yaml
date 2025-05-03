@@ -28,5 +28,5 @@ nq_update: 60 # query budget; if -1, use all remaining queries after nq_init
 nsteps: ${get_nsteps:${.nq_train}, ${.nq_init}, ${.nq_update}} #! do not set manually; 
   # if nq_update = -1, then nsteps = nq_train - nq_init; else nsteps = nq_update
 
-min_traj_len: 50 # if <=0 , no filtering; otherwise, throw out trajs shorter than this
+min_traj_len: 50 # only used by d4rl; if <=0, no filtering; otherwise, throw out trajs shorter than this
 segment_size: 50 # if -1, use whole traj. 

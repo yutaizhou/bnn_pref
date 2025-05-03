@@ -8,6 +8,7 @@ chunk_size: ${..chunk_size}
 # * NN model
 learning_rate: 0.001
 hidden_sizes: ${network.hidden_sizes}
+n_splits: ${network.n_splits}
 
 # * Subspace Init w/ SGD 
 niters: 420  # Total number of GD steps on warmup data

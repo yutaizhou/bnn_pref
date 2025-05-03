@@ -34,7 +34,6 @@ def main(cfg):
     ekf_cfg = cfg["ekf"]
     task_cfg = cfg["task"]
 
-    hidden_sizes = ekf_cfg["hidden_sizes"]
     niters = ekf_cfg["cls"]["niters"]
     batch_size = ekf_cfg["cls"]["batch_size"]
     lr = ekf_cfg["learning_rate"]
@@ -47,7 +46,7 @@ def main(cfg):
 
     # Initialize RewardNet
     key, model_key = jr.split(key)
-    model = RewardNet(hidden_sizes)
+    model = RewardNet(ekf_cfg["hidden_sizes"], ekf_cfg["n_splits"])
     dummy_input = train_prefs.queries_Q2TD[:1]
     params = model.init(model_key, dummy_input)["params"]
 

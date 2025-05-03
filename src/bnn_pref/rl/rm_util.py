@@ -59,7 +59,7 @@ def load_reward_model(
     if alg == "sgd":
         key, *keys = jr.split(key, 1 + cfg["sgd"]["M"])
         keys = jnp.array(keys)
-        model = RewardNet(cfg["sgd"]["hidden_sizes"])
+        model = RewardNet(cfg["sgd"]["hidden_sizes"], cfg["sgd"]["n_splits"])
         dummy_item = jax.vmap(init_model, in_axes=(0, None, None, None))(
             keys, model, input_shape, optax.adam(cfg["sgd"]["learning_rate"])
         )
@@ -73,7 +73,7 @@ def load_reward_model(
         params = {"params": ts.params}
 
     elif alg == "ekf":
-        model = RewardNet(cfg["ekf"]["hidden_sizes"])
+        model = RewardNet(cfg["ekf"]["hidden_sizes"], cfg["ekf"]["n_splits"])
         dummy_input = jnp.zeros((1, *input_shape))
         initial_params = model.init(key, dummy_input)["params"]
         full_dim = count_params(initial_params)

@@ -31,7 +31,6 @@ def run_sgd(key, cfg, data_dict, env):
     data_cfg = cfg["data"]
     sgd_cfg = cfg["sgd"]
 
-    hidden_sizes = sgd_cfg["hidden_sizes"]
     niters = sgd_cfg["cls"]["niters"]
     batch_size = sgd_cfg["cls"]["bs"]
     lr = sgd_cfg["learning_rate"]
@@ -40,7 +39,7 @@ def run_sgd(key, cfg, data_dict, env):
 
     # Initialize RewardNet
     key, model_key = jr.split(key)
-    model = RewardNet(hidden_sizes)
+    model = RewardNet(sgd_cfg["hidden_sizes"], sgd_cfg["n_splits"])
     dummy_input = train_prefs.queries_Q2TD[:1]
     params = model.init(model_key, dummy_input)["params"]
 

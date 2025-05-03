@@ -3,6 +3,7 @@ from typing import List
 
 import einops
 import flax.linen as nn
+import ipdb
 import jax
 import jax.numpy as jnp
 from einops import rearrange
@@ -26,64 +27,46 @@ def count_params(params_dict: dict) -> int:
     return sum(x.size for x in jax.tree.leaves(params_dict))
 
 
-class MLPBlock(nn.Module):
-    hidden_sizes: List[int]
-
-    @nn.compact
-    def __call__(self, c, x):
-        for hidden_size in self.hidden_sizes:
-            x = nn.Dense(hidden_size)(x)
-            x = nn.leaky_relu(x)
-        x = nn.Dense(1)(x)
-        x = rearrange(x, "B 1 -> B")
-        return c, x
-
-
 class RewardNet(nn.Module):
     hidden_sizes: List[int]
+    n_splits: int = 1
 
     def setup(self):
+        assert self.n_splits > 0, f"{self.n_splits=} must be positive"
         layers = [[nn.Dense(size), nn.leaky_relu] for size in self.hidden_sizes]
         layers += [[nn.Dense(1)]]
         self.layers = nn.Sequential(list(it.chain.from_iterable(layers)))
 
-        # self.scanned_net = nn.scan(
-        #     MLPBlock,
-        #     variable_broadcast="params",
-        #     split_rngs={"params": False},
-        #     in_axes=1,  # scan over axis 1 (T)
-        #     out_axes=1,  # output has axis 1 (T)
-        #     length=None,
-        # )(self.hidden_sizes)
-
     def __call__(self, x: B2TD) -> B2:
+        """
+        Take batches of trajectory pairs, outputs returns for both trajectories
+        """
         r1 = self.predict_traj_return(x[:, 0])  # B
         r2 = self.predict_traj_return(x[:, 1])  # B
         logits = rearrange([r1, r2], "K B -> B K", K=2)  # B 2
         return logits
 
     def predict_traj_rewards(self, x: BTD) -> BT:
-        # * split T into `n_splits` chunks, avoid OOM
-        # B, T, D = x.shape
-        # n_splits = 5
-        # split_size = T // n_splits
-        # x_chunks = jnp.split(x, n_splits, axis=1)  # List[(B,Tp,D)]
+        """
+        batch MLP over T dimension
+        if n_splits > 1, split T into `n_splits` (divisible) chunks, avoid OOM
+        """
+        if self.n_splits == 1:
+            x = self.layers(x)  # (B,T,D) -> (B,T,1)
+        else:
+            T = x.shape[1]
+            split_size = T // self.n_splits
+            x_chunks = jnp.split(x, self.n_splits, axis=1)  # List[(B,S,D) * n_splits]
 
-        # out = [self.layers(x_chunk) for x_chunk in x_chunks]
-        # x = rearrange(out, "k B Tp D -> B (k Tp) D", k=n_splits, Tp=split_size)
+            out = [self.layers(x_chunk) for x_chunk in x_chunks]
 
-        # * batch MLP over T dimension
-        x = self.layers(x)  # (B,T,D) -> (B,T,1)
+            x = rearrange(out, "k B S 1 -> B (k S) 1", k=self.n_splits, S=split_size)
 
         # todo: stability trick
         # if T > 1:
         #     x = nn.tanh(x)
         # return rearrange(x, "B T 1 -> B T")
         return jnp.squeeze(x, axis=-1)  # works also for TD -> T
-
-    # def predict_traj_rewards_scan(self, x: BTD) -> B:
-    #     _, rewards = self.scanned_net(None, x)
-    #     return rewards
 
     def predict_traj_return(self, x: BTD) -> B:
         B, T, D = x.shape
@@ -92,38 +75,6 @@ class RewardNet(nn.Module):
         # todo: stability trick
         returns /= T
         return returns
-
-
-class MLP(nn.Module):
-    num_arms: int
-
-    @nn.compact
-    def __call__(self, x):
-        x = nn.relu(nn.Dense(50, name="last_layer")(x))
-        x = nn.Dense(self.num_arms)(x)
-        return x
-
-
-class LeNet5(nn.Module):
-    num_arms: int
-
-    @nn.compact
-    def __call__(self, x):
-        x = x if len(x.shape) > 1 else x[None, :]
-        x = x.reshape((x.shape[0], 28, 28, 1))
-        x = nn.Conv(features=6, kernel_size=(5, 5))(x)
-        x = nn.relu(x)
-        x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2), padding="VALID")
-        x = nn.Conv(features=16, kernel_size=(5, 5), padding="VALID")(x)
-        x = nn.relu(x)
-        x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2), padding="VALID")
-        x = x.reshape((x.shape[0], -1))  # Flatten
-        x = nn.Dense(features=120)(x)
-        x = nn.relu(x)
-        x = nn.Dense(features=84, name="last_layer")(x)  # There are 10 classes in MNIST
-        x = nn.relu(x)
-        x = nn.Dense(features=self.num_arms)(x)
-        return x.squeeze()
 
 
 if __name__ == "__main__":
