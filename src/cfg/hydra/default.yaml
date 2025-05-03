@@ -18,6 +18,10 @@ job:
       kv_sep: "="
       item_sep: ", "
       exclude_keys: # pl & data already in get_wandb_name
+        - wandb.group
+        - wandb.job_type
+        - wandb.tags
+        - rl.use_wandb
         - seed
         - seeds
         - save_fig
@@ -25,10 +29,6 @@ job:
         - data.nq_train
         - data.nq_update
         - mcmc
-        - wandb.group
-        - wandb.job_type
-        - wandb.tags
-        - rl.use_wandb
         - debug # debug_str is already in the dir name, dont' use for subdir
         - run
         - rl.n_updates

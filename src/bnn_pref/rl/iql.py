@@ -22,7 +22,7 @@ from flax.training.train_state import TrainState
 from jaxtyping import Array, Float, PRNGKeyArray
 from omegaconf import OmegaConf
 
-from bnn_pref.data.traj_utils import normalize
+from bnn_pref.data.traj_utils import normalize, process_rewards
 from bnn_pref.rl.common import (
     AgentState,
     DualQNetwork,
@@ -221,11 +221,9 @@ def run_iql(rng, cfg):
             is_al=rl_cfg["pref_is_al"],
         )
         reward_src = ckpt_fp
-        rhat = relabel_rewards(reward_fn, normalize(dataset.obs, axis=(0,)))  # (N,)
-        if rl_cfg["normalize_reward"]:
-            rhat = (rhat - rhat.mean()) / rhat.std()
-        if rl_cfg["clip_reward"]:
-            rhat = jnp.clip(rhat, -10.0, 10.0)
+        obs = normalize(dataset.obs, axis=(0,))  # (N, obsDim)
+        rhat = relabel_rewards(reward_fn, obs)  # (N,)
+        rhat = process_rewards(rhat, rl_cfg["normalize_reward"], rl_cfg["clip_reward"])
         dataset = dataset._replace(reward=rhat)
     elif rl_cfg["reward"] == "zero":
         reward_src = "zeros"

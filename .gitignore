@@ -3,6 +3,7 @@ results*/
 */cfg/local/default.yaml
 *.npz
 _runs/
+_viz/
 
 
 # Byte-compiled / optimized / DLL files

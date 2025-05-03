@@ -69,6 +69,22 @@ def normalize(
     return (x - mean) / std
 
 
+def process_rewards(
+    r: Float[Array, "N"],
+    norm: bool = True,
+    clip: bool = True,
+    clip_value: float = 10.0,
+) -> Float[Array, "N"]:
+    """
+    Normalize and clip rewards
+    """
+    if norm:
+        r = normalize(r, axis=(0,))
+    if clip:
+        r = jnp.clip(r, -clip_value, clip_value)
+    return r
+
+
 def segment_traj(
     traj: Float[Array, "N T ..."],
     segment_size: int = 50,

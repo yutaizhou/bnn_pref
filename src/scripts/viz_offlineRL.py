@@ -1,5 +1,6 @@
 import itertools as it
 import os
+from collections import defaultdict
 from datetime import datetime
 from typing import List
 
@@ -7,30 +8,31 @@ import ipdb
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
-from omegaconf import OmegaConf
 
 
 def defaultdict2dict(dd):
     return {k: defaultdict2dict(v) if isinstance(v, dict) else v for k, v in dd.items()}
 
 
+save_dir = "/scr/yutaizho/projects/bnn_pref/_viz"
+
 tasks = [
     # # * D4RL
-    "cheetahRandom",
+    # "cheetahRandom",
     "cheetahMediumReplay",
     "cheetahMediumExpert",
-    "hopperRandom",
+    # "hopperRandom",
     "hopperMediumReplay",
     "hopperMediumExpert",
-    "walkerRandom",
+    # "walkerRandom",
     "walkerMediumReplay",
     "walkerMediumExpert",
     "penHuman",
     "penExpert",
     "penCloned",
-    "kitchenComplete",
-    "kitchenPartial",
-    "kitchenMixed",
+    # "kitchenComplete",
+    # "kitchenPartial",
+    # "kitchenMixed",
     "mazeUDense",
     "mazeMediumDense",
     "mazeLargeDense",
@@ -38,22 +40,69 @@ tasks = [
 algs = ["ekf", "sgd"]
 is_als = [False, True]
 
+use_std = True  # otherwise use stderr
+use_smooth = True  # otherwise no smoothing on eval curves
+
+
+def combine_pref_scores(pref_dirps: List[str]):
+    """
+    pref_dirps: List[str]
+        List of hydra sweep folder paths
+
+    Turn List of d[task][ekf_False] # (n_evals+1, n_workers)
+    -> d[task][ekf_False] # (n_pref_dirps, n_evals+1, n_workers)
+    -> d[task][ekf_False] # (n_evals+1, n_pref_dirps) ; take mean over n_workers
+    """
+    combined_scores_dict = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
+    scores_dicts = [get_pref_score(pref_dirp, tasks) for pref_dirp in pref_dirps]
+    for task in tasks:
+        for alg, is_al in it.product(algs, is_als):
+            # (n_pref_dirps, n_evals+1, n_workers)
+            combined_arr = np.stack(
+                [scores_dict[task][f"{alg}_{is_al}"] for scores_dict in scores_dicts],
+                axis=0,
+            )
+            # (n_evals+1, n_pref_dirps)
+            combined_arr = combined_arr.mean(2).swapaxes(0, 1)
+            combined_scores_dict[task][f"{alg}_{is_al}"] = combined_arr
+    return combined_scores_dict
+
+
+def aggregate_scores_task(combined_scores_dict: dict):
+    """
+    d[task][ekf_False] # (n_evals+1, n_pref_dirps) ->
+    d[ekf_False] # (n_task, n_evals+1, n_pref_dirps) ->
+    d[ekf_False] # (n_evals+1, n_pref_dirps) ; take mean over n_task
+    """
+    new_d = {}
+    for alg, is_al in it.product(algs, is_als):
+        combined_arrs = np.stack(
+            [combined_scores_dict[task][f"{alg}_{is_al}"] for task in tasks],
+            axis=0,
+        )  # (n_task, n_evals+1, n_pref_dirps)
+        new_d[f"{alg}_{is_al}"] = combined_arrs.mean(0)  # (n_evals+1, n_pref_dirps)
+
+    # ipdb.set_trace()
+    return new_d  # d[ekf_False] # (n_evals+1, n_pref_dirps)
+
 
 def main():
-    run_dir = "/scr/yutaizho/projects/bnn_pref/_runs"
-    baseline_dirp = f"{run_dir}/20250501_002013_iql_baselines_18tasks"
-    pref_dirp = f"{run_dir}/20250501_220052_iql_pref_18tasks_1seed"
-    baseline_scores = get_baseline_score(baseline_dirp, tasks)  # d[task][zero, gt]
-    pref_scores = get_pref_score(
-        pref_dirp, tasks
-    )  # d[task][ekf_False] # (n_evals+1, n_workers)
+    baseline_dirp = (
+        "/scr/yutaizho/projects/bnn_pref/_runs/20250501_002013_iql_baselines_18tasks"
+    )
+    baseline_scores = get_baseline_score(baseline_dirp, tasks)  # d[task]["zero", "gt"]
 
-    """
-    stats[task][alg][is_al] = {
-        "score": (n_evals+1, n_workers),
-        "reward_src": str, (zero, gt, model_fp)
-    }
-    """
+    pref_dirps = [
+        "/scr/yutaizho/projects/bnn_pref/results_sweep/offline_rl/20250502_005235_rewardNormClip",
+        "/scr/yutaizho/projects/bnn_pref/results_sweep/offline_rl/20250502_032221_rewardNormClip",
+        "/scr/yutaizho/projects/bnn_pref/results_sweep/offline_rl/20250502_032310_rewardNormClip",
+        "/scr/yutaizho/projects/bnn_pref/results_sweep/offline_rl/20250502_063110_rewardNormClip",
+        "/scr/yutaizho/projects/bnn_pref/results_sweep/offline_rl/20250502_065318_rewawrdNormClip",
+    ]
+    # d[task][ekf_False] # (n_evals+1, n_pref_dirps)
+    pref_scores = combine_pref_scores(pref_dirps)
+    # d[ekf_False] # (n_evals+1, n_pref_dirps)
+    agg_scores = aggregate_scores_task(pref_scores)
 
     def get_label(alg: str, is_al: bool) -> str:
         if alg == "ekf":
@@ -85,10 +134,13 @@ def main():
     for i, task in enumerate(tasks):
         ax = axs[i]
         for alg, is_al in it.product(algs, is_als):
-            scores_EN = pref_scores[task][f"{alg}_{is_al}"]  # (n_evals+1, n_workers),
-            mean_E, std_E = scores_EN.mean(1), scores_EN.std(1)
-            mean_E = smooth(mean_E)
-            std_E = smooth(std_E)
+            scores = pref_scores[task][f"{alg}_{is_al}"]  # (n_evals+1, n_workers)
+            mean_E = scores.mean(1)
+            std_E = (
+                scores.std(1) if use_std else scores.std(1) / jnp.sqrt(scores.shape[1])
+            )
+            mean_E = smooth(mean_E) if use_smooth else mean_E
+            std_E = smooth(std_E) if use_smooth else std_E
             label = get_label(alg, is_al)
             style = get_style(alg, is_al)
             line = ax.plot(mean_E, label=label, **style)[0]
@@ -122,13 +174,39 @@ def main():
 
         ax.set_title(task)
 
-    # Add a single shared legend outside the subplots
-    fig.legend(lines, labels, loc="center right", bbox_to_anchor=(1.1, 0.5))
-    # Adjust layout to make room for the legend
-    plt.tight_layout()
-    plt.subplots_adjust(right=0.88)  # Reduced right margin from 0.8 to 0.88
+    fig.legend(lines, labels, loc="center right")
+    plt.tight_layout(rect=[0, 0, 0.9, 1])
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    plt.savefig(f"offline_rl_scores_{timestamp}.png", bbox_inches="tight", dpi=300)
+    fp = f"{save_dir}/offline_rl_scores_{timestamp}.png"
+    plt.savefig(fp, bbox_inches="tight", dpi=300)
+    print(f"Saved to {fp}")
+
+    # * plot agg_scores
+    fig, axs = plt.subplots(1, 1, figsize=(12, 10))
+    max_score = 0
+    for alg, is_al in it.product(algs, is_als):
+        scores = agg_scores[f"{alg}_{is_al}"]  # (n_evals+1, n_pref_dirps)
+        mean_E = scores.mean(1)
+        std_E = scores.std(1) if use_std else scores.std(1) / jnp.sqrt(scores.shape[1])
+        mean_E = smooth(mean_E) if use_smooth else mean_E
+        std_E = smooth(std_E) if use_smooth else std_E
+        max_score = max(max_score, mean_E.max())
+        axs.plot(mean_E, label=get_label(alg, is_al), **get_style(alg, is_al))
+        axs.fill_between(
+            jnp.arange(len(mean_E)),
+            mean_E - std_E,
+            mean_E + std_E,
+            alpha=0.2,
+            **get_style(alg, is_al),
+        )
+    axs.legend()
+    axs.set_xlabel("Eval Steps")
+    axs.set_ylabel("Normalized Score")
+    axs.set_title("Aggregated Scores across all tasks")
+    axs.set_ylim(30, max_score + 10)
+    fp = f"{save_dir}/offline_rl_scores_{timestamp}_agg.png"
+    plt.savefig(fp, bbox_inches="tight", dpi=300)
+    print(f"Saved to {fp}")
 
 
 def get_pref_score(dir_path: str, tasks: List[str]):
