@@ -3,11 +3,14 @@ from typing import Dict, NamedTuple
 
 import flax
 import jax
+import jax.numpy as jnp
+from einops import rearrange
 from jaxtyping import Array, Float, Int, Scalar
 
 # Data types
 ArrayDict = Dict[str, jax.Array]
 """
+    For trajectories
     ds = {
         "observations": (N, T, D),
         "actions": (N, T, A),
@@ -15,6 +18,17 @@ ArrayDict = Dict[str, jax.Array]
         "returns": (N,),
     }
 """
+
+
+class QueryData(NamedTuple):
+    contexts: Float[Array, "Q 2 T D"]
+    labels: Float[Array, "Q 2"]  # one hot
+
+    def add_leading_batch_dim(self):
+        return QueryData(
+            contexts=rearrange(self.contexts, "K T D -> 1 K T D", K=2),
+            labels=rearrange(self.labels, "K -> 1 K", K=2),
+        )
 
 
 # demonstrations
@@ -52,22 +66,3 @@ def unpackable_dataclass(cls=None, **kwargs):
     if cls is None:
         return wrap
     return wrap(cls)
-
-
-@unpackable_dataclass
-class CAR:
-    """Context, Action, Reward"""
-
-    contexts: Float[Array, "n n_features"]
-    actions: Int[Array, "n"]
-    rewards: Float[Array, "n"]
-
-
-@unpackable_dataclass
-class CARL:
-    """Context, Action, Reward, Label (one-hot)"""
-
-    contexts: Float[Array, "n n_features"]
-    actions: Int[Array, "n"]
-    rewards: Float[Array, "n"]
-    labels: Float[Array, "n n_actions"]

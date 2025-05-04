@@ -1,6 +1,7 @@
 from functools import partial
-from typing import Tuple
+from typing import NamedTuple, Tuple
 
+import flax
 import ipdb
 import jax
 import jax.numpy as jnp
@@ -14,16 +15,89 @@ from jaxtyping import Array, Float, Int, Scalar
 from bnn_pref.alg.agent_utils import Agent, bt_loss_fn, run_gradient_descent
 from bnn_pref.data.data_env import PreferenceEnv
 from bnn_pref.utils.network import RewardNet, count_params
-from bnn_pref.utils.type import CARL
+from bnn_pref.utils.type import QueryData, unpackable_dataclass
+
+
+@unpackable_dataclass
+class QueryBufferState:
+    contexts: Float[Array, "Q 2 T D"]
+    labels: Float[Array, "Q 2"]
+    ptr: int = 0
+    max_size: int = 2000
+
+    def __len__(self) -> int:
+        return self.ptr
+
+
+class QueryBuffer:
+    """
+    Store all queries received so far, for sgd training
+    todo - see flax for ways to make this more jax native
+    """
+
+    @staticmethod
+    def create_buffer(max_size: int, traj_shape: Tuple[int, ...]) -> QueryBufferState:
+        buffer = QueryBufferState(
+            contexts=jnp.empty((max_size, 2, *traj_shape)),
+            labels=jnp.empty((max_size, 2)),
+            ptr=0,
+            max_size=max_size,
+        )
+        return buffer
+
+    @staticmethod
+    def update(state: QueryBufferState, new: QueryData) -> QueryBufferState:
+        """Update the buffer with new query data."""
+        assert new.contexts.ndim == state.contexts.ndim, "contexts must have same ndim"
+        assert new.labels.ndim == state.labels.ndim, "labels must have same ndim"
+        n_new = new.contexts.shape[0]
+        new_contexts = jax.lax.dynamic_update_slice(
+            state.contexts, new.contexts, (state.ptr, 0, 0, 0)
+        )
+        new_labels = jax.lax.dynamic_update_slice(
+            state.labels, new.labels, (state.ptr, 0)
+        )
+        new_ptr = state.ptr + n_new
+
+        state = state.replace(
+            contexts=new_contexts,
+            labels=new_labels,
+            ptr=new_ptr,
+        )
+        # Optionally, add a runtime check (outside jit) for overflow
+        # assert state.ptr <= state.max_size, "buffer overflow"
+        return state
+
+    @staticmethod
+    def get_all(state: QueryBufferState) -> QueryData:
+        """Get all queries from the buffer."""
+        return QueryData(
+            contexts=state.contexts[: state.ptr],
+            labels=state.labels[: state.ptr],
+        )
+
+    @staticmethod
+    def get_recent_n(state: QueryBufferState, n: int) -> QueryData:
+        """Get the last n queries from the buffer."""
+        return QueryData(
+            contexts=state.contexts[state.ptr - n : state.ptr],
+            labels=state.labels[state.ptr - n : state.ptr],
+        )
+
+
+@unpackable_dataclass
+class EnsembleBeliefState:
+    ts: TrainState
+    buffer: QueryBufferState
 
 
 def init_model(
     key,
     model: nn.Module,
-    input_shape: Tuple[int, ...],
     tx: optax.GradientTransformation,
+    traj_shape: Tuple[int, ...],
 ) -> TrainState:
-    dummy_input = jnp.ones((1, *input_shape))
+    dummy_input = jnp.ones((1, 2, *traj_shape))
     params = model.init(key, dummy_input)["params"]
     ts = TrainState.create(apply_fn=model.apply, params=params, tx=tx)
     return ts
@@ -35,6 +109,8 @@ class DeepEnsemble(Agent):
         model: nn.Module,
         opt: optax.GradientTransformation,
         n_models: int,
+        traj_shape: Tuple[int, ...],
+        max_buffer_size: int = 2000,
         l2_reg: float = 0.0,
         niters: int = 1000,
         batch_size: int = 32,
@@ -49,6 +125,8 @@ class DeepEnsemble(Agent):
         self.batch_size = batch_size
         self.chunk_size = chunk_size
         self.use_vmap = use_vmap
+        self.max_buffer_size = max_buffer_size
+        self.traj_shape = traj_shape
 
     @staticmethod
     def get_hydra_config(sgd_cfg):
@@ -65,23 +143,27 @@ class DeepEnsemble(Agent):
         }
 
     @partial(jax.jit, static_argnames=["self"])
-    def init_bel(self, key, warmup_data: CARL) -> TrainState:
+    def init_bel(self, key, warmup_data: QueryData) -> EnsembleBeliefState:
         # todo precompute logits for all items
         key, *keys_init = jr.split(key, 1 + self.n_models)
         ts = jax.vmap(init_model, in_axes=(0, None, None, None))(
             jnp.array(keys_init),
             self.model,
-            warmup_data.contexts.shape[1:],  # (2, T, D)
             self.opt,
+            self.traj_shape,
         )
         self.ensemble_param_count = count_params(ts.params)
         self.param_count = self.ensemble_param_count // self.n_models
+
+        buffer = QueryBuffer.create_buffer(self.max_buffer_size, self.traj_shape)
+        buffer = QueryBuffer.update(buffer, warmup_data)
+        state = EnsembleBeliefState(ts=ts, buffer=buffer)
 
         sgd_fn = partial(
             run_gradient_descent,
             loss_fn=bt_loss_fn,
             has_aux=True,
-            dataset=warmup_data,
+            dataset=QueryBuffer.get_all(state.buffer),
             niters=self.niters,
             batch_size=self.batch_size,
             l2_reg=self.l2_reg,
@@ -91,42 +173,55 @@ class DeepEnsemble(Agent):
         key, key_sgd = jr.split(key)
         if self.use_vmap:
             sgd_fn = jax.vmap(sgd_fn, in_axes=(None, 0))  # vmap over ts
-            warm_ts, warm_metrics = sgd_fn(key_sgd, ts)
+            warm_ts, warm_metrics = sgd_fn(key_sgd, state.ts)
         else:
             sgd_fn = partial(sgd_fn, key_sgd)
-            warm_ts, warm_metrics = jax.lax.map(sgd_fn, ts)
+            warm_ts, warm_metrics = jax.lax.map(sgd_fn, state.ts)
 
         # different datastreams for each model
         # key, *key_sgd = jr.split(key, 1 + self.n_models)
         # run_sgd_fn = jax.vmap(run_sgd_fn, in_axes=(0, 0))  # vmap (key, ts)
         # warm_ts, warm_metrics = run_sgd_fn(jnp.array(key_sgd), ts)
 
-        return warm_ts
+        state = state.replace(ts=warm_ts)
+
+        return state
 
     @partial(jax.jit, static_argnames=["self"])
-    def update_bel(self, ts: TrainState, batch: CARL) -> TrainState:
+    def update_bel(
+        self, state: EnsembleBeliefState, batch: QueryData
+    ) -> EnsembleBeliefState:
         """
-        flax nn needs batch of shape (1, N, ...), hence expand_dims
+        Training cases
+        1 sgd step 1 query:      niters=1, batch_size=1
+        1 sgd epoch Q queries:   niters=Q, batch_size=1
+        M SGD epochs, Q queries: niters=Q * M, batch_size=1
         """
-        batch = jax.tree.map(lambda x: jnp.expand_dims(x, axis=0), batch)
-        batch = (batch.contexts, batch.labels)
+        # batch = jax.tree.map(lambda x: jnp.expand_dims(x, axis=0), batch)
+        new_buffer = QueryBuffer.update(state.buffer, batch)
+        state = state.replace(buffer=new_buffer)
 
-        def train_step(ts, batch):
+        def train_step(ts: TrainState, batch: QueryData):
             grad_fn = jax.value_and_grad(bt_loss_fn, has_aux=True)
             (loss, _), grads = grad_fn(ts.params, ts, batch, self.l2_reg)
             return ts.apply_gradients(grads=grads), loss
 
         if self.use_vmap:
             grad_fn = jax.vmap(train_step, in_axes=(0, None))  # vmap over ts
-            ts, loss = grad_fn(ts, batch)
+            ts, loss = grad_fn(state.ts, batch)
         else:
             grad_fn = partial(train_step, batch=batch)
-            ts, loss = jax.lax.map(grad_fn, ts)
-        return ts
+            ts, loss = jax.lax.map(grad_fn, state.ts)
+        state = state.replace(ts=ts)
+        return state
 
     @partial(jax.jit, static_argnames=["self", "env"])
     def acquire_next_query(
-        self, key, ts: TrainState, env: PreferenceEnv, pool_idxes_Q: Int[Array, "Q"]
+        self,
+        key,
+        bel: EnsembleBeliefState,
+        env: PreferenceEnv,
+        pool_idxes_Q: Int[Array, "Q"],
     ) -> int:
         """
         active learning: greedily compute query that maximizes ensemble prediction var
@@ -144,7 +239,7 @@ class DeepEnsemble(Agent):
             # vmap over ts, run over items sequentially
             fn = jax.vmap(predict_fn, in_axes=(0, None))
             items_N1TD = rearrange(env.items_NTD, "N T D -> N 1 T D")
-            fn = partial(fn, ts)
+            fn = partial(fn, bel.ts)
             logits_NM = jax.lax.map(fn, items_N1TD, batch_size=self.chunk_size)
         else:
             # run over ts sequentially, run over items sequentially
@@ -155,7 +250,7 @@ class DeepEnsemble(Agent):
                 ret_N = jax.lax.map(fn, items_N1TD, batch_size=self.chunk_size)
                 return _, ret_N
 
-            logits_NM = rearrange(jax.lax.scan(scan_ts, None, ts)[1], "M N -> N M")
+            logits_NM = rearrange(jax.lax.scan(scan_ts, None, bel.ts)[1], "M N -> N M")
 
         def map_step(idx):
             inds_2 = env.get_pref_indices(idx)

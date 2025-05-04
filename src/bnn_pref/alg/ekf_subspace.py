@@ -1,5 +1,5 @@
 from functools import partial
-from typing import Union
+from typing import Tuple, Union
 
 import distrax
 import jax
@@ -26,7 +26,7 @@ from bnn_pref.alg.agent_utils import (
 )
 from bnn_pref.data.data_env import PreferenceEnv
 from bnn_pref.utils.network import count_params
-from bnn_pref.utils.type import CARL, unpackable_dataclass
+from bnn_pref.utils.type import QueryData, unpackable_dataclass
 
 
 @unpackable_dataclass
@@ -43,6 +43,7 @@ class SubspaceEKF(Agent):
         self,
         model: nn.Module,
         opt: optax.GradientTransformation,
+        traj_shape: Tuple[int, ...],  # kept for compat with Ensemble buffer
         l2_reg: float = 0.0,
         niters: int = 1000,
         batch_size: int = 32,
@@ -103,16 +104,14 @@ class SubspaceEKF(Agent):
         }
 
     # @partial(jax.jit, static_argnames=["self"])
-    def init_bel(self, key, warmup_data: CARL) -> EKFBeliefState:
+    def init_bel(self, key, warmup_data: QueryData) -> EKFBeliefState:
         """
         Run SGD on warmup data, get subspace projection matrix, initialize EKF
         contexts: Q2TD
-        actions: Q
-        rewards: Q
         labels: Q2 (onehot)
         """
-        contexts, _, _, labels = warmup_data
-        self.n_feats = contexts.shape[-1]  # (Q,2,T, D) -> D
+        contexts = warmup_data.contexts  # (Q,2,T,D)
+        self.n_feats = contexts.shape[-1]  # D
         key, model_key = jr.split(key, 2)
         dummy_context = rearrange(jnp.ones_like(contexts[0]), "K T D  -> 1 K T D", K=2)
         initial_params = self.model.init(model_key, dummy_context)["params"]
@@ -274,14 +273,13 @@ class SubspaceEKF(Agent):
     def update_bel(
         self,
         bel: EKFBeliefState,
-        batch: CARL,
+        batch: QueryData,
     ) -> EKFBeliefState:
         prior_mean, prior_cov, t = bel.mean, bel.cov, bel.t
-        context, *_, label = batch
+        context, label = batch.contexts, batch.labels
 
-        inputs = rearrange(context, "K T D -> 1 (K T D)", K=2)
-        emissions = rearrange(label, "K -> 1 K", K=2)  # (1,2)
-        # emissions = rearrange(label[1], " -> 1")
+        inputs = rearrange(context, "1 K T D -> 1 (K T D)", K=2)
+        emissions = rearrange(label, "1 K -> 1 K", K=2)
 
         self.ekf_params = self.ekf_params._replace(
             initial_mean=prior_mean,

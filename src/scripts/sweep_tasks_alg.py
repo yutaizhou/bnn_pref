@@ -100,6 +100,7 @@ def main(cfg):
         "mazeLargeDense",
     ]
     algs = ["ekf", "sgd"]
+    # algs = ["sgd"]
     is_als = [False, True]
 
     # algs = ["ekf"]

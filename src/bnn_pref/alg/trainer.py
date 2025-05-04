@@ -5,6 +5,7 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 import optax
+from einops import rearrange
 from flax.training.train_state import TrainState
 from jax.lax import scan
 from jax.random import split
@@ -12,14 +13,14 @@ from jaxtyping import Key
 
 from bnn_pref.alg.agent_utils import Agent
 from bnn_pref.alg.ekf_subspace import EKFBeliefState, SubspaceEKF
-from bnn_pref.alg.ensemble import DeepEnsemble
+from bnn_pref.alg.ensemble import DeepEnsemble, EnsembleBeliefState
 from bnn_pref.data.data_env import PreferenceEnv
 from bnn_pref.utils.network import RewardNet
-from bnn_pref.utils.type import CARL
+from bnn_pref.utils.type import QueryData
 
 warnings.filterwarnings("ignore")
 
-AgentState = Union[TrainState, EKFBeliefState]
+AgentState = Union[EKFBeliefState, EnsembleBeliefState]
 
 
 def alg_pipeline(
@@ -35,15 +36,16 @@ def alg_pipeline(
         alg_cfg["bs"] = 1
         # print(f"WARNING: {nq_init=} < {bs=}, setting alg_cfg.bs = 1")
 
+    traj_shape = env.get_traj_shape()
     model = RewardNet(alg_cfg["hidden_sizes"], alg_cfg["n_splits"])
     opt = optax.adam(alg_cfg["learning_rate"])
     cls_kwargs = alg_cls.get_hydra_config(alg_cfg)
-    bandit = alg_cls(model, opt, **cls_kwargs)
+    bandit = alg_cls(model, opt, traj_shape=traj_shape, **cls_kwargs)
 
     key, key_warm, key_bel_init, key_run = split(key, 4)
     warmup_data = env.warmup(key_warm, nq_init)
     bel_init = bandit.init_bel(key_bel_init, warmup_data)
-    bel_trace = run_bandit(
+    bel_trace = run_update_loop(
         key_run, bandit, bel_init, env, nq_init, nsteps, active=alg_cfg["active"]
     )
 
@@ -57,7 +59,7 @@ def alg_pipeline(
     return bel_trace, bandit
 
 
-def run_bandit(
+def run_update_loop(
     key,
     bandit: Agent,
     bel: AgentState,
@@ -75,16 +77,16 @@ def run_bandit(
     pool_size = len(env) - nq_init  # active learning
     pool_idxes = jnp.arange(nq_init, len(env))
 
-    def filter_onestep(
+    def update_step(
         curr: Tuple[AgentState, int],
         key: Key,
     ) -> Tuple[AgentState, int]:
         bel, t = curr
         t_offset = t + nq_init  # offset by nq_init to index into query pool
 
-        context = env.get_context(t_offset)
-        label = env.get_label(t_offset)  # one-hot pref, always [0,1] if noiseless
-        batch = CARL(context, None, None, label)
+        context = env.get_context(t_offset)  # (2, T, D)
+        label = env.get_label(t_offset)  # (2,) one-hot preference
+        batch = QueryData(context, label).add_leading_batch_dim()
         bel = bandit.update_bel(bel, batch)
         q = env.get_pref_indices(t_offset)
 
@@ -97,7 +99,7 @@ def run_bandit(
         return (bel, t_next), (bel, t, q)
 
     keys = split(key, nsteps)
-    *_, (bel_trace, t_trace, q_trace) = scan(filter_onestep, init=(bel, 0), xs=keys)
+    *_, (bel_trace, t_trace, q_trace) = scan(update_step, init=(bel, 0), xs=keys)
 
     # print(q_trace)
     return bel_trace
@@ -154,7 +156,8 @@ def run_ensemble(key, cfg, data_dict, env):
 
     # * build + run ensemble alg
     key, key_pipe = jr.split(key, 2)
-    ts_trace, bandit = alg_pipeline(key_pipe, DeepEnsemble, env, alg_cfg, data_cfg)
+    bel_trace, bandit = alg_pipeline(key_pipe, DeepEnsemble, env, alg_cfg, data_cfg)
+    ts_trace = bel_trace.ts
 
     # * compute metrics
     def eval_bel(_, ts: TrainState):

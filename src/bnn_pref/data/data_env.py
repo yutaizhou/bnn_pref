@@ -1,11 +1,12 @@
 from functools import partial
+from typing import Tuple
 
 import jax
 import jax.numpy as jnp
 import jax.random as jr
 from jaxtyping import Array, Float, Int
 
-from bnn_pref.utils.type import CARL, NTD, Q2
+from bnn_pref.utils.type import NTD, Q2, QueryData
 
 
 def retrieve(data, batch_idx: Float[Array, "B"]):
@@ -38,15 +39,14 @@ class PreferenceEnv:
     def __len__(self):
         return self.n_queries
 
-    def get_context(self, t) -> Float[Array, "2 *"]:
+    def get_traj_shape(self) -> Tuple[int, ...]:
+        return self.items_NTD.shape[1:]  # (T, D)
+
+    def get_context(self, t) -> Float[Array, "2 T D"]:
         return self.items_NTD[self.queries_Q2[t]]
 
-    def get_label(self, t) -> Float[Array, "n_actions"]:
+    def get_label(self, t) -> Float[Array, "2"]:
         return self.labels_Q2[t]
-
-    def get_reward(self, t, action) -> float:
-        label = self.labels_Q2[t, action]
-        return jnp.float32(label)
 
     def get_pref_indices(self, t) -> Int[Array, "2"]:
         """
@@ -55,7 +55,7 @@ class PreferenceEnv:
         """
         return self.queries_Q2[t]
 
-    def warmup(self, key, n_warmups: int) -> CARL:
+    def warmup(self, key, n_warmups: int) -> QueryData:
         """
         Collect samples from the (already randomly permuted) dataset.
         Randomly sample actions so rewards are not all the same.
@@ -72,18 +72,15 @@ class PreferenceEnv:
         """
         assert n_warmups <= self.n_queries, "more warmups than dataset size"
         idxs = jnp.arange(n_warmups)
-        actions = jnp.argmax(self.labels_Q2[idxs], axis=1)  # take argmax of one-hot
 
-        @partial(jax.vmap, in_axes=(0, 0))
-        def get(idx: int, action: int):
-            context = self.get_context(idx)
-            label = self.get_label(idx)
-            reward = self.get_reward(idx, action)
-            return context, label, reward
+        @partial(jax.vmap, in_axes=(0,))
+        def get(idx: int):
+            context = self.get_context(idx)  # (2, T, D)
+            label = self.get_label(idx)  # (2,)
+            return context, label
 
-        contexts, labels, rewards = get(idxs, actions)
-
-        return CARL(contexts, actions, rewards, labels)
+        contexts, labels = get(idxs)
+        return QueryData(contexts, labels)
 
     def get_n(self, idxs: Float[Array, "n"]):
         @partial(jax.vmap, in_axes=(0,))

@@ -1,6 +1,6 @@
 import itertools as it
 import math
-from typing import Callable, Dict, Optional, Union
+from typing import Callable, NamedTuple
 
 import jax
 import jax.numpy as jnp

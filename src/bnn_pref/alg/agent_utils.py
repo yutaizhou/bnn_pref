@@ -11,16 +11,17 @@ from jax.flatten_util import ravel_pytree
 from jax.lax import scan
 from jaxtyping import Array, Float, Int
 
-from bnn_pref.data.data_env import CARL, BatchIndexManager, PreferenceEnv, retrieve
+from bnn_pref.data.data_env import BatchIndexManager, PreferenceEnv, retrieve
+from bnn_pref.utils.type import QueryData
 
 
 class Agent(ABC):
     @abstractmethod
-    def init_bel(self, key, warmup_data: CARL):
+    def init_bel(self, key, warmup_data: QueryData):
         pass
 
     @abstractmethod
-    def update_bel(self, bel, batch: CARL):
+    def update_bel(self, bel, batch: QueryData):
         pass
 
     @abstractmethod
@@ -64,8 +65,8 @@ def generate_random_basis(key, d: int, D: int):
     return P
 
 
-def bt_loss_fn(params, ts: TrainState, batch, l2_reg: float = 0.0):
-    contexts_B2TD, labels_B2 = batch
+def bt_loss_fn(params, ts: TrainState, batch: QueryData, l2_reg: float = 0.0):
+    contexts_B2TD, labels_B2 = batch.contexts, batch.labels
     logits_B2 = ts.apply_fn({"params": params}, contexts_B2TD)
     loss = optax.softmax_cross_entropy(logits_B2, labels_B2).mean()
     params_flat, _ = ravel_pytree(params)
@@ -78,7 +79,7 @@ def run_gradient_descent(
     ts: TrainState,
     loss_fn: Callable,
     has_aux: bool,
-    dataset: CARL,
+    dataset: QueryData,
     niters: int,
     batch_size: int = -1,
     l2_reg: float = 0.0,
@@ -88,7 +89,7 @@ def run_gradient_descent(
     If batch_size == -1, run full-batch GD. Otherwise, run mini-batch SGD.
     """
 
-    contexts, _, _, labels = dataset
+    contexts, labels = dataset.contexts, dataset.labels
     N = contexts.shape[0]
     bs = batch_size
 
@@ -97,7 +98,7 @@ def run_gradient_descent(
         # retrieve batch. If full batch (bs==-1), use all data
         contexts_B2TD = contexts if bs == -1 else retrieve(contexts, idxs_B)
         labels_B2 = labels if bs == -1 else retrieve(labels, idxs_B)  # one-hot
-        batch = (contexts_B2TD, labels_B2)
+        batch = QueryData(contexts_B2TD, labels_B2)
 
         # loss, grad, update
         grad_fn = value_and_grad(loss_fn, has_aux=has_aux)
@@ -112,7 +113,7 @@ def run_gradient_descent(
     batch_manager = BatchIndexManager(key, N, batch_size)
     batch_idxs = batch_manager.get_n_batches(niters)  # (niters, batch_size)
 
-    # Run all steps
+    # Run `niters` steps
     ts, metrics = scan(train_step, init=ts, xs=batch_idxs)
     return ts, metrics
 
