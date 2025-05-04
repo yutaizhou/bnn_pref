@@ -16,12 +16,4 @@ bs: 1 # -1 for full batch GD. Otherwise, mini-batch SGD
 l2_reg: 0
 
 # * Update
-# cls:
-#   # training
-#   niters: ${..niters}
-#   batch_size: ${..bs}
-#   l2_reg: ${..l2_reg}
-#   # ensembling
-#   n_models: ${..M}
-#   chunk_size: ${...chunk_size}
-#   use_vmap: ${..use_vmap}
+n_epochs: 5 # 0 for one SGD step on the single newest query. Otherwise, run SGD epochs

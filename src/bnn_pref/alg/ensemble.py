@@ -116,6 +116,7 @@ class DeepEnsemble(Agent):
         batch_size: int = 32,
         chunk_size: int = 64,
         use_vmap: bool = True,  # for training update_bel in {init,update}_bel
+        n_epochs: int = 0,
     ):
         self.n_models = n_models
         self.model = model
@@ -127,15 +128,19 @@ class DeepEnsemble(Agent):
         self.use_vmap = use_vmap
         self.max_buffer_size = max_buffer_size
         self.traj_shape = traj_shape
+        assert n_epochs >= 0, "n_epochs must be non-negative"
+        self.n_epochs = n_epochs
 
     @staticmethod
     def get_hydra_config(sgd_cfg):
         # follow sgd.yaml config
         return {
-            # training
+            # init
             "niters": sgd_cfg["niters"],
             "batch_size": sgd_cfg["bs"],
             "l2_reg": sgd_cfg["l2_reg"],
+            # update
+            "n_epochs": sgd_cfg["n_epochs"],
             # ensembling
             "n_models": sgd_cfg["M"],
             "chunk_size": sgd_cfg["chunk_size"],

@@ -99,8 +99,8 @@ def main(cfg):
         "mazeMediumDense",
         "mazeLargeDense",
     ]
-    algs = ["ekf", "sgd"]
-    # algs = ["sgd"]
+    # algs = ["ekf", "sgd"]
+    algs = ["sgd"]
     is_als = [False, True]
 
     # algs = ["ekf"]

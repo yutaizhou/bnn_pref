@@ -5,7 +5,6 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 import optax
-from einops import rearrange
 from flax.training.train_state import TrainState
 from jax.lax import scan
 from jax.random import split
@@ -87,14 +86,16 @@ def run_update_loop(
         context = env.get_context(t_offset)  # (2, T, D)
         label = env.get_label(t_offset)  # (2,) one-hot preference
         batch = QueryData(context, label).add_leading_batch_dim()
-        bel = bandit.update_bel(bel, batch)
+
+        key, key_update = split(key)
+        bel = bandit.update_bel(key_update, bel, batch)
         q = env.get_pref_indices(t_offset)
 
-        key, subkey = split(key)
+        key, key_query = split(key)
         if not active:
-            t_next = jr.randint(subkey, (), 0, pool_size)
+            t_next = jr.randint(key_query, (), 0, pool_size)
         else:
-            t_next = bandit.acquire_next_query(subkey, bel, env, pool_idxes)
+            t_next = bandit.acquire_next_query(key_query, bel, env, pool_idxes)
 
         return (bel, t_next), (bel, t, q)
 

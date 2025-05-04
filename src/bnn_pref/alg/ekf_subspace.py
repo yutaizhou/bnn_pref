@@ -272,6 +272,7 @@ class SubspaceEKF(Agent):
     @partial(jax.jit, static_argnames=["self"])
     def update_bel(
         self,
+        key,  # for compatibility with ensemble
         bel: EKFBeliefState,
         batch: QueryData,
     ) -> EKFBeliefState:
