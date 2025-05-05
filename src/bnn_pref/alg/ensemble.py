@@ -69,20 +69,19 @@ class QueryBuffer:
         return state
 
     @staticmethod
-    def get_all(state: QueryBufferState) -> QueryData:
+    def get_all(state: QueryBufferState) -> Tuple[QueryData, int]:
         """Get all queries from the buffer."""
-        return QueryData(
-            contexts=state.contexts[: state.ptr],
-            labels=state.labels[: state.ptr],
-        )
+        data = QueryData(contexts=state.contexts, labels=state.labels)
+        return data, state.ptr
 
     @staticmethod
-    def get_recent_n(state: QueryBufferState, n: int) -> QueryData:
+    def get_newest_n(state: QueryBufferState, n: int) -> Tuple[QueryData, int]:
         """Get the last n queries from the buffer."""
-        return QueryData(
-            contexts=state.contexts[state.ptr - n : state.ptr],
-            labels=state.labels[state.ptr - n : state.ptr],
-        )
+        start = state.ptr - n
+        length = n
+        contexts = jax.lax.dynamic_slice_in_dim(state.contexts, start, length)
+        labels = jax.lax.dynamic_slice_in_dim(state.labels, start, length)
+        return QueryData(contexts=contexts, labels=labels), length
 
 
 @unpackable_dataclass
@@ -162,13 +161,13 @@ class DeepEnsemble(Agent):
 
         buffer = QueryBuffer.create_buffer(self.max_buffer_size, self.traj_shape)
         buffer = QueryBuffer.update(buffer, warmup_data)
-        state = EnsembleBeliefState(ts=ts, buffer=buffer)
+        bel = EnsembleBeliefState(ts=ts, buffer=buffer)
 
         sgd_fn = partial(
             run_gradient_descent,
             loss_fn=bt_loss_fn,
             has_aux=True,
-            dataset=QueryBuffer.get_all(state.buffer),
+            dataset=warmup_data,
             niters=self.niters,
             batch_size=self.batch_size,
             l2_reg=self.l2_reg,
@@ -178,47 +177,109 @@ class DeepEnsemble(Agent):
         key, key_sgd = jr.split(key)
         if self.use_vmap:
             sgd_fn = jax.vmap(sgd_fn, in_axes=(None, 0))  # vmap over ts
-            warm_ts, warm_metrics = sgd_fn(key_sgd, state.ts)
+            warm_ts, warm_metrics = sgd_fn(key_sgd, bel.ts)
         else:
             sgd_fn = partial(sgd_fn, key_sgd)
-            warm_ts, warm_metrics = jax.lax.map(sgd_fn, state.ts)
+            warm_ts, warm_metrics = jax.lax.map(sgd_fn, bel.ts)
 
         # different datastreams for each model
         # key, *key_sgd = jr.split(key, 1 + self.n_models)
         # run_sgd_fn = jax.vmap(run_sgd_fn, in_axes=(0, 0))  # vmap (key, ts)
         # warm_ts, warm_metrics = run_sgd_fn(jnp.array(key_sgd), ts)
 
-        state = state.replace(ts=warm_ts)
+        bel = bel.replace(ts=warm_ts)
 
-        return state
+        return bel
 
     @partial(jax.jit, static_argnames=["self"])
     def update_bel(
-        self, state: EnsembleBeliefState, batch: QueryData
+        self, key, bel: EnsembleBeliefState, batch: QueryData
     ) -> EnsembleBeliefState:
         """
-        Training cases
-        1 sgd step 1 query:      niters=1, batch_size=1
-        1 sgd epoch Q queries:   niters=Q, batch_size=1
-        M SGD epochs, Q queries: niters=Q * M, batch_size=1
-        """
-        # batch = jax.tree.map(lambda x: jnp.expand_dims(x, axis=0), batch)
-        new_buffer = QueryBuffer.update(state.buffer, batch)
-        state = state.replace(buffer=new_buffer)
+        Training cases: bs = 1 for all cases
+        n_epochs=0: 1 query   1 sgd step:    niters=1
+        n_epochs=1: Q queries 1 sgd epoch:   niters=Q
+        n_epochs>1: Q queries M sgd epochs:  niters=Q * M
 
-        def train_step(ts: TrainState, batch: QueryData):
-            grad_fn = jax.value_and_grad(bt_loss_fn, has_aux=True)
-            (loss, _), grads = grad_fn(ts.params, ts, batch, self.l2_reg)
-            return ts.apply_gradients(grads=grads), loss
+        n_valids masking for batch manager is required for jit w/ dynamically sized buffer
+        """
+        new_buffer = QueryBuffer.update(bel.buffer, batch)
+        bel = bel.replace(buffer=new_buffer)
+        key, key_sgd = jr.split(key)
+
+        bs = 1  # always train on 1 query at a time
+        if self.n_epochs == 0:
+            n_newest = 1
+            ds, n_valids = QueryBuffer.get_newest_n(bel.buffer, n_newest)
+
+            sgd_fn = partial(
+                run_gradient_descent,
+                loss_fn=bt_loss_fn,
+                has_aux=True,
+                dataset=ds,
+                niters=1,
+                batch_size=1,
+                l2_reg=self.l2_reg,
+            )  # remaining args: (key, ts)
+
+        else:
+            ds, n_valids = QueryBuffer.get_all(bel.buffer)
+            # jax.debug.print("n_valids: {n_valids}", n_valids=n_valids)
+
+            def train_fn(
+                key,
+                ts: TrainState,
+                dataset: QueryData,
+                n_valids: int,
+            ) -> TrainState:
+                """
+                lax.scan for epochs, lax.while for iterations within each epoch
+                one iteration per valid query.
+                """
+                key, *keys_epochs = jr.split(key, 1 + self.n_epochs)
+                keys_epochs = jnp.array(keys_epochs)
+
+                def scan_fn(carry, key_epoch):
+                    ts, epoch = carry
+                    ds = dataset  # todo shuffle only the valid queries
+
+                    def body_fn(carry: Tuple[TrainState, int]):
+                        ts, itr = carry
+
+                        batch = QueryData(
+                            contexts=jax.lax.dynamic_slice_in_dim(ds.contexts, itr, bs),
+                            labels=jax.lax.dynamic_slice_in_dim(ds.labels, itr, bs),
+                        )
+                        grad_fn = jax.value_and_grad(bt_loss_fn, has_aux=True)
+                        (loss, _), grads = grad_fn(ts.params, ts, batch, self.l2_reg)
+                        ts = ts.apply_gradients(grads=grads)
+                        return (ts, itr + 1)
+
+                    def cond_fn(carry: Tuple[TrainState, int]):
+                        ts, itr = carry
+                        return itr < n_valids
+
+                    init_itr_val = (ts, 0)  # (ts, itr)
+                    ts, itr = jax.lax.while_loop(cond_fn, body_fn, init_itr_val)
+                    return (ts, epoch + 1), itr
+
+                init_epoch_val = (ts, 0)  # (ts, epoch)
+                (ts, epochs), itrs = jax.lax.scan(
+                    scan_fn, init=init_epoch_val, xs=keys_epochs
+                )
+                # jax.debug.print("epochs: {epochs}", epochs=epochs)
+                # jax.debug.print("itrs: {itrs}", itrs=itrs)
+                return ts, None
+
+            sgd_fn = partial(train_fn, dataset=ds, n_valids=n_valids)
 
         if self.use_vmap:
-            grad_fn = jax.vmap(train_step, in_axes=(0, None))  # vmap over ts
-            ts, loss = grad_fn(state.ts, batch)
+            ts, _ = jax.vmap(sgd_fn, in_axes=(None, 0))(key_sgd, bel.ts)  # vmap over ts
         else:
-            grad_fn = partial(train_step, batch=batch)
-            ts, loss = jax.lax.map(grad_fn, state.ts)
-        state = state.replace(ts=ts)
-        return state
+            ts, _ = jax.lax.map(partial(sgd_fn, key_sgd), bel.ts)
+
+        bel = bel.replace(ts=ts)
+        return bel
 
     @partial(jax.jit, static_argnames=["self", "env"])
     def acquire_next_query(

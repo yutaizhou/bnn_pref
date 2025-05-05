@@ -91,13 +91,12 @@ def run_gradient_descent(
 
     contexts, labels = dataset.contexts, dataset.labels
     N = contexts.shape[0]
-    bs = batch_size
 
     @jit
-    def train_step(ts: TrainState, idxs_B) -> Tuple[TrainState, Dict]:
+    def train_step(ts: TrainState, idxs_B: Int[Array, "B"]) -> Tuple[TrainState, Dict]:
         # retrieve batch. If full batch (bs==-1), use all data
-        contexts_B2TD = contexts if bs == -1 else retrieve(contexts, idxs_B)
-        labels_B2 = labels if bs == -1 else retrieve(labels, idxs_B)  # one-hot
+        contexts_B2TD = contexts if batch_size == -1 else retrieve(contexts, idxs_B)
+        labels_B2 = labels if batch_size == -1 else retrieve(labels, idxs_B)  # one-hot
         batch = QueryData(contexts_B2TD, labels_B2)
 
         # loss, grad, update
