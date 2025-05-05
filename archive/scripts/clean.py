@@ -24,14 +24,17 @@ def clean_empty_dirs(dirp):
         # Check if directory contains any PNG files
         has_png = any(file.suffix.lower() == ".png" for file in dir_path.rglob("*"))
         has_npz = any(file.suffix.lower() == ".npz" for file in dir_path.rglob("*"))
-        if not (has_png or has_npz):
-            print(f"Deleting directory {dir_path} (no PNG or NPZ files found)")
+        has_ckpt = any(
+            subdir.name == "ckpts" and subdir.is_dir() for subdir in dir_path.rglob("*")
+        )
+        if not (has_png or has_npz or has_ckpt):
+            print(f"Deleting directory {dir_path} (no PNG or NPZ or CKPT files found)")
             try:
                 shutil.rmtree(dir_path)
             except Exception as e:
                 print(f"Error deleting {dir_path}: {e}")
         else:
-            print(f"Keeping directory {dir_path} ({has_png=}, {has_npz=})")
+            print(f"Keeping directory {dir_path} ({has_png=}, {has_npz=}, {has_ckpt=})")
 
 
 if __name__ == "__main__":
