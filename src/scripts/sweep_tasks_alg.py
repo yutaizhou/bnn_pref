@@ -5,6 +5,7 @@ from datetime import datetime
 from functools import partial
 from typing import Tuple
 
+os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
 os.environ["DISABLE_CODESIGN_WARNING"] = "1"
 logging.getLogger("absl").setLevel(logging.WARNING)
@@ -25,7 +26,7 @@ from bnn_pref.data.pref_utils import QueryIndexAndResponses
 from bnn_pref.utils.hydra_resolvers import *
 from bnn_pref.utils.metrics import MeanStd
 from bnn_pref.utils.print_utils import get_param_count_msg
-from bnn_pref.utils.utils import get_random_seed, nested_defaultdict
+from bnn_pref.utils.utils import get_random_seed, nested_defaultdict, slurm_auto_scancel
 
 logging.getLogger("jax._src.xla_bridge").setLevel(logging.ERROR)
 jnp.set_printoptions(precision=2)
@@ -99,8 +100,8 @@ def main(cfg):
         "mazeMediumDense",
         "mazeLargeDense",
     ]
-    # algs = ["ekf", "sgd"]
-    algs = ["sgd"]
+    algs = ["ekf", "sgd"]
+    # algs = ["sgd"]
     is_als = [False, True]
 
     # algs = ["ekf"]
@@ -367,3 +368,4 @@ def main(cfg):
 
 if __name__ == "__main__":
     main()
+    slurm_auto_scancel()  # prevent completed jobs from hanging on slurm

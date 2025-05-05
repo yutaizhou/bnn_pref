@@ -195,7 +195,10 @@ class DeepEnsemble(Agent):
 
     @partial(jax.jit, static_argnames=["self"])
     def update_bel(
-        self, key, bel: EnsembleBeliefState, batch: QueryData
+        self,
+        key,  # currently unused, static shape not compatible with scan epoch shuffle
+        bel: EnsembleBeliefState,
+        batch: QueryData,
     ) -> EnsembleBeliefState:
         """
         Training cases: bs = 1 for all cases

@@ -4,6 +4,7 @@ active: False
 M: 15 
 use_vmap: True 
 chunk_size: ${..chunk_size}
+
 # * NN model
 learning_rate: 0.001
 hidden_sizes: ${network.hidden_sizes}

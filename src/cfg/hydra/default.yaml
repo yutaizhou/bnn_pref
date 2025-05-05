@@ -24,10 +24,10 @@ job:
         - rl.use_wandb
         - seed
         - seeds
+        - seed_vmap
         - save_fig
         - data
         - data.nq_train
-        - data.nq_update
         - mcmc
         - debug # debug_str is already in the dir name, dont' use for subdir
         - run
@@ -35,6 +35,7 @@ job:
         - rl.eval_interval
         - rl.normalize_reward
         - rl.clip_reward
+        - sgd.max_buffer_size
 
 job_logging:
   handlers:
