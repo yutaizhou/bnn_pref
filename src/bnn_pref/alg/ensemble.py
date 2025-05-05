@@ -10,6 +10,7 @@ import optax
 from einops import rearrange
 from flax import linen as nn
 from flax.training.train_state import TrainState
+from jax import lax
 from jaxtyping import Array, Float, Int, Scalar
 
 from bnn_pref.alg.agent_utils import Agent, bt_loss_fn, run_gradient_descent
@@ -23,7 +24,7 @@ class QueryBufferState:
     contexts: Float[Array, "Q 2 T D"]
     labels: Float[Array, "Q 2"]
     ptr: int = 0
-    max_size: int = 2000
+    max_size: int = 100
 
     def __len__(self) -> int:
         return self.ptr
@@ -51,11 +52,11 @@ class QueryBuffer:
         assert new.contexts.ndim == state.contexts.ndim, "contexts must have same ndim"
         assert new.labels.ndim == state.labels.ndim, "labels must have same ndim"
         n_new = new.contexts.shape[0]
-        new_contexts = jax.lax.dynamic_update_slice(
-            state.contexts, new.contexts, (state.ptr, 0, 0, 0)
+        new_contexts = lax.dynamic_update_slice_in_dim(
+            state.contexts, new.contexts, state.ptr, 0
         )
-        new_labels = jax.lax.dynamic_update_slice(
-            state.labels, new.labels, (state.ptr, 0)
+        new_labels = lax.dynamic_update_slice_in_dim(
+            state.labels, new.labels, state.ptr, 0
         )
         new_ptr = state.ptr + n_new
 
@@ -79,8 +80,8 @@ class QueryBuffer:
         """Get the last n queries from the buffer."""
         start = state.ptr - n
         length = n
-        contexts = jax.lax.dynamic_slice_in_dim(state.contexts, start, length)
-        labels = jax.lax.dynamic_slice_in_dim(state.labels, start, length)
+        contexts = lax.dynamic_slice_in_dim(state.contexts, start, length)
+        labels = lax.dynamic_slice_in_dim(state.labels, start, length)
         return QueryData(contexts=contexts, labels=labels), length
 
 
@@ -109,7 +110,7 @@ class DeepEnsemble(Agent):
         opt: optax.GradientTransformation,
         n_models: int,
         traj_shape: Tuple[int, ...],
-        max_buffer_size: int = 2000,
+        max_buffer_size: int = 100,
         l2_reg: float = 0.0,
         niters: int = 1000,
         batch_size: int = 32,
@@ -144,6 +145,7 @@ class DeepEnsemble(Agent):
             "n_models": sgd_cfg["M"],
             "chunk_size": sgd_cfg["chunk_size"],
             "use_vmap": sgd_cfg["use_vmap"],
+            "max_buffer_size": sgd_cfg["max_buffer_size"],
         }
 
     @partial(jax.jit, static_argnames=["self"])
@@ -212,15 +214,21 @@ class DeepEnsemble(Agent):
             n_newest = 1
             ds, n_valids = QueryBuffer.get_newest_n(bel.buffer, n_newest)
 
-            sgd_fn = partial(
-                run_gradient_descent,
-                loss_fn=bt_loss_fn,
-                has_aux=True,
-                dataset=ds,
-                niters=1,
-                batch_size=1,
-                l2_reg=self.l2_reg,
-            )  # remaining args: (key, ts)
+            def train_fn(ts, batch: QueryData):
+                grad_fn = jax.value_and_grad(bt_loss_fn, has_aux=True)
+                (loss, _), grads = grad_fn(ts.params, ts, batch, self.l2_reg)
+                ts = ts.apply_gradients(grads=grads)
+                return ts
+
+            if self.use_vmap:
+                grad_fn = jax.vmap(train_fn, in_axes=(0, None))  # vmap over ts
+                ts = grad_fn(bel.ts, ds)
+            else:
+                grad_fn = partial(train_fn, batch=ds)
+                ts = jax.lax.map(grad_fn, bel.ts)
+
+            bel = bel.replace(ts=ts)
+            return bel
 
         else:
             ds, n_valids = QueryBuffer.get_all(bel.buffer)
@@ -241,15 +249,16 @@ class DeepEnsemble(Agent):
 
                 def scan_fn(carry, key_epoch):
                     ts, epoch = carry
-                    ds = dataset  # todo shuffle only the valid queries
+                    ds_e = dataset  # todo shuffle only the valid queries
 
                     def body_fn(carry: Tuple[TrainState, int]):
                         ts, itr = carry
 
                         batch = QueryData(
-                            contexts=jax.lax.dynamic_slice_in_dim(ds.contexts, itr, bs),
-                            labels=jax.lax.dynamic_slice_in_dim(ds.labels, itr, bs),
+                            contexts=lax.dynamic_slice_in_dim(ds_e.contexts, itr, bs),
+                            labels=lax.dynamic_slice_in_dim(ds_e.labels, itr, bs),
                         )
+                        # jax.debug.print("labels: {batch}", batch=batch.labels)
                         grad_fn = jax.value_and_grad(bt_loss_fn, has_aux=True)
                         (loss, _), grads = grad_fn(ts.params, ts, batch, self.l2_reg)
                         ts = ts.apply_gradients(grads=grads)
@@ -269,17 +278,17 @@ class DeepEnsemble(Agent):
                 )
                 # jax.debug.print("epochs: {epochs}", epochs=epochs)
                 # jax.debug.print("itrs: {itrs}", itrs=itrs)
-                return ts, None
+                return ts
 
             sgd_fn = partial(train_fn, dataset=ds, n_valids=n_valids)
 
-        if self.use_vmap:
-            ts, _ = jax.vmap(sgd_fn, in_axes=(None, 0))(key_sgd, bel.ts)  # vmap over ts
-        else:
-            ts, _ = jax.lax.map(partial(sgd_fn, key_sgd), bel.ts)
+            if self.use_vmap:  # vmap over ts
+                ts = jax.vmap(sgd_fn, in_axes=(None, 0))(key_sgd, bel.ts)
+            else:
+                ts = jax.lax.map(partial(sgd_fn, key_sgd), bel.ts)
 
-        bel = bel.replace(ts=ts)
-        return bel
+            bel = bel.replace(ts=ts)
+            return bel
 
     @partial(jax.jit, static_argnames=["self", "env"])
     def acquire_next_query(
