@@ -35,6 +35,7 @@ job:
         - rl.eval_interval
         - rl.normalize_reward
         - rl.clip_reward
+        - rl.run_dir
         - sgd.max_buffer_size
 
 job_logging:

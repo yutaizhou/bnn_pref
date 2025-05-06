@@ -195,6 +195,7 @@ def run_iql(rng, cfg):
             project=cfg.wandb.project,
             group=cfg.wandb.group,
             job_type="offlineRL",
+            tags=cfg.wandb.tags,
         )
 
     # --- Initialize environment and dataset ---
@@ -260,6 +261,7 @@ def run_iql(rng, cfg):
         print(
             f"{task_cfg.name}: Training {alg_str} policy for {num_evals} iterations..."
         )
+        print(f"  Reward source: {reward_src}")
     returns_list = []
     scores_list = []
     for eval_idx in range(num_evals):

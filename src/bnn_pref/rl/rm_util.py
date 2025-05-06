@@ -55,13 +55,13 @@ def load_reward_model(
     sharding = jax.sharding.PositionalSharding(jax.local_devices())
 
     obs_shape = gym.make(task_name).observation_space.shape
-    input_shape = (2, 50, *obs_shape)
+    traj_shape = (50, *obs_shape)
     if alg == "sgd":
         key, *keys = jr.split(key, 1 + cfg["sgd"]["M"])
         keys = jnp.array(keys)
-        model = RewardNet(cfg["sgd"]["hidden_sizes"], cfg["sgd"]["n_splits"])
+        model = RewardNet(cfg["sgd"]["hidden_sizes"])
         dummy_item = jax.vmap(init_model, in_axes=(0, None, None, None))(
-            keys, model, input_shape, optax.adam(cfg["sgd"]["learning_rate"])
+            keys, model, optax.adam(cfg["sgd"]["learning_rate"]), traj_shape
         )
         dummy_items = jax.tree.map(lambda x: jax.device_put(x, sharding), dummy_item)
         restore_kw = {
@@ -73,8 +73,8 @@ def load_reward_model(
         params = {"params": ts.params}
 
     elif alg == "ekf":
-        model = RewardNet(cfg["ekf"]["hidden_sizes"], cfg["ekf"]["n_splits"])
-        dummy_input = jnp.zeros((1, *input_shape))
+        model = RewardNet(cfg["ekf"]["hidden_sizes"])
+        dummy_input = jnp.zeros((1, 2, *traj_shape))
         initial_params = model.init(key, dummy_input)["params"]
         full_dim = count_params(initial_params)
         sub_dim = cfg["ekf"]["sub_dim"]
@@ -85,7 +85,7 @@ def load_reward_model(
             t=0,
             proj_matrix=jnp.zeros((sub_dim, full_dim)),
             offset_ts=init_model(
-                key, model, input_shape, optax.adam(cfg["ekf"]["learning_rate"])
+                key, model, optax.adam(cfg["ekf"]["learning_rate"]), traj_shape
             ),
         )
         dummy_items = jax.tree.map(lambda x: jax.device_put(x, sharding), dummy_item)

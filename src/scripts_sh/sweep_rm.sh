@@ -37,9 +37,8 @@
 #     hydra/launcher=slurm 
 
 # this python script runs through all tasks, alg, is_al, in sequence
-export XLA_PYTHON_CLIENT_PREALLOCATE=false
 python scripts/sweep_tasks_alg.py \
-    -m seed=-1 seeds=5 \
+    -m seed=-1 seeds=5 seed_vmap=False \
     data.nq_train=50000 \
     data.nq_update=60,150 \
     sgd.n_epochs=0,1,5 \

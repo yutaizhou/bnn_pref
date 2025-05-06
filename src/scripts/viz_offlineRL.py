@@ -44,17 +44,22 @@ use_std = True  # otherwise use stderr
 use_smooth = True  # otherwise no smoothing on eval curves
 
 
-def combine_pref_scores(pref_dirps: List[str]):
+def combine_pref_scores(parent_dir: str):
     """
-    pref_dirps: List[str]
-        List of hydra sweep folder paths
+    parent_dir: str
+        each subdir is a hydra_sweep run seed, containing the override directories
 
-    Turn List of d[task][ekf_False] # (n_evals+1, n_workers)
+    Turn List of n_seeds d[task][ekf_False] # (n_evals+1, n_workers)
     -> d[task][ekf_False] # (n_pref_dirps, n_evals+1, n_workers)
     -> d[task][ekf_False] # (n_evals+1, n_pref_dirps) ; take mean over n_workers
     """
+    seed_dirs = [
+        os.path.join(parent_dir, d)
+        for d in os.listdir(parent_dir)
+        if os.path.isdir(os.path.join(parent_dir, d))
+    ]
     combined_scores_dict = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
-    scores_dicts = [get_pref_score(pref_dirp, tasks) for pref_dirp in pref_dirps]
+    scores_dicts = [get_pref_score(seed_dir, tasks) for seed_dir in seed_dirs]
     for task in tasks:
         for alg, is_al in it.product(algs, is_als):
             # (n_pref_dirps, n_evals+1, n_workers)
@@ -92,15 +97,16 @@ def main():
     )
     baseline_scores = get_baseline_score(baseline_dirp, tasks)  # d[task]["zero", "gt"]
 
-    pref_dirps = [
-        "/scr/yutaizho/projects/bnn_pref/results_sweep/offline_rl/20250502_005235_rewardNormClip",
-        "/scr/yutaizho/projects/bnn_pref/results_sweep/offline_rl/20250502_032221_rewardNormClip",
-        "/scr/yutaizho/projects/bnn_pref/results_sweep/offline_rl/20250502_032310_rewardNormClip",
-        "/scr/yutaizho/projects/bnn_pref/results_sweep/offline_rl/20250502_063110_rewardNormClip",
-        "/scr/yutaizho/projects/bnn_pref/results_sweep/offline_rl/20250502_065318_rewawrdNormClip",
-    ]
+    # pref_dirps = [
+    #     "/scr/yutaizho/projects/bnn_pref/_runs/iql_pref_18tasks_5seed_nq60/20250502_005235_rewardNormClip",
+    #     "/scr/yutaizho/projects/bnn_pref/_runs/iql_pref_18tasks_5seed_nq60/20250502_032221_rewardNormClip",
+    #     "/scr/yutaizho/projects/bnn_pref/_runs/iql_pref_18tasks_5seed_nq60/20250502_032310_rewardNormClip",
+    #     "/scr/yutaizho/projects/bnn_pref/_runs/iql_pref_18tasks_5seed_nq60/20250502_063110_rewardNormClip",
+    #     "/scr/yutaizho/projects/bnn_pref/_runs/iql_pref_18tasks_5seed_nq60/20250502_065318_rewawrdNormClip",
+    # ]
+    pref_dirp = "/scr/yutaizho/projects/bnn_pref/_runs/iql_pref_18tasks_5seed_nq60"
     # d[task][ekf_False] # (n_evals+1, n_pref_dirps)
-    pref_scores = combine_pref_scores(pref_dirps)
+    pref_scores = combine_pref_scores(pref_dirp)
     # d[ekf_False] # (n_evals+1, n_pref_dirps)
     agg_scores = aggregate_scores_task(pref_scores)
 
