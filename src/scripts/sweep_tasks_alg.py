@@ -102,10 +102,10 @@ def main(cfg):
     ]
     algs = ["ekf", "sgd"]
     # algs = ["sgd"]
-    is_als = [False, True]
-
     # algs = ["ekf"]
+    is_als = [False, True]
     # is_als = [False]
+    # is_als = [True]
 
     stats = nested_defaultdict()
 

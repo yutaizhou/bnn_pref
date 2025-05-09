@@ -23,7 +23,6 @@ from bnn_pref.utils.hydra_resolvers import *
 from bnn_pref.utils.metrics import MeanStd
 from bnn_pref.utils.print_utils import get_param_count_msg
 from bnn_pref.utils.utils import get_random_seed, nested_defaultdict
-from scripts.sweep_tasks_alg import modify_queries
 
 logging.getLogger("jax._src.xla_bridge").setLevel(logging.ERROR)
 jnp.set_printoptions(precision=2)
@@ -38,18 +37,7 @@ def main(cfg):
         "sgd": run_ensemble,
     }
 
-    # "reacher",
-    # "lunar",
-    # "cheetah",
-    # "acrobot",
-    # "ball",
-    # "cartpoleSwing",
-    # "cheetahDMC",
-    # "hopperHop",
-    # "pendulum",
-    # "walkerWalk",
-    # "cheetahRandom",
-    task = "cheetahRandom"
+    task = "cheetahMediumExpert"
     algs = ["ekf", "sgd"]
     Ms = [3, 8, 15, 30, 50, 100, 150, 200]
     # Ms = [3, 8, 10]
@@ -114,10 +102,7 @@ def main(cfg):
     key, *key_seeds = jr.split(key, 1 + cfg["seeds"])
     seeds = jnp.array(key_seeds)
     for alg, M in it.product(algs, Ms):
-        new_cfg = hydra.compose(
-            "config",
-            overrides=[f"task={task}", f"{alg}.M={M}"],
-        )
+        new_cfg = hydra.compose("config", overrides=[f"task={task}", f"{alg}.M={M}"])
 
         cfg[alg]["M"] = new_cfg[alg]["M"]
         cfg[alg]["active"] = True

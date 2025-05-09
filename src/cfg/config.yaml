@@ -2,7 +2,7 @@ defaults:
 - _self_ # non-defaults are loaded first for this config
 - task: synthetic
 - data: base
-- network: small
+- network: 32x2
 - mcmc: mh
 - ekf: ekf
 - sgd: sgd

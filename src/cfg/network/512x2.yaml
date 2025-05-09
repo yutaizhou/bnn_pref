@@ -1,0 +1,4 @@
+hidden_sizes:
+  - 512
+  - 512
+n_splits: 1

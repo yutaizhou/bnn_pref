@@ -37,20 +37,23 @@ def main(cfg):
         "sgd": run_ensemble,
     }
 
-    tasks = [
-        "reacher",
-        # "lunar",
-        # "cheetah",
-        # "acrobot",
-        # "ball",
-        # "cartpoleSwing",
-        # "cheetahDMC",
-        # "hopperHop",
-        # "pendulum",
-        # "walkerWalk",
-    ]
+    task = "cheetahMediumExpert"
     algs = ["ekf", "sgd"]
-    networks = ["small", "medium", "large"]
+
+    M = 10
+    networks = [
+        "32x2",  # 1665, calculated wrt traj_shape = (50,17)
+        "64x2",  # 5377
+        "64x3",  # 9537
+        "128x2",  # 18945
+        "128x3",  # 35457
+        "256x2",  # 70657
+        "256x3",  # 136449
+        "512x2",  # 272385
+        "512x3",  # 535041
+        "1024x2",  # 1069057
+        "1024x3",  # 2118657
+    ]
 
     stats = nested_defaultdict()
 
