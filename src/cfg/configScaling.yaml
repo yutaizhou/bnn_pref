@@ -5,3 +5,10 @@ paths:
   results_dir: ${paths.root_dir}/results/scaling
   sweep_dir: ${paths.root_dir}/results_sweep/scaling
 
+hydra:
+  run:
+    dir: ${paths.results_dir}/${now:%Y%m%d_%H%M%S}_nqu=${data.nq_update}_nepochs=${sgd.n_epochs}
+
+  sweep:
+    dir: ${paths.sweep_dir}/${now:%Y%m%d_%H%M%S}_${dir_extra}
+    subdir: ${hydra.job.num}_M=${M}_net=${hydra.runtime.choices.network}

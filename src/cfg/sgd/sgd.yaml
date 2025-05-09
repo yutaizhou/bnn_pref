@@ -1,7 +1,7 @@
 # * model ensembling & active learning
 # ensembling used for training, computing predictive & acquisition function
-active: False
-M: 15 
+active: ${..active}
+M: ${..M}
 use_vmap: True 
 chunk_size: ${..chunk_size}
 

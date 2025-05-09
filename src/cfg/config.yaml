@@ -12,8 +12,12 @@ defaults:
 - hydra: default
 
 fhat: linear
+M: 15 # number of models / samples for ensembling / EKF sampling
+active: False
 chunk_size: 128
 seed_vmap: True # good for 3 seeds or under
+
+dir_extra: null
 
 # * sanity check for active learning acquisition functions
 sanity: False
