@@ -26,8 +26,7 @@ import orbax.checkpoint as ocp
 from flax.training import orbax_utils
 from hydra.core.hydra_config import HydraConfig
 
-save_dir = "/scr/yutaizho/projects/bnn_pref/_viz"
-
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 tasks = [
     # * gym
     # "reacher",
@@ -42,7 +41,7 @@ tasks = [
     # "pendulum",
     # "walkerWalk",
     # # * D4RL
-    "cheetahRandom",
+    # "cheetahRandom",
     "cheetahMediumReplay",
     "cheetahMediumExpert",
     "hopperRandom",
@@ -54,17 +53,21 @@ tasks = [
     "penHuman",
     "penExpert",
     # "penCloned",
-    "kitchenComplete",
+    # "kitchenComplete",
     # "kitchenPartial",
-    "kitchenMixed",
+    # "kitchenMixed",
     "mazeUDense",
     "mazeMediumDense",
-    "mazeLargeDense",
+    # "mazeLargeDense",
 ]
 algs = ["ekf", "sgd"]
 is_als = [True, False]
+save_dir = "/scr/yutaizho/projects/bnn_pref/_viz"
 
+# * == change this block ==
 fp = "/scr/yutaizho/projects/bnn_pref/_runs/20250501_002234_rm_d4rl_18tasks/stats.npz"
+# * == change this block ==
+
 out = np.load(fp, allow_pickle=True)
 
 test_logpdf_all = defaultdict(lambda: list())
@@ -96,9 +99,7 @@ def get_style(alg: str, is_al: bool) -> dict:
     return {"color": color, "linestyle": linestyle, "linewidth": 1}
 
 
-timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-fig, axs = plt.subplots(5, 4, figsize=(12, 10))  # larger for clarity
+fig, axs = plt.subplots(3, 4, figsize=(12, 8))  # larger for clarity
 axs = axs.flatten()
 
 for i, task in enumerate(tasks):
@@ -119,13 +120,9 @@ for i, task in enumerate(tasks):
             alpha=0.2,
             **style,
         )
-    ax.set_title(task, fontsize=8)
-    ax.set_xlabel("Number of Queries")
-    ax.set_ylabel("Test Log PDF")
-
-# Hide unused subplots
-# for j in range(len(tasks), len(axs)):
-#     axs[j].axis("off")
+    ax.set_title(task)
+    ax.set_xlabel("Number of Queries", fontsize=9)
+    ax.set_ylabel("Test Log-Likelihood", fontsize=9)
 
 # --- Shared legend using dummy lines, outside the subplots ---
 dummy_lines = [
@@ -139,13 +136,14 @@ fig.legend(
     ["EKF (Random)", "EKF (Active)", "Ensemble (Random)", "Ensemble (Active)"],
     loc="center right",
 )
-fig.suptitle("log PDF vs. num queries (noise=True, sanity=False)", fontsize=18)
-plt.tight_layout(rect=[0, 0, 0.9, 1])  # leave space for legend and suptitle
+fig.suptitle("Test Log-Likelihood vs. Number of Queries", fontsize=18)
+plt.tight_layout(rect=[0, 0, 0.87, 1])  # leave space for legend and suptitle
 
 save_path = f"{save_dir}/logpdf_comparison_{timestamp}.png"
 plt.savefig(save_path)
 plt.close()
 print(f"Plot saved as: {save_path}")
+
 
 # * logpdf plot, averaged over all tasks and seeds, for each algorithm variant
 fig, ax = plt.subplots(figsize=(10, 6))
@@ -165,9 +163,9 @@ for alg, is_al in it.product(algs, is_als):
         **style,
     )
 
-ax.set_xlabel("Number of Queries")
-ax.set_ylabel("Test Log PDF")
-ax.set_title("Test Log PDF Comparison Across Algorithms")
+ax.set_xlabel("Number of Queries", fontsize=12)
+ax.set_ylabel("Test Log-Likelihood", fontsize=12)
+ax.set_title("Test Log-Likelihood Across Tasks")
 ax.legend()
 
 # Save the plot
