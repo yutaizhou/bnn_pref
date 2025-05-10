@@ -405,8 +405,8 @@ class SubspaceEKF(Agent):
             )
         else:
 
-            def scan_param(_, ss_param_single):
-                fn = partial(self.sub2full_predict_return, ss_param_single)
+            def scan_param(_, ss_param):
+                fn = partial(self.sub2full_predict_return, ss_param)
                 ret_N1 = jax.lax.map(fn, items_NTD, batch_size=self.chunk_size)
                 return _, ret_N1
 
@@ -423,25 +423,3 @@ class SubspaceEKF(Agent):
         prob_Q2 = jnp.exp(llik_Q2)
         # prob_Q2 = jnp.exp(llik_QM2).mean(1)
         return prob_Q2
-
-    # @partial(jax.jit, static_argnames=["self"])
-    # def compute_predictive(
-    #     self,
-    #     key,
-    #     bel: EKFBeliefState,
-    #     items_NTD: Float[Array, "N T D"],
-    #     query_idxs_Q2: Float[Array, "Q 2"],
-    # ) -> Float[Array, "Q 2"]:
-    #     """use posterior mode only, then compute predictive"""
-    #     # * sample model parameters
-    #     mean, cov, t = bel
-    #     fn = partial(self.sub2full_predict_return, mean)  # param, inputs
-
-    #     # * compute predictive distributions
-    #     logits_N = jax.lax.map(fn, items_NTD, batch_size=self.chunk_size).squeeze(1)
-    #     logits_Q2 = logits_N[query_idxs_Q2]
-
-    #     # llik_QM2 = logits_QM2 - jax.nn.logsumexp(logits_QM2, axis=2, keepdims=True)
-    #     llik_Q2 = jax.nn.log_softmax(logits_Q2, axis=1)
-    #     prob_Q2 = jnp.exp(llik_Q2)
-    #     return prob_Q2

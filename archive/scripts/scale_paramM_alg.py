@@ -39,7 +39,8 @@ def main(cfg):
 
     task = "cheetahMediumExpert"
     algs = ["ekf", "sgd"]
-    Ms = [3, 8, 15, 30, 50, 100, 150, 200]
+    Ms = [3, 8, 15, 30, 50, 100, 150]
+    # Ms = [3, 8, 15, 30, 50, 100, 150, 200]
     # Ms = [3, 8, 10]
 
     stats = nested_defaultdict()

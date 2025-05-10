@@ -27,18 +27,20 @@ nets = [
     "1024x2",
     "1024x3",
 ]
-Ms = [5, 15, 30, 50, 100, 150, 200, 250]
-task = "halfcheetah-medium-expert-v2"
+Ms = [5, 15, 30, 50, 100, 150]
+Ms = [5, 15, 30, 50, 100, 150, 200]
+# task = "halfcheetah-medium-expert-v2"
+task = "acrobot-swingup-v0"
 algs = ["ekf", "sgd"]
 # is_als = [True, False] $ always active
 save_dir = "/scr/yutaizho/projects/bnn_pref/_viz"
 
 # * == change this block ==
-M_dirp = (
-    "/scr/yutaizho/projects/bnn_pref/results_sweep/scaling/20250510_000954_scale_M_cpu"
-)
+M_dirp = "/scr/yutaizho/projects/bnn_pref/results_sweep/scaling/20250510_191544_scale_M"
 
-net_dirp = "/scr/yutaizho/projects/bnn_pref/results_sweep/scaling/20250510_001015_scale_param_cpu"
+net_dirp = (
+    "/scr/yutaizho/projects/bnn_pref/results_sweep/scaling/20250510_191544_scale_param"
+)
 # * == change this block ==
 
 
@@ -66,12 +68,6 @@ def get_duration(
     """
     assert sweep_type in ["M", "net"]
 
-    # Get all subdirectories in the given directory
-    # subdirs = [
-    #     f
-    #     for f in os.listdir(dirp)
-    #     if os.path.isdir(os.path.join(dirp, f)) and f != ".submitit"
-    # ]
     def create_alg_dicts():
         alg_dicts = {
             f"{alg}_{metric}": list()
@@ -156,7 +152,7 @@ ax.legend()
 
 fig.suptitle("Runtime of EKF and Ensemble")
 plt.tight_layout()
-plt.savefig(f"{save_dir}/paramSamples_vs_duration.png")
+plt.savefig(f"{save_dir}/scale_{timestamp}_runtime.png")
 
 # * plot ensemble size and network size vs. logpdf
 fig, axs = plt.subplots(1, 2, figsize=(10, 4))
@@ -186,4 +182,4 @@ ax.legend()
 
 fig.suptitle("EKF and Ensemble Logpdf vs. Network Size and Ensemble Size")
 plt.tight_layout()
-plt.savefig(f"{save_dir}/paramSamples_vs_logpdf.png")
+plt.savefig(f"{save_dir}/scale_{timestamp}_logpdf.png")

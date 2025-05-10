@@ -38,7 +38,6 @@ def main(cfg):
     }
 
     algs = ["ekf", "sgd"]
-    # task = "cheetahMediumExpert" # always use this task
     # is_als = [True] # always active
 
     stats = nested_defaultdict()
@@ -69,6 +68,7 @@ def main(cfg):
         f"  M={sgd_cfg['M']}, use_vmap={sgd_cfg['use_vmap']}\n"
         f"  init: bs={sgd_cfg['bs']}, niters={sgd_cfg['niters']}\n"
     )
+    print(jax.devices())
 
     total_duration = datetime.now()
     # * create dataset
@@ -96,7 +96,6 @@ def main(cfg):
     # * run
     key, *key_seeds = jr.split(key, 1 + cfg["seeds"])
     seeds = jnp.array(key_seeds)
-    # combine these two loops into one
     for alg in algs:
         run_fn = partial(run_fns[alg], cfg=cfg, data_dict=data_dict, env=env)
 
