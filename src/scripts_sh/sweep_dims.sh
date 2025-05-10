@@ -5,11 +5,8 @@ M_LIST=$(IFS=,; echo "${Ms[*]}")
 
 NETS=(
     "32x2"
-    "64x2"
     "64x3"
-    "128x2"
     "128x3"
-    "256x2"
     "256x3"
     "512x2"
     "512x3"
@@ -24,14 +21,14 @@ NET_LIST=$(IFS=,; echo "${NETS[*]}")
 # M=3,8,15,30, 50,100,150,200 # old
 # M=5,15,30,50,100,150,200 # new
 
-# python scripts/scale_dims_alg.py \
+# JAX_PLATFORM_NAME=cpu python scripts/scale_dims_alg.py \
 #     -m seed=-1 seeds=1 seed_vmap=False \
 #     task=cheetahMediumExpert \
 #     active=True \
 #     network=64x2 \
 #     M=${M_LIST} \
-#     data.nq_train=1000 \
-#     data.nq_update=60 \
+#     data.nq_train=50000 \
+#     data.nq_update=200 \
 #     sgd.max_buffer_size=500 \
 #     sgd.n_epochs=0 \
 #     sgd.use_vmap=False \
@@ -45,14 +42,14 @@ NET_LIST=$(IFS=,; echo "${NETS[*]}")
 # M=3,8,15,30, 50,100,150,200 # old
 # M=5,15,30,50,100,150,200 # new
 
-python scripts/scale_dims_alg.py \
+JAX_PLATFORM_NAME=cpu python scripts/scale_dims_alg.py \
     -m seed=-1 seeds=1 seed_vmap=False \
     task=cheetahMediumExpert \
     active=True \
     network=${NET_LIST} \
     M=5 \
-    data.nq_train=1000 \
-    data.nq_update=60 \
+    data.nq_train=50000 \
+    data.nq_update=200 \
     sgd.max_buffer_size=500 \
     sgd.n_epochs=0 \
     sgd.use_vmap=False \

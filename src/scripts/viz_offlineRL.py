@@ -144,7 +144,7 @@ def main():
     fig.suptitle("Normalized Score vs. Eval Steps", fontsize=18)
     plt.tight_layout(rect=[0, 0, 0.87, 1])
 
-    fp = f"{save_dir}/offline_rl_scores_{timestamp}_{aux_fname}.png"
+    fp = f"{save_dir}/offlineRL_{timestamp}_{aux_fname}.png"
     plt.savefig(fp, bbox_inches="tight", dpi=300)
     print(f"Saved to {fp}")
 
@@ -177,7 +177,7 @@ def main():
     ax.set_ylabel("Normalized Score", fontsize=12)
     ax.set_title("Normalized Score Across Tasks")
     ax.legend()
-    fp = f"{save_dir}/offline_rl_scores_{timestamp}_{aux_fname}_agg.png"
+    fp = f"{save_dir}/offlineRL_{timestamp}_{aux_fname}_agg.png"
     plt.savefig(fp, bbox_inches="tight", dpi=300)
     print(f"Saved to {fp}")
 

@@ -139,7 +139,7 @@ fig.legend(
 fig.suptitle("Test Log-Likelihood vs. Number of Queries", fontsize=18)
 plt.tight_layout(rect=[0, 0, 0.87, 1])  # leave space for legend and suptitle
 
-save_path = f"{save_dir}/logpdf_comparison_{timestamp}.png"
+save_path = f"{save_dir}/logpdf_{timestamp}.png"
 plt.savefig(save_path)
 plt.close()
 print(f"Plot saved as: {save_path}")
@@ -169,7 +169,7 @@ ax.set_title("Test Log-Likelihood Across Tasks")
 ax.legend()
 
 # Save the plot
-save_path = f"{save_dir}/logpdf_comparison_{timestamp}_agg.png"
+save_path = f"{save_dir}/logpdf_{timestamp}_agg.png"
 plt.savefig(save_path)
 plt.close()
 

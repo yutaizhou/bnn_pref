@@ -40,6 +40,7 @@
 python scripts/sweep_tasks_alg.py \
     -m seed=-1 seeds=5 seed_vmap=False \
     data.nq_train=50000 \
-    data.nq_update=60,150 \
+    data.nq_update=60,150,200,300,500 \
+    sgd.max_buffer_size=500 \
     sgd.n_epochs=0,1,5 \
     hydra/launcher=slurm
