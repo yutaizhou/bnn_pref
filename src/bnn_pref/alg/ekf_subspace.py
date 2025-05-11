@@ -55,6 +55,7 @@ class SubspaceEKF(Agent):
         dynamics_noise: float = 0.0,
         obs_noise: float = 1.0,
         iekf: int = 1,
+        acq_fn: str = "infogain",
         n_models: int = 20,
         chunk_size: int = 64,
         use_vmap: bool = True,
@@ -79,11 +80,14 @@ class SubspaceEKF(Agent):
         if not rnd_proj:
             n_eff_iterates = (niters - warm_burns) // thinning
             assert n_eff_iterates >= sub_dim, f"{n_eff_iterates=} < {sub_dim=}"
+        assert acq_fn in ["infogain", "disagreement"]
+        self.acq_fn = acq_fn
 
     @staticmethod
     def get_hydra_config(ekf_cfg):
         # follow ekf.yaml config
         return {
+            "acq_fn": ekf_cfg["acq_fn"],
             # subspace init
             "niters": ekf_cfg["niters"],
             "batch_size": ekf_cfg["bs"],
@@ -373,8 +377,13 @@ class SubspaceEKF(Agent):
         def map_step(idx):
             inds_2 = env.get_pref_indices(idx)
             logits_M2 = rearrange(logits_NM[inds_2], "K M -> M K", K=2)
-            logprobs_M2 = jax.nn.log_softmax(logits_M2, axis=1)
-            value = compute_info_gain(logprobs_M2)
+            if self.acq_fn == "infogain":
+                logprobs_M2 = jax.nn.log_softmax(logits_M2, axis=1)
+                value = compute_info_gain(logprobs_M2)
+            elif self.acq_fn == "disagreement":
+                probs_M2 = jnp.exp(jax.nn.log_softmax(logits_M2, axis=1))
+                pred_M = jnp.argmax(probs_M2, axis=1)
+                value = jnp.var(pred_M, axis=0)
             return value
 
         values_Q = jax.lax.map(map_step, pool_idxes_Q, batch_size=self.chunk_size)
