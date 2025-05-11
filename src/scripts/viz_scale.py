@@ -27,27 +27,27 @@ nets = [
     "1024x2",
     "1024x3",
 ]
-Ms = [5, 15, 30, 50, 100, 150]
-Ms = [5, 15, 30, 50, 100, 150, 200]
+Ms = [5, 15, 30, 50, 100, 150, 200, 250]
+# Ms = [5, 15, 30, 50, 100, 150, 200]
 # task = "halfcheetah-medium-expert-v2"
+fixed_net = "64x3"
+fixed_M = 5
 task = "acrobot-swingup-v0"
 algs = ["ekf", "sgd"]
 # is_als = [True, False] $ always active
 save_dir = "/scr/yutaizho/projects/bnn_pref/_viz"
 
 # * == change this block ==
-M_dirp = "/scr/yutaizho/projects/bnn_pref/results_sweep/scaling/20250510_191544_scale_M"
+M_dirp = "/scr/yutaizho/projects/bnn_pref/results_sweep/scaling/20250511_065332_scale_M_random"
 
-net_dirp = (
-    "/scr/yutaizho/projects/bnn_pref/results_sweep/scaling/20250510_191544_scale_param"
-)
+net_dirp = "/scr/yutaizho/projects/bnn_pref/results_sweep/scaling/20250511_065334_scale_param_random"
 # * == change this block ==
 
 
 def get_duration(
     dirp: str,
     sweep_type: str,
-    fixed_net: str = "64x2",
+    fixed_net: str = "64x3",
     fixed_M: int = 5,
 ):
     """
@@ -109,8 +109,8 @@ def get_duration(
         return out
 
 
-M_res = get_duration(M_dirp, sweep_type="M", fixed_net="64x2")
-net_res = get_duration(net_dirp, sweep_type="net", fixed_M=5)
+M_res = get_duration(M_dirp, sweep_type="M", fixed_net=fixed_net)
+net_res = get_duration(net_dirp, sweep_type="net", fixed_M=fixed_M)
 # ipdb.set_trace()
 
 
@@ -152,34 +152,38 @@ ax.legend()
 
 fig.suptitle("Runtime of EKF and Ensemble")
 plt.tight_layout()
-plt.savefig(f"{save_dir}/scale_{timestamp}_runtime.png")
+save_fp = f"{save_dir}/scale_{timestamp}_runtime.png"
+plt.savefig(save_fp)
+print(f"Saved to {save_fp}")
 
 # * plot ensemble size and network size vs. logpdf
-fig, axs = plt.subplots(1, 2, figsize=(10, 4))
-ax = axs[0]
-for alg in algs:
-    logpdfs = M_res[f"{alg}_logpdf"]
-    style = get_style(alg)
-    label = get_label(alg)
-    ax.plot(logpdfs, label=label, marker="o", markersize=3, **style)
-ax.set_xticks(range(len(Ms)))
-ax.set_xticklabels(Ms)
-ax.set_xlabel("Ensemble Size")
-ax.set_title("Ensemble Size vs. Logpdf")
-ax.legend()
+# fig, axs = plt.subplots(1, 2, figsize=(10, 4))
+# ax = axs[0]
+# for alg in algs:
+#     logpdfs = M_res[f"{alg}_logpdf"]
+#     style = get_style(alg)
+#     label = get_label(alg)
+#     ax.plot(logpdfs, label=label, marker="o", markersize=3, **style)
+# ax.set_xticks(range(len(Ms)))
+# ax.set_xticklabels(Ms)
+# ax.set_xlabel("Ensemble Size")
+# ax.set_title("Ensemble Size vs. Logpdf")
+# ax.legend()
 
-ax = axs[1]
-for alg in algs:
-    logpdfs = net_res[f"{alg}_logpdf"]
-    style = get_style(alg)
-    label = get_label(alg)
-    ax.plot(logpdfs, label=label, marker="o", markersize=3, **style)
-ax.set_xticks(range(len(nets)))
-ax.set_xticklabels(nets, rotation=45, ha="right")
-ax.set_xlabel("Network Size")
-ax.set_title("Network Size vs. Logpdf")
-ax.legend()
+# ax = axs[1]
+# for alg in algs:
+#     logpdfs = net_res[f"{alg}_logpdf"]
+#     style = get_style(alg)
+#     label = get_label(alg)
+#     ax.plot(logpdfs, label=label, marker="o", markersize=3, **style)
+# ax.set_xticks(range(len(nets)))
+# ax.set_xticklabels(nets, rotation=45, ha="right")
+# ax.set_xlabel("Network Size")
+# ax.set_title("Network Size vs. Logpdf")
+# ax.legend()
 
 fig.suptitle("EKF and Ensemble Logpdf vs. Network Size and Ensemble Size")
 plt.tight_layout()
-plt.savefig(f"{save_dir}/scale_{timestamp}_logpdf.png")
+save_fp = f"{save_dir}/scale_{timestamp}_logpdf.png"
+plt.savefig(save_fp)
+print(f"Saved to {save_fp}")

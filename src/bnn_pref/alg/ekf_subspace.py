@@ -344,6 +344,7 @@ class SubspaceEKF(Agent):
             def scan_param(_, ss_param):
                 fn = partial(self.sub2full_predict_return, ss_param)
                 ret_N1 = jax.lax.map(fn, env.items_NTD, batch_size=self.chunk_size)
+                # ret_N1 = jax.lax.map(fn, env.items_NTD, batch_size=1)
                 return _, ret_N1
 
             logits_NM = rearrange(
@@ -377,6 +378,13 @@ class SubspaceEKF(Agent):
             return value
 
         values_Q = jax.lax.map(map_step, pool_idxes_Q, batch_size=self.chunk_size)
+
+        # values_Q = jax.lax.map(
+        #     map_step,
+        #     pool_idxes_Q,
+        #     batch_size=self.chunk_size if self.use_vmap else 1,
+        # )
+
         query_idx = jnp.argmax(values_Q)
         return query_idx
 
@@ -408,6 +416,7 @@ class SubspaceEKF(Agent):
             def scan_param(_, ss_param):
                 fn = partial(self.sub2full_predict_return, ss_param)
                 ret_N1 = jax.lax.map(fn, items_NTD, batch_size=self.chunk_size)
+                # ret_N1 = jax.lax.map(fn, items_NTD, batch_size=1)
                 return _, ret_N1
 
             logits_NM = rearrange(
