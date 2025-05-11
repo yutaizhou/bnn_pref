@@ -326,7 +326,6 @@ class DeepEnsemble(Agent):
             def scan_ts(_, ts_single):
                 fn = partial(predict_fn, ts_single)
                 ret_N = jax.lax.map(fn, items_N1TD, batch_size=self.chunk_size)
-                # ret_N = jax.lax.map(fn, items_N1TD, batch_size=1)
                 return _, ret_N
 
             logits_NM = rearrange(jax.lax.scan(scan_ts, None, bel.ts)[1], "M N -> N M")
@@ -341,12 +340,6 @@ class DeepEnsemble(Agent):
 
         values_Q = jax.lax.map(map_step, pool_idxes_Q, batch_size=self.chunk_size)
 
-        # values_Q = jax.lax.map(
-        #     map_step,
-        #     pool_idxes_Q,
-        #     batch_size=self.chunk_size if self.use_vmap else 1,
-        # )
-
         query_idx = jnp.argmax(values_Q)
         return query_idx
 
@@ -360,6 +353,7 @@ class DeepEnsemble(Agent):
         """
         compute predictive distribution for all items in query pool
         """
+        M = self.n_models
 
         # * prepare ensemble predictors
         def predict_fn(ts: TrainState, x: Float[Array, "1 T D"]) -> Float[Array, " "]:
@@ -380,7 +374,6 @@ class DeepEnsemble(Agent):
             def scan_ts(_, ts_single):
                 fn = partial(predict_fn, ts_single)
                 ret_N = jax.lax.map(fn, items_N1TD, batch_size=self.chunk_size)
-                # ret_N = jax.lax.map(fn, items_N1TD, batch_size=1)
                 return _, ret_N
 
             logits_NM = rearrange(jax.lax.scan(scan_ts, None, ts)[1], "M N -> N M")
@@ -389,9 +382,8 @@ class DeepEnsemble(Agent):
 
         # * compute predictive distributions
         llik_QM2 = jax.nn.log_softmax(logits_QM2, axis=2)
-        llik_Q2 = jax.nn.logsumexp(llik_QM2, axis=1) - jnp.log(self.n_models)
+        llik_Q2 = jax.nn.logsumexp(llik_QM2, axis=1) - jnp.log(M)
         prob_Q2 = jnp.exp(llik_Q2)
-        # prob_Q2 = jnp.exp(llik_QM2).mean(1)
         return prob_Q2
 
 

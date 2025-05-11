@@ -348,7 +348,6 @@ class SubspaceEKF(Agent):
             def scan_param(_, ss_param):
                 fn = partial(self.sub2full_predict_return, ss_param)
                 ret_N1 = jax.lax.map(fn, env.items_NTD, batch_size=self.chunk_size)
-                # ret_N1 = jax.lax.map(fn, env.items_NTD, batch_size=1)
                 return _, ret_N1
 
             logits_NM = rearrange(
@@ -364,13 +363,13 @@ class SubspaceEKF(Agent):
         #     value = jnp.sum(mi_M2) / M
         #     return value
 
+        logM = jnp.log(M)
+        log2 = jnp.log(2)
+
         def compute_info_gain(logprobs_M2):
             """work in logspace for numerical stability"""
             log_sum_p = jax.nn.logsumexp(logprobs_M2, axis=0, keepdims=True)
-            log_M = jnp.log(M)
-            log2 = jnp.log(2)
-
-            mi_M2 = jnp.exp(logprobs_M2) * (log_M + logprobs_M2 - log_sum_p) / log2
+            mi_M2 = jnp.exp(logprobs_M2) * (logM + logprobs_M2 - log_sum_p) / log2
             value = jnp.sum(mi_M2) / M
             return value
 
@@ -387,12 +386,6 @@ class SubspaceEKF(Agent):
             return value
 
         values_Q = jax.lax.map(map_step, pool_idxes_Q, batch_size=self.chunk_size)
-
-        # values_Q = jax.lax.map(
-        #     map_step,
-        #     pool_idxes_Q,
-        #     batch_size=self.chunk_size if self.use_vmap else 1,
-        # )
 
         query_idx = jnp.argmax(values_Q)
         return query_idx
@@ -425,7 +418,6 @@ class SubspaceEKF(Agent):
             def scan_param(_, ss_param):
                 fn = partial(self.sub2full_predict_return, ss_param)
                 ret_N1 = jax.lax.map(fn, items_NTD, batch_size=self.chunk_size)
-                # ret_N1 = jax.lax.map(fn, items_NTD, batch_size=1)
                 return _, ret_N1
 
             logits_NM = rearrange(
@@ -439,5 +431,4 @@ class SubspaceEKF(Agent):
         llik_QM2 = jax.nn.log_softmax(logits_QM2, axis=2)
         llik_Q2 = jax.nn.logsumexp(llik_QM2, axis=1) - jnp.log(M)
         prob_Q2 = jnp.exp(llik_Q2)
-        # prob_Q2 = jnp.exp(llik_QM2).mean(1)
         return prob_Q2
