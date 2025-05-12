@@ -44,16 +44,18 @@ use_stderr = True  # otherwise use stderr
 use_smooth = True  # otherwise no smoothing on eval curves
 
 # * == change this block ==
-baseline_dirp = (
-    "/scr/yutaizho/projects/bnn_pref/_runs/20250501_002013_iql_baselines_18tasks"
+ref_dirp = (
+    "/scr/yutaizho/projects/bnn_pref/_runs/offline_rl/20250501_002013_iql_ref_18tasks"
 )
 
-pref_dirp = "/scr/yutaizho/projects/bnn_pref/_runs/iql_pref_18tasks_nq60_5seed"
+pref_dirp = (
+    "/scr/yutaizho/projects/bnn_pref/_runs/offline_rl/iql_pref_18tasks_nq60_5seed"
+)
 # * == change this block ==
 
 
 def main():
-    baseline_scores = get_baseline_score(baseline_dirp, tasks)  # d[task]["zero", "gt"]
+    baseline_scores = get_baseline_score(ref_dirp, tasks)  # d[task]["zero", "gt"]
 
     # pref_dirps = [
     #     "/scr/yutaizho/projects/bnn_pref/_runs/iql_pref_18tasks_5seed_nq60/20250502_005235_rewardNormClip",

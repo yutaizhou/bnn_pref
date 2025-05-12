@@ -65,10 +65,10 @@ is_als = [True, False]
 save_dir = "/scr/yutaizho/projects/bnn_pref/_viz"
 
 # * == change this block ==
-fp = "/scr/yutaizho/projects/bnn_pref/_runs/20250501_002234_rm_d4rl_18tasks/stats.npz"
+dirp = "/scr/yutaizho/projects/bnn_pref/_runs/20250501_002234_rm_d4rl_18tasks"
 # * == change this block ==
 
-out = np.load(fp, allow_pickle=True)
+out = np.load(f"{dirp}/stats.npz", allow_pickle=True)
 
 test_logpdf_all = defaultdict(lambda: list())
 for alg, is_al in it.product(algs, is_als):

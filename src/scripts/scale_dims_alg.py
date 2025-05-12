@@ -38,7 +38,6 @@ def main(cfg):
     }
 
     algs = ["ekf", "sgd"]
-    # is_als = [True] # always active
 
     stats = nested_defaultdict()
 
