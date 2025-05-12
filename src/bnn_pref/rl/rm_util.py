@@ -1,7 +1,7 @@
 import os
 import warnings
 from functools import partial
-from typing import Callable
+from typing import Callable, Tuple
 
 os.environ["D4RL_SUPPRESS_IMPORT_ERROR"] = "1"
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -32,10 +32,7 @@ def load_reward_model(
     task_name: str = "halfcheetah-random-v2",
     alg: str = "ekf",
     is_al: bool = False,
-) -> Callable[
-    [Float[Array, "T D"]],
-    Float[Array, "T"],
-]:
+) -> Tuple[Callable[[Float[Array, "T D"]], Float[Array, "T"]], str]:
     """
     run_dir: hydra run output directory, e.g. "../results/2025***"
     key: used for flax.linen.init and EKF subspace parameter sampling

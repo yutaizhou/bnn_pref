@@ -2,7 +2,7 @@ name: iql
 
 # * reward information
 reward: gt # gt, pref, or zero; next four fields only used if reward == "pref"
-run_dir: "/scr/yutaizho/projects/bnn_pref/_runs/20250501_002234_rm_d4rl_18tasks" # for pref reward model loading
+run_dir: "/scr/yutaizho/projects/bnn_pref/_runs/pref/20250501_002234_rm_d4rl_18tasks" # for pref reward model loading
 task_name: "${task.name}" # set via CLI override or compose API
 pref_alg: ekf # ekf, sgd
 pref_is_al: True # True, False
