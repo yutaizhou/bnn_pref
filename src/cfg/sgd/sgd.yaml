@@ -4,6 +4,7 @@ active: ${..active}
 M: ${..M}
 use_vmap: True 
 chunk_size: ${..chunk_size}
+acq: "disagreement"
 
 # * NN model
 learning_rate: 0.001

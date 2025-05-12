@@ -20,7 +20,7 @@ from jax.flatten_util import ravel_pytree
 from jaxtyping import Array, Float, PRNGKeyArray
 from omegaconf import OmegaConf
 
-from bnn_pref.alg.agent_utils import subspace2full_params
+from bnn_pref.alg.agent_utils import sub2full_params_flat
 from bnn_pref.alg.ekf_subspace import EKFBeliefState
 from bnn_pref.alg.ensemble import init_model
 from bnn_pref.utils.network import RewardNet, count_params
@@ -101,10 +101,10 @@ def load_reward_model(
 
         distr = distrax.MultivariateNormalFullCovariance(bel.mean, bel.cov)
         ss_params = distr.sample(seed=key, sample_shape=(cfg["ekf"]["M"],))
-        full_params_flattened = jax.vmap(subspace2full_params, in_axes=(0, None, None))(
+        params_flat = jax.vmap(sub2full_params_flat, in_axes=(0, None, None))(
             ss_params, bel.proj_matrix, params_offset
         )
-        params = jax.vmap(unravel_fn)(full_params_flattened)
+        params = jax.vmap(unravel_fn)(params_flat)
         params = {"params": params}
 
     else:

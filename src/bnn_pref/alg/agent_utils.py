@@ -46,7 +46,7 @@ class Agent(ABC):
         pass
 
 
-def subspace2full_params(
+def sub2full_params_flat(
     params_subspace: Float[Array, "sub_dim"],
     proj_matrix: Float[Array, "sub_dim full_dim"],
     params_full: Float[Array, "full_dim"],

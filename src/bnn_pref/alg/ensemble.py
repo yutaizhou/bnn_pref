@@ -117,6 +117,7 @@ class DeepEnsemble(Agent):
         chunk_size: int = 64,
         use_vmap: bool = True,  # for training update_bel in {init,update}_bel
         n_epochs: int = 0,
+        acq: str = "disagreement",
     ):
         self.n_models = n_models
         self.model = model
@@ -130,11 +131,14 @@ class DeepEnsemble(Agent):
         self.traj_shape = traj_shape
         assert n_epochs >= 0, "n_epochs must be non-negative"
         self.n_epochs = n_epochs
+        assert acq in ["disagreement", "infogain"]
+        self.acq = acq
 
     @staticmethod
     def get_hydra_config(sgd_cfg):
         # follow sgd.yaml config
         return {
+            "acq": sgd_cfg["acq"],
             # init
             "niters": sgd_cfg["niters"],
             "batch_size": sgd_cfg["bs"],
@@ -304,6 +308,7 @@ class DeepEnsemble(Agent):
         """
         active learning: greedily compute query that maximizes ensemble prediction var
         """
+        M = self.n_models
 
         def predict_fn(ts: TrainState, x: Float[Array, "1 T D"]) -> Float[Array, " "]:
             """unbatched ts, and output"""
@@ -330,12 +335,26 @@ class DeepEnsemble(Agent):
 
             logits_NM = rearrange(jax.lax.scan(scan_ts, None, bel.ts)[1], "M N -> N M")
 
+        logM = jnp.log(M)
+        log2 = jnp.log(2)
+
+        def compute_info_gain(logprobs_M2):
+            """work in logspace for numerical stability"""
+            log_sum_p = jax.nn.logsumexp(logprobs_M2, axis=0, keepdims=True)
+            mi_M2 = jnp.exp(logprobs_M2) * (logM + logprobs_M2 - log_sum_p) / log2
+            value = jnp.sum(mi_M2) / M
+            return value
+
         def map_step(idx):
             inds_2 = env.get_pref_indices(idx)
             logits_M2 = rearrange(logits_NM[inds_2], "K M -> M K", K=2)
-            probs_M2 = jnp.exp(jax.nn.log_softmax(logits_M2, axis=1))
-            pred_M = jnp.argmax(probs_M2, axis=1)
-            value = jnp.var(pred_M, axis=0)
+            if self.acq == "infogain":
+                logprobs_M2 = jax.nn.log_softmax(logits_M2, axis=1)
+                value = compute_info_gain(logprobs_M2)
+            elif self.acq == "disagreement":
+                probs_M2 = jnp.exp(jax.nn.log_softmax(logits_M2, axis=1))
+                pred_M = jnp.argmax(probs_M2, axis=1)
+                value = jnp.var(pred_M, axis=0)
             return value
 
         values_Q = jax.lax.map(map_step, pool_idxes_Q, batch_size=self.chunk_size)

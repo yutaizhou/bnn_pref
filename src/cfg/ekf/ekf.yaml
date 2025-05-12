@@ -4,7 +4,7 @@ active: ${..active}
 M: ${..M}
 use_vmap: True 
 chunk_size: ${..chunk_size}
-acq_fn: "infogain"
+acq: "infogain"
 
 # * NN model
 learning_rate: 0.001
