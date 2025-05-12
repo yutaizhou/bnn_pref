@@ -97,12 +97,11 @@ def load_reward_model(
         bel = cktper.restore(ckpt_fp, item=dummy_items, **restore_kw)
         ts = bel.offset_ts
 
-        params_offset, unravel_fn = ravel_pytree(ts.params)
-
         distr = distrax.MultivariateNormalFullCovariance(bel.mean, bel.cov)
         ss_params = distr.sample(seed=key, sample_shape=(cfg["ekf"]["M"],))
+        params_offset_flat, unravel_fn = ravel_pytree(ts.params)
         params_flat = jax.vmap(sub2full_params_flat, in_axes=(0, None, None))(
-            ss_params, bel.proj_matrix, params_offset
+            ss_params, bel.proj_matrix, params_offset_flat
         )
         params = jax.vmap(unravel_fn)(params_flat)
         params = {"params": params}

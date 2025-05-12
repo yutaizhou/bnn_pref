@@ -162,34 +162,50 @@ class SubspaceEKF(Agent):
         params_offset, params_unravel_fn = ravel_pytree(warm_ts.params)
         self.warmed_params = warm_ts.params
 
-        def sub2full_predict_return(
-            params_subspace,
-            traj: Float[Array, "T D"],
-        ) -> Float[Array, "1"]:
-            params_full = subspace2full_params(
-                params_subspace, proj_matrix, params_offset
-            )
-            params = params_unravel_fn(params_full)
+        # these two are used for projection matrix "efficient" version
+        def sub2full_params(ss_param_flat):
+            """
+            ss_param_flat: flattened vector of subspace params (sub_dim,)
+            returns: unflatten pytree of fullspace params
+            """
+            param_flat = sub2full_params_flat(ss_param_flat, proj_matrix, params_offset)
+            return params_unravel_fn(param_flat)
+
+        def pred_return(
+            param: Dict,
+            items_TD: Float[Array, "T D"],
+        ) -> Float[Array, " "]:
+            inputs = rearrange(items_TD, "T D -> 1 T D")
+            params = {"params": param}
             outputs = self.model.apply(
-                {"params": params},
-                rearrange(traj, "T D -> 1 T D"),
-                method=self.model.predict_traj_return,
-            )
+                params, inputs, method=self.model.predict_traj_return
+            ).squeeze(0)
+            return outputs
+
+        self.sub2full_params = sub2full_params
+        self.pred_return = pred_return
+
+        # these two are used for projection matrix "inefficient" version
+        def sub2full_predict_return(
+            ss_param_flat,
+            traj: Float[Array, "T D"],
+        ) -> Float[Array, " "]:
+            params = sub2full_params(ss_param_flat)
+            inputs = rearrange(traj, "T D -> 1 T D")
+            outputs = self.model.apply(
+                {"params": params}, inputs, method=self.model.predict_traj_return
+            ).squeeze(0)
             return outputs
 
         def sub2full_predict_logits(
-            params_subspace,
+            ss_param_flat,
             inputs: Float[Array, "2 T D"],
         ) -> Float[Array, "2"]:
             """
             Project params from subspace to full space, then apply model
             to get logits for both trajectories
             """
-            params_full = subspace2full_params(
-                params_subspace, proj_matrix, params_offset
-            )
-            params = params_unravel_fn(params_full)
-
+            params = sub2full_params(ss_param_flat)
             inputs = rearrange(inputs, "K T D -> 1 K T D", K=2)
             outputs = self.model.apply({"params": params}, inputs)
             outputs = rearrange(outputs, "1 K -> K", K=2)
@@ -199,7 +215,7 @@ class SubspaceEKF(Agent):
         self.sub2full_predict_logits = sub2full_predict_logits
 
         def emission_fn(
-            params,
+            ss_param_flat,
             inputs: Float[Array, "2 T D"],
         ) -> Float[Array, "2"]:
             """
@@ -212,7 +228,7 @@ class SubspaceEKF(Agent):
             inputs: (2 * T * D,)
             """
             inputs = rearrange(inputs, "(K T D) -> K T D", K=2, D=self.n_feats)
-            logits = sub2full_predict_logits(params, inputs)  # (2,)
+            logits = sub2full_predict_logits(ss_param_flat, inputs)  # (2,)
 
             probs_2 = jnp.exp(jax.nn.log_softmax(logits))
             return probs_2
@@ -333,27 +349,42 @@ class SubspaceEKF(Agent):
         distr = distrax.MultivariateNormalFullCovariance(bel.mean, bel.cov)
         key, key_sample = jr.split(key, 2)
         ss_params = distr.sample(seed=key_sample, sample_shape=(M,))
+        params = jax.vmap(self.sub2full_params)(ss_params)  # pytree (lead axis M)
 
-        # * precompute logits for all items
         if self.use_vmap:
-            fn = jax.vmap(self.sub2full_predict_return, in_axes=(0, None))
-            fn = partial(fn, ss_params)
-            logits_NM = rearrange(
-                jax.lax.map(fn, env.items_NTD, batch_size=self.chunk_size),
-                "N M 1 -> N M",
-            )
+            fn = jax.vmap(self.pred_return, in_axes=(0, None))
+            fn = partial(fn, params)
+            logits_NM = jax.lax.map(fn, env.items_NTD, batch_size=self.chunk_size)
 
         else:
 
-            def scan_param(_, ss_param):
-                fn = partial(self.sub2full_predict_return, ss_param)
-                ret_N1 = jax.lax.map(fn, env.items_NTD, batch_size=self.chunk_size)
-                return _, ret_N1
+            def scan_param(_, param):
+                fn = partial(self.pred_return, param)
+                ret_N = jax.lax.map(fn, env.items_NTD, batch_size=self.chunk_size)
+                return _, ret_N
 
             logits_NM = rearrange(
-                jax.lax.scan(scan_param, None, ss_params)[1],
-                "M N 1 -> N M",
+                jax.lax.scan(scan_param, None, params)[1],
+                "M N -> N M",
             )
+
+        # * precompute logits for all items
+        # if self.use_vmap:
+        #     fn = jax.vmap(self.sub2full_predict_return, in_axes=(0, None))
+        #     fn = partial(fn, ss_params)
+        #     logits_NM = jax.lax.map(fn, env.items_NTD, batch_size=self.chunk_size)
+
+        # else:
+
+        #     def scan_param(_, ss_param):
+        #         fn = partial(self.sub2full_predict_return, ss_param)
+        #         ret_N = jax.lax.map(fn, env.items_NTD, batch_size=self.chunk_size)
+        #         return _, ret_N
+
+        #     logits_NM = rearrange(
+        #         jax.lax.scan(scan_param, None, ss_params)[1],
+        #         "M N -> N M",
+        #     )
 
         # def compute_info_gain(logprobs_M2):
         #     probs_M2 = jnp.exp(logprobs_M2)
@@ -404,26 +435,41 @@ class SubspaceEKF(Agent):
         dist = distrax.MultivariateNormalFullCovariance(bel.mean, bel.cov)
         key, key_sample = jr.split(key, 2)
         ss_params = dist.sample(seed=key_sample, sample_shape=(M,))
+        params = jax.vmap(self.sub2full_params)(ss_params)  # pytree (lead axis M)
 
-        # * precompute logits for all items
         if self.use_vmap:
-            fn = jax.vmap(self.sub2full_predict_return, in_axes=(0, None))
-            fn = partial(fn, ss_params)
-            logits_NM = rearrange(
-                jax.lax.map(fn, items_NTD, batch_size=self.chunk_size),
-                "N M 1 -> N M",
-            )
+            fn = jax.vmap(self.pred_return, in_axes=(0, None))
+            fn = partial(fn, params)
+            logits_NM = jax.lax.map(fn, items_NTD, batch_size=self.chunk_size)
+
         else:
 
-            def scan_param(_, ss_param):
-                fn = partial(self.sub2full_predict_return, ss_param)
-                ret_N1 = jax.lax.map(fn, items_NTD, batch_size=self.chunk_size)
-                return _, ret_N1
+            def scan_param(_, param):
+                fn = partial(self.pred_return, param)
+                ret_N = jax.lax.map(fn, items_NTD, batch_size=self.chunk_size)
+                return _, ret_N
 
             logits_NM = rearrange(
-                jax.lax.scan(scan_param, None, ss_params)[1],
-                "M N 1 -> N M",
+                jax.lax.scan(scan_param, None, params)[1],
+                "M N -> N M",
             )
+
+        # * precompute logits for all items
+        # if self.use_vmap:
+        #     fn = jax.vmap(self.sub2full_predict_return, in_axes=(0, None))
+        #     fn = partial(fn, ss_params)
+        #     logits_NM = jax.lax.map(fn, items_NTD, batch_size=self.chunk_size)
+        # else:
+
+        #     def scan_param(_, ss_param):
+        #         fn = partial(self.sub2full_predict_return, ss_param)
+        #         ret_N = jax.lax.map(fn, items_NTD, batch_size=self.chunk_size)
+        #         return _, ret_N
+
+        #     logits_NM = rearrange(
+        #         jax.lax.scan(scan_param, None, ss_params)[1],
+        #         "M N -> N M",
+        #     )
 
         logits_QM2 = rearrange(logits_NM[query_idxs_Q2], "Q K M -> Q M K", K=2)
 
