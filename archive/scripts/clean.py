@@ -39,7 +39,7 @@ def clean_empty_dirs(dirp):
 
 if __name__ == "__main__":
     # Get the directory path from user input
-    root_dir = "/scr/yutaizho/projects/bnn_pref"
+    root_dir = "PATH/TO/YOUR/bnn_pref"
     directories = [
         f"{root_dir}/{d}"
         for d in [

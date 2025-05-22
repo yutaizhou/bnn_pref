@@ -46,7 +46,6 @@ jaxtyping==0.2.38
 jedi==0.19.1
 Jinja2==3.1.4
 joblib==1.4.2
--e git+ssh://git@github.com/yutaizhou/JSL.git@628e51a9d57ae67de659213128f244750f68c626#egg=jsl
 jsonpatch @ file:///croot/jsonpatch_1710807507480/work
 jsonpointer==2.1
 kiwisolver==1.4.7

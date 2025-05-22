@@ -45,9 +45,9 @@ task = "halfcheetah-medium-expert-v2"
 algs = ["ekf", "sgd"]
 
 # * == change this block ==
-save_dir = "/scr/yutaizho/projects/bnn_pref/_viz/scale"
-M_dirp = "/scr/yutaizho/projects/bnn_pref/results_sweep/scaling/20250513_000307_M_infogain_effi_epochs5_d4rl_3seeds"
-net_dirp = "/scr/yutaizho/projects/bnn_pref/results_sweep/scaling/20250513_000305_param_infogain_effi_epochs5_d4rl_3seeds"
+save_dir = "PATH/TO/YOUR/bnn_pref/_viz/scale"
+M_dirp = "PATH/TO/YOUR/bnn_pref/results_sweep/scaling/CHANGEME"
+net_dirp = "PATH/TO/YOUR/bnn_pref/results_sweep/scaling/CHANGEME"
 # * == change this block ==
 
 

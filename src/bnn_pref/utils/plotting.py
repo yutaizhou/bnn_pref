@@ -10,18 +10,16 @@ from einops import rearrange
 from matplotlib.font_manager import FontProperties
 
 # * Lira plotting settings :)
-fontdir_path = "/scr/yutaizho/.fonts"
-font_path = os.path.join(fontdir_path, "palatinolinotype_roman.ttf")
-palatino = FontProperties(fname=font_path)
+default_font = FontProperties()
 
 
 def get_font_kw(size: int = 12):
-    return {"font": palatino, "fontsize": size}
+    return {"font": default_font, "fontsize": size}
 
 
 def get_legend_kw(size: int = 12):
     return {
-        "prop": FontProperties(fname=font_path, size=size),
+        "prop": FontProperties(size=size),
         "frameon": False,
     }
 

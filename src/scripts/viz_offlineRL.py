@@ -53,14 +53,9 @@ use_stderr = True  # otherwise use stderr
 use_smooth = True  # otherwise no smoothing on eval curves
 
 # * == change this block ==
-save_dir = "/scr/yutaizho/projects/bnn_pref/_viz/offlineRL"
-ref_dirp = (
-    "/scr/yutaizho/projects/bnn_pref/_runs/offline_rl/20250501_002013_iql_ref_18tasks"
-)
-
-pref_dirp = (
-    "/scr/yutaizho/projects/bnn_pref/_runs/offline_rl/iql_pref_18tasks_nq60_5seed"
-)
+save_dir = "PATH/TO/YOUR/bnn_pref/_viz/offlineRL"
+ref_dirp = "PATH/TO/YOUR/bnn_pref/_runs/offline_rl/CHANGEME"
+pref_dirp = "PATH/TO/YOUR/bnn_pref/_runs/offline_rl/CHANGEME"
 # * == change this block ==
 
 

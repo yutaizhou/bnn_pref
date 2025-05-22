@@ -37,6 +37,7 @@ wandb:
   tags: null
 ```
 # Commands
+In many instances across the codebase, we use "PATH/TO/YOUR/bnn_pref" to refer to the root directory of the project, and "CHANGEME" to refer to the directory that hydra creates after a run.
 
 ## Reward learning experiments
 To train preference-based reward models over 18 chosen D4RL tasks, each task running 4 algs

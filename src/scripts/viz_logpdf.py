@@ -77,8 +77,8 @@ is_als = [True, False]
 use_smooth = True
 
 # * == change this block ==
-save_dir = "/scr/yutaizho/projects/bnn_pref/_viz/logpdf"
-dirp = "/scr/yutaizho/projects/bnn_pref/_runs/pref/20250501_002234_rm_d4rl_18tasks"
+save_dir = "PATH/TO/YOUR/bnn_pref/_viz/logpdf"
+dirp = "PATH/TO/YOUR/bnn_pref/_runs/pref/CHANGEME"
 # * == change this block ==
 
 out = np.load(f"{dirp}/stats.npz", allow_pickle=True)

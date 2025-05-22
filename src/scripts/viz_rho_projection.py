@@ -36,7 +36,7 @@ jnp.set_printoptions(precision=2)
 def main(cfg):
     seed = get_random_seed(cfg["seed"])
     key = jr.key(seed)
-    save_dir = "/scr/yutaizho/projects/bnn_pref/_viz"
+    save_dir = "PATH/TO/YOUR/bnn_pref/_viz"
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     tasks = [
         # * gym
@@ -101,9 +101,7 @@ def main(cfg):
         # f"  init: bs={sgd_cfg['bs']}, niters={sgd_cfg['niters']}\n"
     )
 
-    rm_dirp = (
-        "/scr/yutaizho/projects/bnn_pref/_runs/pref/20250501_002234_rm_d4rl_18tasks"
-    )
+    rm_dirp = "PATH/TO/YOUR/bnn_pref/_runs/pref/CHANGEME"
     for task in tasks:
         # * update cfg
         new_cfg = hydra.compose("config", overrides=[f"task={task}"])

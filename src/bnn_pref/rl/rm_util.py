@@ -129,7 +129,7 @@ def relabel_rewards(
 
 
 if __name__ == "__main__":
-    run_dir = "/Users/yutai/dev/projects/bnn_pref/results/20250428_171621"
+    run_dir = "PATH/TO/YOUR/bnn_pref/results/CHANGEME"
     task_name = "halfcheetah-random-v2"
     alg = "sgd"
     is_al = False
