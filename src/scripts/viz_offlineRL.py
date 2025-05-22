@@ -9,6 +9,16 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
 
+from bnn_pref.utils.plotting import (
+    get_font_kw,
+    get_legend_kw,
+    invisible_topright_spines,
+    prettify_title,
+    rgb_values,
+    set_xlim_offset,
+    smooth,
+)
+
 
 def defaultdict2dict(dd):
     return {k: defaultdict2dict(v) if isinstance(v, dict) else v for k, v in dd.items()}
@@ -37,9 +47,9 @@ tasks = [
     # "mazeLargeDense",
 ]
 algs = ["ekf", "sgd"]
-is_als = [False, True]
-save_dir = "/scr/yutaizho/projects/bnn_pref/_viz"
+is_als = [True, False]
 
+save_dir = "/scr/yutaizho/projects/bnn_pref/_viz/offlineRL"
 use_stderr = True  # otherwise use stderr
 use_smooth = True  # otherwise no smoothing on eval curves
 
@@ -57,13 +67,6 @@ pref_dirp = (
 def main():
     baseline_scores = get_baseline_score(ref_dirp, tasks)  # d[task]["zero", "gt"]
 
-    # pref_dirps = [
-    #     "/scr/yutaizho/projects/bnn_pref/_runs/iql_pref_18tasks_5seed_nq60/20250502_005235_rewardNormClip",
-    #     "/scr/yutaizho/projects/bnn_pref/_runs/iql_pref_18tasks_5seed_nq60/20250502_032221_rewardNormClip",
-    #     "/scr/yutaizho/projects/bnn_pref/_runs/iql_pref_18tasks_5seed_nq60/20250502_032310_rewardNormClip",
-    #     "/scr/yutaizho/projects/bnn_pref/_runs/iql_pref_18tasks_5seed_nq60/20250502_063110_rewardNormClip",
-    #     "/scr/yutaizho/projects/bnn_pref/_runs/iql_pref_18tasks_5seed_nq60/20250502_065318_rewawrdNormClip",
-    # ]
     dir_name = pref_dirp.split("/")[-1]
     aux_fname = dir_name.split("iql_pref_18tasks_")[-1]  # gets "_nq60_5seed"
 
@@ -74,33 +77,23 @@ def main():
 
     def get_label(alg: str, is_al: bool) -> str:
         if alg == "ekf":
-            return "EKF (Active)" if is_al else "EKF (Random)"
+            return "PreferenceEKF (Active)" if is_al else "PreferenceEKF (Random)"
         else:
-            return "Ensemble (Active)" if is_al else "Ensemble (Random)"
+            return "DeepEnsemble (Active)" if is_al else "DeepEnsemble (Random)"
 
     def get_style(alg: str, is_al: bool) -> dict:
-        color = "blue" if alg == "ekf" else "orange"
+        color = rgb_values["orange"] if alg == "ekf" else rgb_values["blue"]
         linestyle = "-" if is_al else "--"
-        return {"color": color, "linestyle": linestyle, "linewidth": 1}
+        return {"color": color, "linestyle": linestyle}
 
-    fig, axs = plt.subplots(3, 4, figsize=(12, 8))
+    fig, axs = plt.subplots(3, 4, figsize=(12, 7.5), sharex=True)
     axs = axs.flatten()
     lines = []  # Store lines for the shared legend
     labels = []  # Store labels for the shared legend
 
-    def smooth(x_E, window_size=5):
-        """Apply running average smoothing to the input array along axis 0.
-        Args:
-            x_E: array of shape (n_evals,)
-            window_size: size of the smoothing window
-        Returns:
-            smoothed array of shape (n_evals,)
-        """
-        kernel = np.ones(window_size) / window_size
-        return np.convolve(x_E, kernel, mode="valid")
-
     for i, task in enumerate(tasks):
         ax = axs[i]
+        invisible_topright_spines(ax)
         for alg, is_al in it.product(algs, is_als):
             scores = pref_scores[task][f"{alg}_{is_al}"]  # (n_evals+1, n_workers)
             mean_E = scores.mean(1)
@@ -118,40 +111,64 @@ def main():
                 lines.append(line)
                 labels.append(get_label(alg, is_al))
             ax.fill_between(
-                jnp.arange(len(mean_E)),
+                range(len(mean_E)),
                 mean_E - std_E,
                 mean_E + std_E,
                 alpha=0.2,
-                **get_style(alg, is_al),
+                **style,
             )
-            # ax.set_xticks(jnp.arange(len(mean_NEW)) * 25000)
-            ax.set_title(task)
-            ax.set_xlabel("Eval Steps", fontsize=8)
-            ax.set_ylabel("Normalized Score", fontsize=8)
-
         zero_score = baseline_scores[task]["zero"]
         gt_score = baseline_scores[task]["gt"]
-        zero_line = ax.axhline(zero_score, color="black", linestyle="--")
-        gt_line = ax.axhline(gt_score, color="black", linestyle="-")
-        max_score = max(mean_E.max(), gt_score)
-        min_score = min(mean_E.min(), zero_score)
-        ax.set_ylim(min_score - 5, max_score + 5)
+        zero_line = ax.axhline(
+            zero_score, color=rgb_values["gray"], linestyle="--", linewidth=1.0
+        )
+        gt_line = ax.axhline(
+            gt_score, color=rgb_values["gray"], linestyle="-", linewidth=1.0
+        )
+        # for better zooming in visualization
+        if task in ["mazeMediumDense", "hopperMediumExpert"]:
+            max_score = max(scores[np.isfinite(scores)].max(), gt_score)
+            min_score = min(scores[np.isfinite(scores)].min(), zero_score)
+        else:
+            max_score = max(mean_E[np.isfinite(mean_E)].max(), gt_score)
+            min_score = min(mean_E[np.isfinite(mean_E)].min(), zero_score)
+        ax.set_ylim(min_score - 2, max_score + 2)
         if i == 0:  # Only store baseline legend info from first subplot
-            lines.extend([zero_line, gt_line])
-            labels.extend(["Zero", "GT"])
+            lines.extend([gt_line, zero_line])
+            labels.extend(["GT", "Zero"])
 
-        ax.set_title(task)
+        ax.set_title(prettify_title(task), **get_font_kw(14))
 
-    fig.legend(lines, labels, loc="center right")
-    fig.suptitle("Normalized Score vs. Eval Steps", fontsize=18)
-    plt.tight_layout(rect=[0, 0, 0.87, 1])
+        xticks = ax.get_xticks()
+        ax.set_xticks(xticks)
+        ax.set_xticklabels([f"{int(x):d}" for x in xticks], **get_font_kw(12))
+        set_xlim_offset(ax)
+        ax.set_xlim(right=len(mean_E))  # Cut off the graph
+
+        yticks = ax.get_yticks()
+        ax.set_yticks(yticks)
+        ax.set_yticklabels([f"{y:.0f}" for y in yticks], **get_font_kw(12))
+
+    fig.supxlabel("Evaluation Steps", **get_font_kw(16))
+    fig.supylabel("Normalized Score", **get_font_kw(16))
+    fig.legend(
+        lines,
+        labels,
+        loc="lower center",
+        bbox_to_anchor=(0.5, -0.12),
+        ncol=3,
+        handlelength=2,
+        **get_legend_kw(16),
+    )
+    plt.tight_layout(rect=[0, 0.03, 1, 1])
 
     fp = f"{save_dir}/offlineRL_{timestamp}_{aux_fname}.png"
     plt.savefig(fp, bbox_inches="tight", dpi=300)
     print(f"Saved to {fp}")
 
     # * plot agg_scores
-    fig, ax = plt.subplots(figsize=(12, 10))
+    fig, ax = plt.subplots(figsize=(10, 6))
+    invisible_topright_spines(ax)
     max_score = 0
     min_score = jnp.inf
     for alg, is_al in it.product(algs, is_als):
@@ -166,19 +183,30 @@ def main():
         std_E = smooth(std_E) if use_smooth else std_E
         max_score = max(max_score, mean_E.max())
         min_score = min(min_score, mean_E.min())
-        ax.plot(mean_E, label=get_label(alg, is_al), **get_style(alg, is_al))
+        label = get_label(alg, is_al)
+        style = get_style(alg, is_al)
+        ax.plot(mean_E, label=label, **style, linewidth=2)
         ax.fill_between(
-            jnp.arange(len(mean_E)),
+            range(len(mean_E)),
             mean_E - std_E,
             mean_E + std_E,
             alpha=0.2,
-            **get_style(alg, is_al),
+            **style,
         )
-    # ax.set_ylim(min_score - 5, max_score + 5)
-    ax.set_xlabel("Eval Steps", fontsize=12)
-    ax.set_ylabel("Normalized Score", fontsize=12)
-    ax.set_title("Normalized Score Across Tasks")
-    ax.legend()
+
+    ax.set_xlabel("Evaluation Steps", **get_font_kw(18))
+    xticks = ax.get_xticks()
+    ax.set_xticks(xticks)
+    ax.set_xticklabels([f"{int(x):d}" for x in xticks], **get_font_kw(16))
+    ax.set_xlim(left=0, right=len(mean_E))  # Cut off the graph
+
+    ax.set_ylabel("Normalized Score", **get_font_kw(18))
+    yticks = ax.get_yticks()
+    ax.set_yticks(yticks)
+    ax.set_yticklabels([f"{y:.0f}" for y in yticks], **get_font_kw(16))
+    ax.set_ylim(min_score - 3, max_score + 3)
+
+    ax.legend(**get_legend_kw(18), loc="lower right")
     fp = f"{save_dir}/offlineRL_{timestamp}_{aux_fname}_agg.png"
     plt.savefig(fp, bbox_inches="tight", dpi=300)
     print(f"Saved to {fp}")

@@ -32,8 +32,8 @@ python bnn_pref/rl/iql.py \
     rl.clip_reward=True \
     rl.n_updates=1000000 \
     rl.eval_interval=25000 \
-    rl.run_dir='"/scr/yutaizho/projects/bnn_pref/_runs/rm_18tasks_5seed_nq_epoch/12_data.nq_update=500, sgd.n_epochs=0"' \
-    wandb.tags=nq500 \
+    rl.run_dir='"/scr/yutaizho/projects/bnn_pref/_runs/pref/20250501_002234_rm_d4rl_18tasks"' \
+    wandb.tags=nq30 \
     rl.use_wandb=True \
     wandb.group=rl_pref_reward_norm_clip \
     hydra/launcher=slurm 

@@ -1,8 +1,76 @@
+import os
+import re
 from typing import Callable, Tuple
 
 import jax.numpy as jnp
 import jax.numpy.linalg as jnpl
+import matplotlib.pyplot as plt
+import numpy as np
 from einops import rearrange
+from matplotlib.font_manager import FontProperties
+
+# * Lira plotting settings :)
+fontdir_path = "/scr/yutaizho/.fonts"
+font_path = os.path.join(fontdir_path, "palatinolinotype_roman.ttf")
+palatino = FontProperties(fname=font_path)
+
+
+def get_font_kw(size: int = 12):
+    return {"font": palatino, "fontsize": size}
+
+
+def get_legend_kw(size: int = 12):
+    return {
+        "prop": FontProperties(fname=font_path, size=size),
+        "frameon": False,
+    }
+
+
+rgb_values = {
+    "orange": np.array([255, 167, 73]) / 255,  # our method
+    "blue": np.array([90, 135, 196]) / 255,  # main baseline
+    "green": np.array([172, 201, 104]) / 255,  # second competitive baselines
+    "gray": np.array([139, 139, 139]) / 255,  # basic baseline
+}
+
+
+def invisible_topright_spines(ax: plt.Axes):
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+
+def set_tick_font(ax: plt.Axes, size: int = 12):
+    xticks = ax.get_xticks()
+    ax.set_xticklabels(xticks, **get_font_kw(size))
+    yticks = ax.get_yticks()
+    ax.set_yticklabels(yticks, **get_font_kw(size))
+
+
+def set_xlim_offset(ax: plt.Axes, offsets: Tuple[float, float] = (-0.01, 0.01)):
+    xlim = ax.get_xlim()
+    ax.set_xlim(offsets[0], xlim[1] + offsets[1])
+
+
+def prettify_title(s: str) -> str:
+    """
+    Insert a space before each capital letter (except the first), then capitalize the first letter
+    e.g. "cheetahMediumReplay" -> "Cheetah Medium Replay"
+    """
+    s_with_spaces = re.sub(r"([A-Z])", r" \1", s)
+    s_pretty = s_with_spaces.strip().title()
+    return s_pretty
+
+
+def smooth(x_E, window_size=5):
+    """Apply running average smoothing to the input array along axis 0.
+    Args:
+        x_E: array of shape (n_evals,)
+        window_size: size of the smoothing window
+    Returns:
+        smoothed array of shape (n_evals,)
+    """
+    kernel = np.ones(window_size) / window_size
+    return np.convolve(x_E, kernel, mode="valid")
 
 
 def plot_reward_heatmap(

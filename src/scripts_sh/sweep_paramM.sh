@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Ms=(5 15 30)
-Ms=(5 15 30 50 100 150 200 250)
+Ms=(5 15 30 50 100 150 200)
 M_LIST=$(IFS=,; echo "${Ms[*]}")
 
 # NETS=(
@@ -21,17 +21,17 @@ M_LIST=$(IFS=,; echo "${Ms[*]}")
 
 JAX_PLATFORM_NAME=cpu python scripts/scale_dims_alg.py \
     -m seed=-1 seeds=1 seed_vmap=False \
-    task=acrobot \
+    task=cheetahMediumExpert \
     active=True \
     network=64x3 \
     M=${M_LIST} \
     data.nq_train=50000 \
     data.nq_update=60 \
     sgd.max_buffer_size=500 \
-    sgd.n_epochs=0 \
+    sgd.n_epochs=3,3,3 \
     sgd.use_vmap=False \
     ekf.use_vmap=False \
-    dir_extra=scale_M_active \
-    data.segment_size=-1 \
-    network.n_splits=5 \
+    ekf.acq=infogain \
+    sgd.acq=infogain \
+    dir_extra=M_infogain_effi_epochs3_d4rl_cpu_partial \
     hydra/launcher=slurm
