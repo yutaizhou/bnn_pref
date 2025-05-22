@@ -74,10 +74,10 @@ tasks = [
 algs = ["ekf", "sgd"]
 is_als = [True, False]
 
-save_dir = "/scr/yutaizho/projects/bnn_pref/_viz/logpdf"
 use_smooth = True
 
 # * == change this block ==
+save_dir = "/scr/yutaizho/projects/bnn_pref/_viz/logpdf"
 dirp = "/scr/yutaizho/projects/bnn_pref/_runs/pref/20250501_002234_rm_d4rl_18tasks"
 # * == change this block ==
 

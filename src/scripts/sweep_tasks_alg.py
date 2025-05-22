@@ -39,8 +39,9 @@ def modify_queries(
     nq_init: int,
 ) -> Tuple[QueryIndexAndResponses, int]:
     """
-    sanity check for active learning acquisition functions
-    modify all queries past nq_init: 5% real, and rest duplicate.
+    Sanity check for active learning acquisition functions
+    Modify all queries past nq_init: 5% real, and rest duplicate.
+    This should hinder performance of random querying, but not active querying.
     """
     queries_Q2, responses_Q1 = pref_data.queries_Q2, pref_data.responses_Q1
     pool_size = nq_train - nq_init

@@ -7,34 +7,21 @@ defaults:
 - ekf: ekf
 - sgd: sgd
 - rl: iql
-- optional local: default # specifies project dir & wandb login, goes after wandb
+- optional local: default # specifies project dir & wandb login
 # - optional run: debug
 - hydra: default
 
-fhat: linear
+fhat: linear # only used for synthetic tasks
 M: 15 # number of models / samples for ensembling / EKF sampling
-active: False
-chunk_size: 128
-seed_vmap: True # good for 3 seeds or under
+active: False # active vs. random querying
+chunk_size: 128 # for jax.lax.map()
+seed_vmap: True # whether to use vmap to parallelize run seeds. good for 3 seeds or under
 
-dir_extra: null
+dir_extra: null # extra str to append to a hydra directory
 
 # * sanity check for active learning acquisition functions
-sanity: False
+sanity: False # whether to make duplicate queries; for unit testing of acquisiont function.s
 sanity_frac: 0.01 # fraction of non-duplicates in the query pool. 1% of nq_train=5000 is 50, nq_update=50 
-
-wandb:
-  entity: "yutaizhou"
-  project: "bnn_pref"
-
-  # name: null # display name of run in GUI, set in code
-  # id: # for resuming
-  group: null # organize sweeps / group multiple runs as one experiment
-  # job_type: null # set in code
-  tags:  null # editable in GUI, as well as a resumed run 
-
-  # mode:  # online, offline, disabled
-
 
 paths:
   results_dir: ${paths.root_dir}/results

@@ -2,11 +2,11 @@
 # for splitting demo into train/test traj. Each split is independetly turned into pref queries
 n_demos: 200 # only used by synthetic tasks
 
-# * rebalancing pruning trajectories based on return 
-max_count_per_bin: 100
-tokeep: 375  # this is for both train + test
-demo_train_frac: 0.8 
-n_bins: 10 # doesn't really need to be changed
+# * rebalancing / pruning trajectories based on return
+n_bins: 10 # number of bins to split trajectories into based on return
+max_count_per_bin: 100 # bin refers to a given trajectory return range
+tokeep: 375  # total number of trajectories to keep for both train + test
+demo_train_frac: 0.8 # fraction of trajectories to keep for train
 
 # prune strategy: (max_count / tokeep / beta)
 # 60/200/15 -> 13000 ish, 5-10% error rate
@@ -14,7 +14,7 @@ n_bins: 10 # doesn't really need to be changed
 # 100/375/7 ->  44850 nq_train, 5-20% error rate
 
 noisy_label: True # t2 > t1 always if False; o.w. sample from bradley terry
-bt_beta: 7 # beta for BT model. only used if noisy_label=True; need to normalize returns for beta=15 to get 5-10% error rate
+bt_beta: 7 # beta for BT model. only used if noisy_label=True; BT logits are sensitive to return magnitudes, so need to normalize returns first to be able to use one beta for all tasks.
 
 # * preference queries
 # take nq_train / nq_test from the already split train/test trajs

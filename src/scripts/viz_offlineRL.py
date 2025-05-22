@@ -49,11 +49,11 @@ tasks = [
 algs = ["ekf", "sgd"]
 is_als = [True, False]
 
-save_dir = "/scr/yutaizho/projects/bnn_pref/_viz/offlineRL"
 use_stderr = True  # otherwise use stderr
 use_smooth = True  # otherwise no smoothing on eval curves
 
 # * == change this block ==
+save_dir = "/scr/yutaizho/projects/bnn_pref/_viz/offlineRL"
 ref_dirp = (
     "/scr/yutaizho/projects/bnn_pref/_runs/offline_rl/20250501_002013_iql_ref_18tasks"
 )

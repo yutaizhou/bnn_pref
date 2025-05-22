@@ -28,5 +28,5 @@ python scripts/sweep_tasks_alg.py \
     data.nq_train=50000 \
     data.nq_update=60 \
     sgd.max_buffer_size=500 \
-    sgd.n_epochs=0,1,5 \
+    sgd.n_epochs=0 \
     hydra/launcher=slurm

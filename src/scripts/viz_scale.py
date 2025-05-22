@@ -43,9 +43,9 @@ Ms = [5, 15, 30, 50, 100, 150, 200]
 # task = "acrobot-swingup-v0"
 task = "halfcheetah-medium-expert-v2"
 algs = ["ekf", "sgd"]
-save_dir = "/scr/yutaizho/projects/bnn_pref/_viz/scale"
 
 # * == change this block ==
+save_dir = "/scr/yutaizho/projects/bnn_pref/_viz/scale"
 M_dirp = "/scr/yutaizho/projects/bnn_pref/results_sweep/scaling/20250513_000307_M_infogain_effi_epochs5_d4rl_3seeds"
 net_dirp = "/scr/yutaizho/projects/bnn_pref/results_sweep/scaling/20250513_000305_param_infogain_effi_epochs5_d4rl_3seeds"
 # * == change this block ==

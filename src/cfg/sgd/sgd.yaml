@@ -2,9 +2,9 @@
 # ensembling used for training, computing predictive & acquisition function
 active: ${..active}
 M: ${..M}
-use_vmap: True 
+use_vmap: True # turned off for scalability experiments. whether to use vectorized NN training & prediction
 chunk_size: ${..chunk_size}
-acq: "disagreement"
+acq: "disagreement" # "infogain" or "disagreement"
 
 # * NN model
 learning_rate: 0.001
@@ -17,5 +17,5 @@ bs: 1 # -1 for full batch GD. Otherwise, mini-batch SGD
 l2_reg: 0
 
 # * Update
-n_epochs: 5 # 0 for one SGD step on the single newest query. Otherwise, run SGD epochs
-max_buffer_size: 200 # for SGD in update phase. keep it roughly around nq_updates
+n_epochs: 5 # 0 for one SGD step on the single newest query. Otherwise, run multi-epoch SGD
+max_buffer_size: 500 # for SGD during update phase. keep it roughly around nq_updates
