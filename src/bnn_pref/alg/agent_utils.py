@@ -75,22 +75,34 @@ def bt_loss_fn(params, ts: TrainState, batch: QueryData, l2_reg: float = 0.0):
     return loss + l2_loss, logits_B2
 
 
-def compute_info_gain(logprobs_M2, M: int):
-    """work in logspace for numerical stability"""
+def compute_info_gain(logprobs_M2, M: int) -> Float[Array, " "]:
+    """
+    Compute InfoGain for a single query, given binary logprob from each model of ensemble
+    work in logspace for numerical stability
+    """
     log_sum_p = jax.nn.logsumexp(logprobs_M2, axis=0, keepdims=True)
     mi_M2 = jnp.exp(logprobs_M2) * (jnp.log(M) + logprobs_M2 - log_sum_p) / jnp.log(2)
     value = jnp.sum(mi_M2) / jnp.log(M)
     return value
 
 
-# def compute_info_gain(logprobs_M2):
-# """old version without logspace"""
+# def compute_info_gain_old(logprobs_M2, M: int):
+#     """old version without logspace"""
 #     probs_M2 = jnp.exp(logprobs_M2)
 #     probs_M2 = jnp.nan_to_num(probs_M2, posinf=1.0, neginf=1e-8)
-
 #     mi_M2 = probs_M2 * jnp.log2(M * probs_M2 / jnp.sum(probs_M2, axis=0))
 #     value = jnp.sum(mi_M2) / M
 #     return value
+
+
+def compute_disagreement(logprobs_M2) -> Float[Array, " "]:
+    """
+    Compute disagreement for a single query, given binary logprob from each model of ensemble
+    """
+    probs_M2 = jnp.exp(logprobs_M2)
+    pred_M = jnp.argmax(probs_M2, axis=1)
+    value = jnp.var(pred_M, axis=0)
+    return value
 
 
 def run_gradient_descent(

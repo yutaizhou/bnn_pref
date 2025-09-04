@@ -1,0 +1,21 @@
+argparse
+black==24.4.2
+cython<3
+d4rl==1.1
+distrax
+dm-control==1.0.5
+flax
+gym==0.23.1
+ipdb
+jax
+mujoco==2.2.1
+mujoco-py==2.1.2.14
+numpy==1.22.4
+optax
+orbax-checkpoint==0.4.4
+pre-commit==3.7.1
+scipy==1.12.0
+# tensorflow==2.13.0
+tensorstore==0.1.51
+tyro==0.7.3
+wandb

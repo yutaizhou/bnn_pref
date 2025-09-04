@@ -48,7 +48,7 @@ def alg_pipeline(
     key, key_warm, key_bel_init, key_run = jr.split(key, 4)
     warmup_data = env.warmup(key_warm, nq_init)
     bel_init = bandit.init_bel(key_bel_init, warmup_data)
-    bel_trace = run_update_loop(
+    bel_trace = run_updates(
         key_run,
         bandit,
         bel_init,
@@ -68,7 +68,52 @@ def alg_pipeline(
     return bel_trace, bandit
 
 
-def run_update_loop(
+def run_updates_scan(
+    key,
+    bandit: Agent,
+    bel: AgentState,
+    env: PreferenceEnv,
+    nq_init: int,
+    nsteps: int,  # either (nq_train - nq_init) or nq_update
+    active: bool = False,
+) -> AgentState:
+    """
+    Run the bandit algorithm on the environment.
+    Given `nq_train` queries, warmup sgd took `nq_init` queries
+    Run EKF filtering on the remaining `nsteps` queries
+
+    Note: the `t` here is the index into the query pool, excluding the `nq_init` warmup queries
+    """
+    # index into the dataset, get what's remaining after warmup
+    pool_idxes = jnp.arange(nq_init, len(env))
+
+    def update_step(bel: AgentState, key: Key) -> AgentState:
+        key, key_query = jr.split(key)
+        if not active:
+            t = jr.choice(key_query, pool_idxes)
+        else:
+            t = bandit.compute_next_query(key_query, bel, env, pool_idxes)
+
+        context = env.get_context(t)  # (2, T, D)
+        label = env.get_label(t)  # (2,) one-hot preference
+        batch = QueryData(context, label).add_leading_batch_dim()
+
+        key, key_update = jr.split(key)
+        bel = bandit.update_bel(key_update, bel, batch)
+
+        return bel, (bel, t)
+
+    keys = jr.split(key, nsteps)
+    *_, (bel_trace, t_trace) = jax.lax.scan(
+        update_step,
+        init=bel,
+        xs=keys,
+    )
+
+    return bel_trace
+
+
+def run_updates(
     key,
     bandit: Agent,
     bel: AgentState,
@@ -83,38 +128,27 @@ def run_update_loop(
     Run EKF filtering on the remaining `nsteps` queries
     """
     # index into the dataset, get what's remaining after warmup
-    pool_size = len(env) - nq_init  # pool for active learning, after warmup
+    # pool_size = len(env) - nq_init  # pool for active learning, after warmup
     pool_idxes = jnp.arange(nq_init, len(env))
 
-    def update_step(
-        curr: Tuple[AgentState, int],
-        key: Key,
-    ) -> Tuple[AgentState, int]:
-        bel, t = curr
-        t_offset = t + nq_init  # offset by nq_init to index into query pool
+    bels = []
+    for _ in range(nsteps):
+        key, key_query = jr.split(key)
+        if not active:
+            t = jr.choice(key_query, pool_idxes)
+        else:
+            t = bandit.compute_next_query(key_query, bel, env, pool_idxes)
 
-        context = env.get_context(t_offset)  # (2, T, D)
-        label = env.get_label(t_offset)  # (2,) one-hot preference
+        context = env.get_context(t)  # (2, T, D)
+        label = env.get_label(t)  # (2,) one-hot preference
         batch = QueryData(context, label).add_leading_batch_dim()
 
         key, key_update = jr.split(key)
         bel = bandit.update_bel(key_update, bel, batch)
-        q = env.get_pref_indices(t_offset)
+        # q = env.get_pref_indices(t)
+        bels.append(bel)
 
-        key, key_query = jr.split(key)
-        if not active:
-            t_next = jr.randint(key_query, (), 0, pool_size)
-        else:
-            t_next = bandit.compute_next_query(key_query, bel, env, pool_idxes)
-
-        return (bel, t_next), (bel, t, q)
-
-    keys = jr.split(key, nsteps)
-    *_, (bel_trace, t_trace, q_trace) = jax.lax.scan(
-        update_step, init=(bel, 0), xs=keys
-    )
-
-    # print(q_trace)
+    bel_trace = jax.tree.map(lambda *xs: jnp.stack(xs), *bels)
     return bel_trace
 
 

@@ -19,6 +19,7 @@ from sklearn.decomposition import PCA
 from bnn_pref.alg.agent_utils import (
     Agent,
     bt_loss_fn,
+    compute_disagreement,
     compute_info_gain,
     generate_random_basis,
     run_gradient_descent,
@@ -273,8 +274,7 @@ class SubspaceEKF(Agent):
         pool_idxes_Q: Int[Array, "Q"],
     ) -> int:
         """
-        active learning: greedily compute query that maximizes InfoGain acquisition fn
-        M: the number of models to sample from the posterior
+        active learning: greedily compute query that maximizes acquisition function
         """
         # * sample M (subspace) models from posterior
         M = self.n_models  # number of models to sample
@@ -285,34 +285,25 @@ class SubspaceEKF(Agent):
 
         # * precompute logits for all items
         # efficient version (sub2full only called once)
-        if self.use_vmap:
-            fn = jax.vmap(self.pred_return, in_axes=(0, None))
-            fn = partial(fn, params)
-            logits_NM = jax.lax.map(fn, env.items_NTD, batch_size=self.chunk_size)
+        def scan_param(_, param):
+            fn = partial(self.pred_return, param)
+            ret_N = jax.lax.map(fn, env.items_NTD, batch_size=self.chunk_size)
+            return _, ret_N
 
-        else:
-
-            def scan_param(_, param):
-                fn = partial(self.pred_return, param)
-                ret_N = jax.lax.map(fn, env.items_NTD, batch_size=self.chunk_size)
-                return _, ret_N
-
-            logits_NM = rearrange(
-                jax.lax.scan(scan_param, init=None, xs=params)[1],
-                "M N -> N M",
-            )
+        logits_NM = rearrange(
+            jax.lax.scan(scan_param, init=None, xs=params)[1],
+            "M N -> N M",
+        )
 
         # * compute info gain for each query
-        def map_step(idx):
+        def map_step(idx: int) -> Float[Array, " "]:
             inds_2 = env.get_pref_indices(idx)
             logits_M2 = rearrange(logits_NM[inds_2], "K M -> M K", K=2)
+            logprobs_M2 = jax.nn.log_softmax(logits_M2, axis=1)
             if self.acq == "infogain":
-                logprobs_M2 = jax.nn.log_softmax(logits_M2, axis=1)
                 value = compute_info_gain(logprobs_M2, M)
             elif self.acq == "disagreement":
-                probs_M2 = jnp.exp(jax.nn.log_softmax(logits_M2, axis=1))
-                pred_M = jnp.argmax(probs_M2, axis=1)
-                value = jnp.var(pred_M, axis=0)
+                value = compute_disagreement(logprobs_M2)
             return value
 
         values_Q = jax.lax.map(map_step, pool_idxes_Q, batch_size=self.chunk_size)
@@ -335,26 +326,19 @@ class SubspaceEKF(Agent):
         ss_params = dist.sample(seed=key_sample, sample_shape=(M,))
         params = jax.vmap(self.sub2full_params)(ss_params)  # pytree (lead axis M)
 
-        # * precompute logits for all items
+        # * precompute logits for all items, assume ts lead dimension is M
         # efficient version (sub2full only called once)
-        if self.use_vmap:
-            fn = jax.vmap(self.pred_return, in_axes=(0, None))
-            fn = partial(fn, params)
-            logits_NM = jax.lax.map(fn, items_NTD, batch_size=self.chunk_size)
+        def scan_param(_, param):
+            fn = partial(self.pred_return, param)
+            ret_N = jax.lax.map(fn, items_NTD, batch_size=self.chunk_size)
+            return _, ret_N
 
-        else:
+        logits_NM = rearrange(
+            jax.lax.scan(scan_param, None, params)[1],
+            "M N -> N M",
+        )
 
-            def scan_param(_, param):
-                fn = partial(self.pred_return, param)
-                ret_N = jax.lax.map(fn, items_NTD, batch_size=self.chunk_size)
-                return _, ret_N
-
-            logits_NM = rearrange(
-                jax.lax.scan(scan_param, None, params)[1],
-                "M N -> N M",
-            )
-
-        # * compute predictive distributions
+        # * compute posterior predictive
         logits_QM2 = rearrange(logits_NM[query_idxs_Q2], "Q K M -> Q M K", K=2)
         llik_QM2 = jax.nn.log_softmax(logits_QM2, axis=2)
         llik_Q2 = jax.nn.logsumexp(llik_QM2, axis=1) - jnp.log(M)

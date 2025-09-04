@@ -16,6 +16,7 @@ from jaxtyping import Array, Float, Int, Scalar
 from bnn_pref.alg.agent_utils import (
     Agent,
     bt_loss_fn,
+    compute_disagreement,
     compute_info_gain,
     run_gradient_descent,
 )
@@ -138,6 +139,17 @@ class DeepEnsemble(Agent):
         self.n_epochs = n_epochs
         assert acq in ["disagreement", "infogain"]
         self.acq = acq
+
+        # * prepare ensemble predictors
+        def pred_return(ts: TrainState, x: Float[Array, "T D"]) -> Float[Array, " "]:
+            x = rearrange(x, "T D -> 1 T D")
+            params = {"params": ts.params}
+            ret = self.model.apply(
+                params, x, method=self.model.predict_traj_return
+            ).squeeze(0)
+            return ret
+
+        self.pred_return = pred_return
 
     @staticmethod
     def get_hydra_config(sgd_cfg):
@@ -311,46 +323,30 @@ class DeepEnsemble(Agent):
         pool_idxes_Q: Int[Array, "Q"],
     ) -> int:
         """
-        active learning: greedily compute query that maximizes ensemble prediction var
+        active learning: greedily compute query that maximizes acquisition function
         """
         M = self.n_models
 
-        def predict_fn(ts: TrainState, x: Float[Array, "1 T D"]) -> Float[Array, " "]:
-            """unbatched ts, and output"""
-            ret = ts.apply_fn(
-                {"params": ts.params}, x, method=self.model.predict_traj_return
-            ).squeeze(0)
-            return ret
-
         # * precompute logits for all items
-        if self.use_vmap:
-            # vmap over ts, run over items sequentially
-            fn = jax.vmap(predict_fn, in_axes=(0, None))
-            items_N1TD = rearrange(env.items_NTD, "N T D -> N 1 T D")
-            fn = partial(fn, bel.ts)
-            logits_NM = jax.lax.map(fn, items_N1TD, batch_size=self.chunk_size)
-        else:
-            # run over ts sequentially, run over items sequentially
-            items_N1TD = rearrange(env.items_NTD, "N T D -> N 1 T D")
+        def scan_ts(_, ts_single):
+            fn = partial(self.pred_return, ts_single)
+            ret_N = jax.lax.map(fn, env.items_NTD, batch_size=self.chunk_size)
+            return _, ret_N
 
-            def scan_ts(_, ts_single):
-                fn = partial(predict_fn, ts_single)
-                ret_N = jax.lax.map(fn, items_N1TD, batch_size=self.chunk_size)
-                return _, ret_N
-
-            logits_NM = rearrange(jax.lax.scan(scan_ts, None, bel.ts)[1], "M N -> N M")
+        logits_NM = rearrange(
+            jax.lax.scan(scan_ts, None, bel.ts)[1],
+            "M N -> N M",
+        )
 
         # * compute info gain for each query
-        def map_step(idx):
+        def map_step(idx: int) -> Float[Array, " "]:
             inds_2 = env.get_pref_indices(idx)
             logits_M2 = rearrange(logits_NM[inds_2], "K M -> M K", K=2)
+            logprobs_M2 = jax.nn.log_softmax(logits_M2, axis=1)
             if self.acq == "infogain":
-                logprobs_M2 = jax.nn.log_softmax(logits_M2, axis=1)
                 value = compute_info_gain(logprobs_M2, M)
             elif self.acq == "disagreement":
-                probs_M2 = jnp.exp(jax.nn.log_softmax(logits_M2, axis=1))
-                pred_M = jnp.argmax(probs_M2, axis=1)
-                value = jnp.var(pred_M, axis=0)
+                value = compute_disagreement(logprobs_M2)
             return value
 
         values_Q = jax.lax.map(map_step, pool_idxes_Q, batch_size=self.chunk_size)
@@ -369,32 +365,16 @@ class DeepEnsemble(Agent):
         """
         M = self.n_models
 
-        # * prepare ensemble predictors
-        def predict_fn(ts: TrainState, x: Float[Array, "1 T D"]) -> Float[Array, " "]:
-            ret = ts.apply_fn(
-                {"params": ts.params}, x, method=self.model.predict_traj_return
-            ).squeeze(0)
-            return ret
+        # * precompute logits for all items, assume ts lead dimension is M
+        def scan_ts(_, ts_single):
+            fn = partial(self.pred_return, ts_single)
+            ret_N = jax.lax.map(fn, items_NTD, batch_size=self.chunk_size)
+            return _, ret_N
 
-        # * precompute logits for all items
-        if self.use_vmap:
-            fn = jax.vmap(predict_fn, in_axes=(0, None))
-            items_N1TD = rearrange(items_NTD, "N T D -> N 1 T D")
-            fn = partial(fn, ts)
-            logits_NM = jax.lax.map(fn, items_N1TD, batch_size=self.chunk_size)
-        else:
-            items_N1TD = rearrange(items_NTD, "N T D -> N 1 T D")
+        logits_NM = rearrange(jax.lax.scan(scan_ts, None, ts)[1], "M N -> N M")
 
-            def scan_ts(_, ts_single):
-                fn = partial(predict_fn, ts_single)
-                ret_N = jax.lax.map(fn, items_N1TD, batch_size=self.chunk_size)
-                return _, ret_N
-
-            logits_NM = rearrange(jax.lax.scan(scan_ts, None, ts)[1], "M N -> N M")
-
+        # * compute posterior predictive
         logits_QM2 = rearrange(logits_NM[query_idxs_Q2], "Q K M -> Q M K", K=2)
-
-        # * compute predictive distributions
         llik_QM2 = jax.nn.log_softmax(logits_QM2, axis=2)
         llik_Q2 = jax.nn.logsumexp(llik_QM2, axis=1) - jnp.log(M)
         prob_Q2 = jnp.exp(llik_Q2)
