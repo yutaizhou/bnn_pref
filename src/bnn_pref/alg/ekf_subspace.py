@@ -18,12 +18,13 @@ from sklearn.decomposition import PCA
 
 from bnn_pref.alg.agent_utils import (
     Agent,
-    JaxPCA,
     bt_loss_fn,
+    compute_info_gain,
     generate_random_basis,
     run_gradient_descent,
     sub2full_params_flat,
 )
+from bnn_pref.alg.pca_jax import JaxPCA
 from bnn_pref.data.data_env import PreferenceEnv
 from bnn_pref.utils.network import count_params
 from bnn_pref.utils.type import QueryData, unpackable_dataclass
@@ -186,33 +187,33 @@ class SubspaceEKF(Agent):
         self.pred_return = pred_return
 
         # these two are used for projection matrix "inefficient" version
-        def sub2full_predict_return(
-            ss_param_flat,
-            traj: Float[Array, "T D"],
-        ) -> Float[Array, " "]:
-            params = sub2full_params(ss_param_flat)
-            inputs = rearrange(traj, "T D -> 1 T D")
-            outputs = self.model.apply(
-                {"params": params}, inputs, method=self.model.predict_traj_return
-            ).squeeze(0)
-            return outputs
+        # def sub2full_predict_return(
+        #     ss_param_flat,
+        #     traj: Float[Array, "T D"],
+        # ) -> Float[Array, " "]:
+        #     params = sub2full_params(ss_param_flat)
+        #     inputs = rearrange(traj, "T D -> 1 T D")
+        #     outputs = self.model.apply(
+        #         {"params": params}, inputs, method=self.model.predict_traj_return
+        #     ).squeeze(0)
+        #     return outputs
 
-        def sub2full_predict_logits(
-            ss_param_flat,
-            inputs: Float[Array, "2 T D"],
-        ) -> Float[Array, "2"]:
-            """
-            Project params from subspace to full space, then apply model
-            to get logits for both trajectories
-            """
-            params = sub2full_params(ss_param_flat)
-            inputs = rearrange(inputs, "K T D -> 1 K T D", K=2)
-            outputs = self.model.apply({"params": params}, inputs)
-            outputs = rearrange(outputs, "1 K -> K", K=2)
-            return outputs
+        # def sub2full_predict_logits(
+        #     ss_param_flat,
+        #     inputs: Float[Array, "2 T D"],
+        # ) -> Float[Array, "2"]:
+        #     """
+        #     Project params from subspace to full space, then apply model
+        #     to get logits for both trajectories
+        #     """
+        #     params = sub2full_params(ss_param_flat)
+        #     inputs = rearrange(inputs, "K T D -> 1 K T D", K=2)
+        #     outputs = self.model.apply({"params": params}, inputs)
+        #     outputs = rearrange(outputs, "1 K -> K", K=2)
+        #     return outputs
 
-        self.sub2full_predict_return = sub2full_predict_return
-        self.sub2full_predict_logits = sub2full_predict_logits
+        # self.sub2full_predict_return = sub2full_predict_return
+        # self.sub2full_predict_logits = sub2full_predict_logits
 
         def emission_fn(
             ss_param_flat,
@@ -227,36 +228,12 @@ class SubspaceEKF(Agent):
             params: (sub_dim,)
             inputs: (2 * T * D,)
             """
-            inputs = rearrange(inputs, "(K T D) -> K T D", K=2, D=self.n_feats)
-            logits = sub2full_predict_logits(ss_param_flat, inputs)  # (2,)
-
+            params = sub2full_params(ss_param_flat)
+            inputs = rearrange(inputs, "(K T D) -> 1 K T D", K=2, D=self.n_feats)
+            logits = self.model.apply({"params": params}, inputs)
+            logits = rearrange(logits, "1 K -> K", K=2)
             probs_2 = jnp.exp(jax.nn.log_softmax(logits))
             return probs_2
-
-        # def emission_mean_cmgf(params, inputs):
-        #     """
-        #     emission model where
-        #         inputs: (2 * T * D,) query features -> (2,) traj rewards as logits
-        #         predicted measurement: (2,) # probabilities of traj 2 > traj 1
-        #         gt measurement: (2,) # one hot labels
-        #     """
-        #     context = inputs.reshape(2, -1, self.n_feats)
-        #     logits = sub2full_predict_logits(params, context)  # (2,)
-        #     p = jax.nn.softmax(logits, axis=0)[1][None]  # (1,1)
-
-        #     return p
-
-        # def emission_cov_cmgf(params, inputs):
-        #     """
-        #     emission model where
-        #         inputs: (2 * T * D,) query features -> (2,) traj rewards as logits
-        #         predicted measurement: (2,) # probabilities of traj 2 > traj 1
-        #         gt measurement: (2,) # one hot labels
-        #     """
-        #     context = inputs.reshape(2, -1, self.n_feats)
-        #     logits = sub2full_predict_logits(params, context)  # (2,)
-        #     p = jax.nn.softmax(logits, axis=0)[1][None]
-        #     return p * (1 - p)
 
         init_mean = jnp.zeros(sub_dim)
         init_cov = jnp.eye(sub_dim) * self.prior_noise
@@ -270,15 +247,6 @@ class SubspaceEKF(Agent):
             emission_function=emission_fn,
             emission_covariance=R,
         )
-
-        # self.cmgf_params = ParamsGGSSM(
-        #     initial_mean=init_mean,
-        #     initial_covariance=S,
-        #     dynamics_function=lambda z, u: z,  # constant dynamics
-        #     dynamics_covariance=Q,
-        #     emission_mean_function=emission_mean_cmgf,
-        #     emission_cov_function=emission_cov_cmgf,
-        # )
 
         bel = EKFBeliefState(
             mean=init_mean,
@@ -313,23 +281,8 @@ class SubspaceEKF(Agent):
             num_iter=self.iekf,
         )
 
-        # emissions_cmgf = rearrange(label[1][None], "K -> 1 K", K=1)  # OH: always 1
-
-        # self.cmgf_params = self.cmgf_params._replace(
-        #     initial_mean=prior_mean,
-        #     initial_covariance=prior_cov,
-        # )
-        # posterior = cmgf(
-        #     self.cmgf_params,
-        #     EKFIntegrals(),
-        #     emissions=emissions_cmgf,
-        #     inputs=inputs,
-        #     num_iter=self.iekf,
-        # )
-
         posterior_mean = posterior.filtered_means[-1]
         posterior_cov = posterior.filtered_covariances[-1]
-        # bel = EKFBeliefState(mean=posterior_mean, cov=posterior_cov, t=t + 1)
         bel = bel.replace(mean=posterior_mean, cov=posterior_cov, t=t + 1)
         return bel
 
@@ -343,6 +296,7 @@ class SubspaceEKF(Agent):
     ) -> int:
         """
         active learning: greedily compute query that maximizes InfoGain acquisition fn
+        M: the number of models to sample from the posterior
         """
         # * sample M (subspace) models from posterior
         M = self.n_models  # number of models to sample
@@ -351,6 +305,8 @@ class SubspaceEKF(Agent):
         ss_params = distr.sample(seed=key_sample, sample_shape=(M,))
         params = jax.vmap(self.sub2full_params)(ss_params)  # pytree (lead axis M)
 
+        # * precompute logits for all items
+        # efficient version (sub2full only called once)
         if self.use_vmap:
             fn = jax.vmap(self.pred_return, in_axes=(0, None))
             fn = partial(fn, params)
@@ -364,52 +320,17 @@ class SubspaceEKF(Agent):
                 return _, ret_N
 
             logits_NM = rearrange(
-                jax.lax.scan(scan_param, None, params)[1],
+                jax.lax.scan(scan_param, init=None, xs=params)[1],
                 "M N -> N M",
             )
 
-        # * precompute logits for all items
-        # if self.use_vmap:
-        #     fn = jax.vmap(self.sub2full_predict_return, in_axes=(0, None))
-        #     fn = partial(fn, ss_params)
-        #     logits_NM = jax.lax.map(fn, env.items_NTD, batch_size=self.chunk_size)
-
-        # else:
-
-        #     def scan_param(_, ss_param):
-        #         fn = partial(self.sub2full_predict_return, ss_param)
-        #         ret_N = jax.lax.map(fn, env.items_NTD, batch_size=self.chunk_size)
-        #         return _, ret_N
-
-        #     logits_NM = rearrange(
-        #         jax.lax.scan(scan_param, None, ss_params)[1],
-        #         "M N -> N M",
-        #     )
-
-        # def compute_info_gain(logprobs_M2):
-        #     probs_M2 = jnp.exp(logprobs_M2)
-        #     probs_M2 = jnp.nan_to_num(probs_M2, posinf=1.0, neginf=1e-8)
-
-        #     mi_M2 = probs_M2 * jnp.log2(M * probs_M2 / jnp.sum(probs_M2, axis=0))
-        #     value = jnp.sum(mi_M2) / M
-        #     return value
-
-        logM = jnp.log(M)
-        log2 = jnp.log(2)
-
-        def compute_info_gain(logprobs_M2):
-            """work in logspace for numerical stability"""
-            log_sum_p = jax.nn.logsumexp(logprobs_M2, axis=0, keepdims=True)
-            mi_M2 = jnp.exp(logprobs_M2) * (logM + logprobs_M2 - log_sum_p) / log2
-            value = jnp.sum(mi_M2) / M
-            return value
-
+        # * compute info gain for each query
         def map_step(idx):
             inds_2 = env.get_pref_indices(idx)
             logits_M2 = rearrange(logits_NM[inds_2], "K M -> M K", K=2)
             if self.acq == "infogain":
                 logprobs_M2 = jax.nn.log_softmax(logits_M2, axis=1)
-                value = compute_info_gain(logprobs_M2)
+                value = compute_info_gain(logprobs_M2, M)
             elif self.acq == "disagreement":
                 probs_M2 = jnp.exp(jax.nn.log_softmax(logits_M2, axis=1))
                 pred_M = jnp.argmax(probs_M2, axis=1)
@@ -417,7 +338,6 @@ class SubspaceEKF(Agent):
             return value
 
         values_Q = jax.lax.map(map_step, pool_idxes_Q, batch_size=self.chunk_size)
-
         query_idx = jnp.argmax(values_Q)
         return query_idx
 
@@ -429,7 +349,7 @@ class SubspaceEKF(Agent):
         items_NTD: Float[Array, "N T D"],
         query_idxs_Q2: Int[Array, "Q 2"],
     ) -> Float[Array, "Q 2"]:
-        """sample params from posterior, then compute predictive"""
+        """sample params from posterior, then compute posterior predictive"""
         # * sample model parameters
         M = self.n_models
         dist = distrax.MultivariateNormalFullCovariance(bel.mean, bel.cov)
@@ -437,6 +357,8 @@ class SubspaceEKF(Agent):
         ss_params = dist.sample(seed=key_sample, sample_shape=(M,))
         params = jax.vmap(self.sub2full_params)(ss_params)  # pytree (lead axis M)
 
+        # * precompute logits for all items
+        # efficient version (sub2full only called once)
         if self.use_vmap:
             fn = jax.vmap(self.pred_return, in_axes=(0, None))
             fn = partial(fn, params)
@@ -454,26 +376,8 @@ class SubspaceEKF(Agent):
                 "M N -> N M",
             )
 
-        # * precompute logits for all items
-        # if self.use_vmap:
-        #     fn = jax.vmap(self.sub2full_predict_return, in_axes=(0, None))
-        #     fn = partial(fn, ss_params)
-        #     logits_NM = jax.lax.map(fn, items_NTD, batch_size=self.chunk_size)
-        # else:
-
-        #     def scan_param(_, ss_param):
-        #         fn = partial(self.sub2full_predict_return, ss_param)
-        #         ret_N = jax.lax.map(fn, items_NTD, batch_size=self.chunk_size)
-        #         return _, ret_N
-
-        #     logits_NM = rearrange(
-        #         jax.lax.scan(scan_param, None, ss_params)[1],
-        #         "M N -> N M",
-        #     )
-
-        logits_QM2 = rearrange(logits_NM[query_idxs_Q2], "Q K M -> Q M K", K=2)
-
         # * compute predictive distributions
+        logits_QM2 = rearrange(logits_NM[query_idxs_Q2], "Q K M -> Q M K", K=2)
         llik_QM2 = jax.nn.log_softmax(logits_QM2, axis=2)
         llik_Q2 = jax.nn.logsumexp(llik_QM2, axis=1) - jnp.log(M)
         prob_Q2 = jnp.exp(llik_Q2)

@@ -82,7 +82,7 @@ def main(cfg):
         # "pendulum",
         # "walkerWalk",
         # # * D4RL
-        "cheetahRandom",
+        # "cheetahRandom",
         "cheetahMediumReplay",
         "cheetahMediumExpert",
         "hopperRandom",
@@ -93,13 +93,13 @@ def main(cfg):
         "walkerMediumExpert",
         "penHuman",
         "penExpert",
-        "penCloned",
-        "kitchenComplete",
-        "kitchenPartial",
-        "kitchenMixed",
+        # "penCloned",
+        # "kitchenComplete",
+        # "kitchenPartial",
+        # "kitchenMixed",
         "mazeUDense",
         "mazeMediumDense",
-        "mazeLargeDense",
+        # "mazeLargeDense",
     ]
     algs = ["ekf", "sgd"]
     # algs = ["sgd"]

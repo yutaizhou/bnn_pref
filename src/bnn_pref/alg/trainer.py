@@ -73,7 +73,7 @@ def run_update_loop(
     Run EKF filtering on the remaining `nsteps` queries
     """
     # index into the dataset, get what's remaining after warmup
-    pool_size = len(env) - nq_init  # active learning
+    pool_size = len(env) - nq_init  # pool for active learning, after warmup
     pool_idxes = jnp.arange(nq_init, len(env))
 
     def update_step(

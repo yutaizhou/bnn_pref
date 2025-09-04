@@ -13,7 +13,12 @@ from flax.training.train_state import TrainState
 from jax import lax
 from jaxtyping import Array, Float, Int, Scalar
 
-from bnn_pref.alg.agent_utils import Agent, bt_loss_fn, run_gradient_descent
+from bnn_pref.alg.agent_utils import (
+    Agent,
+    bt_loss_fn,
+    compute_info_gain,
+    run_gradient_descent,
+)
 from bnn_pref.data.data_env import PreferenceEnv
 from bnn_pref.utils.network import RewardNet, count_params
 from bnn_pref.utils.type import QueryData, unpackable_dataclass
@@ -335,22 +340,13 @@ class DeepEnsemble(Agent):
 
             logits_NM = rearrange(jax.lax.scan(scan_ts, None, bel.ts)[1], "M N -> N M")
 
-        logM = jnp.log(M)
-        log2 = jnp.log(2)
-
-        def compute_info_gain(logprobs_M2):
-            """work in logspace for numerical stability"""
-            log_sum_p = jax.nn.logsumexp(logprobs_M2, axis=0, keepdims=True)
-            mi_M2 = jnp.exp(logprobs_M2) * (logM + logprobs_M2 - log_sum_p) / log2
-            value = jnp.sum(mi_M2) / M
-            return value
-
+        # * compute info gain for each query
         def map_step(idx):
             inds_2 = env.get_pref_indices(idx)
             logits_M2 = rearrange(logits_NM[inds_2], "K M -> M K", K=2)
             if self.acq == "infogain":
                 logprobs_M2 = jax.nn.log_softmax(logits_M2, axis=1)
-                value = compute_info_gain(logprobs_M2)
+                value = compute_info_gain(logprobs_M2, M)
             elif self.acq == "disagreement":
                 probs_M2 = jnp.exp(jax.nn.log_softmax(logits_M2, axis=1))
                 pred_M = jnp.argmax(probs_M2, axis=1)
@@ -358,7 +354,6 @@ class DeepEnsemble(Agent):
             return value
 
         values_Q = jax.lax.map(map_step, pool_idxes_Q, batch_size=self.chunk_size)
-
         query_idx = jnp.argmax(values_Q)
         return query_idx
 
