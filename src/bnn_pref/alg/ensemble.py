@@ -113,8 +113,8 @@ class DeepEnsemble(Agent):
         self,
         model: nn.Module,
         opt: optax.GradientTransformation,
-        n_models: int,
         traj_shape: Tuple[int, ...],
+        n_models: int,
         max_buffer_size: int = 100,
         l2_reg: float = 0.0,
         niters: int = 1000,
@@ -124,6 +124,7 @@ class DeepEnsemble(Agent):
         n_epochs: int = 0,
         acq: str = "disagreement",
     ):
+        self.traj_shape = traj_shape
         self.n_models = n_models
         self.model = model
         self.opt = opt
@@ -133,7 +134,6 @@ class DeepEnsemble(Agent):
         self.chunk_size = chunk_size
         self.use_vmap = use_vmap
         self.max_buffer_size = max_buffer_size
-        self.traj_shape = traj_shape
         assert n_epochs >= 0, "n_epochs must be non-negative"
         self.n_epochs = n_epochs
         assert acq in ["disagreement", "infogain"]
@@ -303,7 +303,7 @@ class DeepEnsemble(Agent):
             return bel
 
     @partial(jax.jit, static_argnames=["self", "env"])
-    def acquire_next_query(
+    def compute_next_query(
         self,
         key,
         bel: EnsembleBeliefState,
@@ -358,7 +358,7 @@ class DeepEnsemble(Agent):
         return query_idx
 
     @partial(jax.jit, static_argnames=["self"])
-    def compute_predictive(
+    def compute_postpred(
         self,
         ts: TrainState,
         items_NTD: Float[Array, "N T D"],

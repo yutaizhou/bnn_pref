@@ -32,6 +32,13 @@ from bnn_pref.utils.type import QueryData, unpackable_dataclass
 
 @unpackable_dataclass
 class EKFBeliefState:
+    """
+    `offset_ts` is the full param model after SGD init. `mean` and `cov` govern the
+    Gaussian distribution over subspace params.
+
+    Full param is computed as: offset + ss_param @ proj_matrix.
+    """
+
     mean: Float[Array, "system_dim"]
     cov: Float[Array, "system_dim system_dim"]
     t: int
@@ -186,35 +193,6 @@ class SubspaceEKF(Agent):
         self.sub2full_params = sub2full_params
         self.pred_return = pred_return
 
-        # these two are used for projection matrix "inefficient" version
-        # def sub2full_predict_return(
-        #     ss_param_flat,
-        #     traj: Float[Array, "T D"],
-        # ) -> Float[Array, " "]:
-        #     params = sub2full_params(ss_param_flat)
-        #     inputs = rearrange(traj, "T D -> 1 T D")
-        #     outputs = self.model.apply(
-        #         {"params": params}, inputs, method=self.model.predict_traj_return
-        #     ).squeeze(0)
-        #     return outputs
-
-        # def sub2full_predict_logits(
-        #     ss_param_flat,
-        #     inputs: Float[Array, "2 T D"],
-        # ) -> Float[Array, "2"]:
-        #     """
-        #     Project params from subspace to full space, then apply model
-        #     to get logits for both trajectories
-        #     """
-        #     params = sub2full_params(ss_param_flat)
-        #     inputs = rearrange(inputs, "K T D -> 1 K T D", K=2)
-        #     outputs = self.model.apply({"params": params}, inputs)
-        #     outputs = rearrange(outputs, "1 K -> K", K=2)
-        #     return outputs
-
-        # self.sub2full_predict_return = sub2full_predict_return
-        # self.sub2full_predict_logits = sub2full_predict_logits
-
         def emission_fn(
             ss_param_flat,
             inputs: Float[Array, "2 T D"],
@@ -287,7 +265,7 @@ class SubspaceEKF(Agent):
         return bel
 
     @partial(jax.jit, static_argnames=["self", "env"])
-    def acquire_next_query(
+    def compute_next_query(
         self,
         key,
         bel: EKFBeliefState,
@@ -342,7 +320,7 @@ class SubspaceEKF(Agent):
         return query_idx
 
     @partial(jax.jit, static_argnames=["self"])
-    def compute_predictive(
+    def compute_postpred(
         self,
         key,
         bel: EKFBeliefState,

@@ -26,13 +26,13 @@ class Agent(ABC):
         pass
 
     @abstractmethod
-    def acquire_next_query(
+    def compute_next_query(
         self, key, bel, env: PreferenceEnv, pool_idxes_Q: Int[Array, "Q"]
     ) -> int:
         pass
 
     @abstractmethod
-    def compute_predictive(
+    def compute_postpred(
         self,
         key,
         bel,

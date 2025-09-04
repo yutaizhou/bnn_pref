@@ -6,8 +6,6 @@ import jax.numpy as jnp
 import jax.random as jr
 import optax
 from flax.training.train_state import TrainState
-from jax.lax import scan
-from jax.random import split
 from jaxtyping import Key
 
 from bnn_pref.alg.agent_utils import Agent
@@ -20,6 +18,12 @@ from bnn_pref.utils.type import QueryData
 warnings.filterwarnings("ignore")
 
 AgentState = Union[EKFBeliefState, EnsembleBeliefState]
+
+"""
+run_{ekf,ensemble}
+    alg_pipeline -> run_update_loop
+    evaluation
+"""
 
 
 def alg_pipeline(
@@ -41,14 +45,20 @@ def alg_pipeline(
     cls_kwargs = alg_cls.get_hydra_config(alg_cfg)
     bandit = alg_cls(model, opt, traj_shape=traj_shape, **cls_kwargs)
 
-    key, key_warm, key_bel_init, key_run = split(key, 4)
+    key, key_warm, key_bel_init, key_run = jr.split(key, 4)
     warmup_data = env.warmup(key_warm, nq_init)
     bel_init = bandit.init_bel(key_bel_init, warmup_data)
     bel_trace = run_update_loop(
-        key_run, bandit, bel_init, env, nq_init, nsteps, active=alg_cfg["active"]
+        key_run,
+        bandit,
+        bel_init,
+        env,
+        nq_init,
+        nsteps,
+        active=alg_cfg["active"],
     )
 
-    # * prepend initial belief (zero vector in subspace) to bel_trace
+    # * prepend initial subspace belief (zero vector in subspace) to bel_trace
     bel_trace = jax.tree.map(
         lambda a, b: jnp.concat([a, b]),
         jax.tree.map(lambda x: jnp.expand_dims(x, axis=0), bel_init),
@@ -64,7 +74,7 @@ def run_update_loop(
     bel: AgentState,
     env: PreferenceEnv,
     nq_init: int,
-    nsteps: int,  # either len(env) - nq_init or nq_update
+    nsteps: int,  # either (nq_train - nq_init) or nq_update
     active: bool = False,
 ) -> AgentState:
     """
@@ -87,20 +97,22 @@ def run_update_loop(
         label = env.get_label(t_offset)  # (2,) one-hot preference
         batch = QueryData(context, label).add_leading_batch_dim()
 
-        key, key_update = split(key)
+        key, key_update = jr.split(key)
         bel = bandit.update_bel(key_update, bel, batch)
         q = env.get_pref_indices(t_offset)
 
-        key, key_query = split(key)
+        key, key_query = jr.split(key)
         if not active:
             t_next = jr.randint(key_query, (), 0, pool_size)
         else:
-            t_next = bandit.acquire_next_query(key_query, bel, env, pool_idxes)
+            t_next = bandit.compute_next_query(key_query, bel, env, pool_idxes)
 
         return (bel, t_next), (bel, t, q)
 
-    keys = split(key, nsteps)
-    *_, (bel_trace, t_trace, q_trace) = scan(update_step, init=(bel, 0), xs=keys)
+    keys = jr.split(key, nsteps)
+    *_, (bel_trace, t_trace, q_trace) = jax.lax.scan(
+        update_step, init=(bel, 0), xs=keys
+    )
 
     # print(q_trace)
     return bel_trace
@@ -120,11 +132,12 @@ def run_ekf(key, cfg, data_dict, env):
     def eval_bel(_, bel: EKFBeliefState):
         # * sample model parameters
         key = jr.fold_in(key_bma, bel.t)
-        prob_Q2 = bandit.compute_predictive(
+        prob_Q2 = bandit.compute_postpred(
             key, bel, test_trajs_obs, test_prefs.queries_Q2
         )
-        pred_Q = prob_Q2.argmax(axis=1)
 
+        # same as other algs
+        pred_Q = prob_Q2.argmax(axis=1)
         test_acc = jnp.mean(pred_Q == test_prefs.responses_Q1.squeeze())
         prob_Q1 = jnp.take_along_axis(prob_Q2, test_prefs.responses_Q1, axis=1)
         test_logpdf = jnp.log(prob_Q1).mean()
@@ -162,9 +175,10 @@ def run_ensemble(key, cfg, data_dict, env):
 
     # * compute metrics
     def eval_bel(_, ts: TrainState):
-        prob_Q2 = bandit.compute_predictive(ts, test_trajs_obs, test_prefs.queries_Q2)
-        pred_Q = prob_Q2.argmax(axis=1)
+        prob_Q2 = bandit.compute_postpred(ts, test_trajs_obs, test_prefs.queries_Q2)
 
+        # same as other algs
+        pred_Q = prob_Q2.argmax(axis=1)
         test_acc = jnp.mean(pred_Q == test_prefs.responses_Q1.squeeze())
         prob_Q1 = jnp.take_along_axis(prob_Q2, test_prefs.responses_Q1, axis=1)
         test_logpdf = jnp.log(prob_Q1).mean()
