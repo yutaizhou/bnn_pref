@@ -23,7 +23,7 @@ tasks_to_rebalance = [
 ]
 
 
-def split_dataset(
+def split_and_rank_ds(
     key,
     ds: ArrayDict,
     train_frac: float = 0.8,

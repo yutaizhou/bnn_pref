@@ -66,9 +66,9 @@ def main(cfg):
     final_ts, metrics = run_gradient_descent(
         train_key,
         ts,
+        dataset=train_data,
         loss_fn=bt_loss_fn,
         has_aux=True,
-        dataset=train_data,
         niters=niters,
         batch_size=batch_size,
     )

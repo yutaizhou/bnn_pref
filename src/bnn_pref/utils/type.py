@@ -24,6 +24,9 @@ class QueryData(NamedTuple):
     contexts: Float[Array, "Q 2 T D"]
     labels: Float[Array, "Q 2"]  # one hot
 
+    def __len__(self) -> int:
+        return self.contexts.shape[0]
+
     def add_leading_batch_dim(self):
         return QueryData(
             contexts=rearrange(self.contexts, "K T D -> 1 K T D", K=2),

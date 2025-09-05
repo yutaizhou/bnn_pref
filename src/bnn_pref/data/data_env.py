@@ -51,6 +51,11 @@ class PreferenceEnv:
     def get_label(self, t) -> Float[Array, "2"]:
         return self.labels_Q2[t]
 
+    def get_batched_query(self, t) -> Float[Array, "B 2 T D"]:
+        context = self.get_context(t)  # (2, T, D)
+        label = self.get_label(t)  # (2,)
+        return QueryData(context, label).add_leading_batch_dim()  # (1, 2, T, D)
+
     def get_pref_indices(self, t) -> Int[Array, "2"]:
         """
         Get the indices of the two items in the preference query.

@@ -18,7 +18,7 @@ from bnn_pref.data.traj_utils import (
     normalize,
     rebalance,
     segment_traj_masked,
-    split_dataset,
+    split_and_rank_ds,
 )
 from bnn_pref.utils.type import ArrayDict
 
@@ -84,9 +84,9 @@ def make_d4rl_data(key, cfg) -> ArrayDict:
     if sz != -1:
         trajs = segment_arraydict_masked(trajs, sz)
 
-    # * split into train/test
+    # * split into train/test, each sorted by ascending return
     key, key_split = jr.split(key, 2)
-    train_trajs, test_trajs = split_dataset(key_split, trajs, demo_train_frac)
+    train_trajs, test_trajs = split_and_rank_ds(key_split, trajs, demo_train_frac)
 
     # if sz != -1:
     #     train_trajs = segment_arraydict_masked(train_trajs, sz)

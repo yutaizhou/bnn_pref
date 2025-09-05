@@ -6,7 +6,12 @@ from einops import rearrange
 from tensordict import TensorDict
 
 from bnn_pref.data.pref_utils import QueryIndexAndResponses, create_pref_data
-from bnn_pref.data.traj_utils import normalize, rebalance, segment_traj, split_dataset
+from bnn_pref.data.traj_utils import (
+    normalize,
+    rebalance,
+    segment_traj,
+    split_and_rank_ds,
+)
 from bnn_pref.utils.type import ArrayDict
 
 
@@ -65,7 +70,7 @@ def make_prefcc_data(key, cfg) -> ArrayDict:
 
     # * split into train/test
     key, key_split = jr.split(key, 2)
-    train_trajs, test_trajs = split_dataset(key_split, trajs, demo_train_frac)
+    train_trajs, test_trajs = split_and_rank_ds(key_split, trajs, demo_train_frac)
 
     # if sz != -1:
     #     train_trajs = segment_arraydict(train_trajs, sz)
