@@ -282,7 +282,6 @@ class DeepEnsemble(Agent):
                             contexts=lax.dynamic_slice_in_dim(ds_e.contexts, itr, bs),
                             labels=lax.dynamic_slice_in_dim(ds_e.labels, itr, bs),
                         )
-                        # jax.debug.print("labels: {batch}", batch=batch.labels)
                         grad_fn = jax.value_and_grad(bt_loss_fn, has_aux=True)
                         (loss, _), grads = grad_fn(ts.params, ts, batch, self.l2_reg)
                         ts = ts.apply_gradients(grads=grads)
@@ -334,7 +333,7 @@ class DeepEnsemble(Agent):
             return _, ret_N
 
         logits_NM = rearrange(
-            jax.lax.scan(scan_ts, None, bel.ts)[1],
+            jax.lax.scan(scan_ts, init=None, xs=bel.ts)[1],
             "M N -> N M",
         )
 
@@ -371,7 +370,10 @@ class DeepEnsemble(Agent):
             ret_N = jax.lax.map(fn, items_NTD, batch_size=self.chunk_size)
             return _, ret_N
 
-        logits_NM = rearrange(jax.lax.scan(scan_ts, None, ts)[1], "M N -> N M")
+        logits_NM = rearrange(
+            jax.lax.scan(scan_ts, init=None, xs=ts)[1],
+            "M N -> N M",
+        )
 
         # * compute posterior predictive
         logits_QM2 = rearrange(logits_NM[query_idxs_Q2], "Q K M -> Q M K", K=2)

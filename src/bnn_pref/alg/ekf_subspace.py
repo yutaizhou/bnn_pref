@@ -277,13 +277,13 @@ class SubspaceEKF(Agent):
         active learning: greedily compute query that maximizes acquisition function
         """
         # * sample M (subspace) models from posterior
-        M = self.n_models  # number of models to sample
+        M = self.n_models
         distr = distrax.MultivariateNormalFullCovariance(bel.mean, bel.cov)
         key, key_sample = jr.split(key, 2)
         ss_params = distr.sample(seed=key_sample, sample_shape=(M,))
         params = jax.vmap(self.sub2full_params)(ss_params)  # pytree (lead axis M)
 
-        # * precompute logits for all items
+        # * precompute logits for all items, assume ts lead dimension is M
         # efficient version (sub2full only called once)
         def scan_param(_, param):
             fn = partial(self.pred_return, param)
@@ -318,12 +318,14 @@ class SubspaceEKF(Agent):
         items_NTD: Float[Array, "N T D"],
         query_idxs_Q2: Int[Array, "Q 2"],
     ) -> Float[Array, "Q 2"]:
-        """sample params from posterior, then compute posterior predictive"""
-        # * sample model parameters
+        """
+        sample params from posterior, then compute posterior predictive
+        """
+        # * sample M (subspace) models from posterior
         M = self.n_models
-        dist = distrax.MultivariateNormalFullCovariance(bel.mean, bel.cov)
+        distr = distrax.MultivariateNormalFullCovariance(bel.mean, bel.cov)
         key, key_sample = jr.split(key, 2)
-        ss_params = dist.sample(seed=key_sample, sample_shape=(M,))
+        ss_params = distr.sample(seed=key_sample, sample_shape=(M,))
         params = jax.vmap(self.sub2full_params)(ss_params)  # pytree (lead axis M)
 
         # * precompute logits for all items, assume ts lead dimension is M
@@ -334,7 +336,7 @@ class SubspaceEKF(Agent):
             return _, ret_N
 
         logits_NM = rearrange(
-            jax.lax.scan(scan_param, None, params)[1],
+            jax.lax.scan(scan_param, init=None, xs=params)[1],
             "M N -> N M",
         )
 

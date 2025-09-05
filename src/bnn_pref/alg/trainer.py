@@ -21,7 +21,7 @@ AgentState = Union[EKFBeliefState, EnsembleBeliefState]
 
 """
 run_{ekf,ensemble}
-    alg_pipeline -> run_update_loop
+    alg_pipeline -> run_updates
     evaluation
 """
 
@@ -129,23 +129,21 @@ def run_updates(
     """
     # index into the dataset, get what's remaining after warmup
     # pool_size = len(env) - nq_init  # pool for active learning, after warmup
-    pool_idxes = jnp.arange(nq_init, len(env))
+    pool_idxs = jnp.arange(nq_init, len(env))
 
     bels = []
     for _ in range(nsteps):
+        # retrieve query
         key, key_query = jr.split(key)
         if not active:
-            t = jr.choice(key_query, pool_idxes)
+            t = jr.choice(key_query, jnp.arange(len(pool_idxs)))
         else:
-            t = bandit.compute_next_query(key_query, bel, env, pool_idxes)
+            t = bandit.compute_next_query(key_query, bel, env, pool_idxs)
+        batch = env.get_batched_query(t + nq_init)  # (1, 2, T, D)
 
-        context = env.get_context(t)  # (2, T, D)
-        label = env.get_label(t)  # (2,) one-hot preference
-        batch = QueryData(context, label).add_leading_batch_dim()
-
+        # update belief
         key, key_update = jr.split(key)
         bel = bandit.update_bel(key_update, bel, batch)
-        # q = env.get_pref_indices(t)
         bels.append(bel)
 
     bel_trace = jax.tree.map(lambda *xs: jnp.stack(xs), *bels)

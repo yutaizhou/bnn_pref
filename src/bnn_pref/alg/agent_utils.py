@@ -108,9 +108,9 @@ def compute_disagreement(logprobs_M2) -> Float[Array, " "]:
 def run_gradient_descent(
     key,
     ts: TrainState,
+    dataset: QueryData,
     loss_fn: Callable,
     has_aux: bool,
-    dataset: QueryData,
     niters: int,
     batch_size: int = -1,
     l2_reg: float = 0.0,
@@ -134,15 +134,16 @@ def run_gradient_descent(
         grad_fn = value_and_grad(loss_fn, has_aux=has_aux)
         val, grads = grad_fn(ts.params, ts, batch, l2_reg)
         loss = val[0] if has_aux else val
-
         ts = ts.apply_gradients(grads=grads)
         flat_params, _ = ravel_pytree(ts.params)
         return ts, {"loss": loss, "params": flat_params}
 
     # Create batch manager and get all batches upfront
-    batch_manager = BatchIndexManager(key, N, batch_size)
-    batch_idxs = batch_manager.get_n_batches(niters)  # (niters, batch_size)
+    key, key_data = jr.split(key)
+    batch_manager = BatchIndexManager(key_data, data_size=N, batch_size=batch_size)
+    batch_idxs = batch_manager.get_n_batches(n=niters)  # (niters, batch_size)
 
     # Run `niters` steps
     ts, metrics = scan(train_step, init=ts, xs=batch_idxs)
     return ts, metrics
+
