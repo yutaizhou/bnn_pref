@@ -20,9 +20,9 @@ from jax.flatten_util import ravel_pytree
 from jaxtyping import Array, Float, PRNGKeyArray
 from omegaconf import OmegaConf
 
+from bnn_pref.alg.agent_ekf import EKFBeliefState
+from bnn_pref.alg.agent_ensemble import init_model
 from bnn_pref.alg.agent_utils import sub2full_params_flat
-from bnn_pref.alg.ekf_subspace import EKFBeliefState
-from bnn_pref.alg.ensemble import init_model
 from bnn_pref.utils.network import RewardNet, count_params
 
 

@@ -6,15 +6,12 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 import optax
-from dynamax.generalized_gaussian_ssm import EKFIntegrals, ParamsGGSSM
-from dynamax.generalized_gaussian_ssm import conditional_moments_gaussian_filter as cmgf
 from dynamax.nonlinear_gaussian_ssm import ParamsNLGSSM, extended_kalman_filter
 from einops import rearrange
 from flax import linen as nn
 from flax.training.train_state import TrainState
 from jax.flatten_util import ravel_pytree
 from jaxtyping import Array, Float, Int
-from sklearn.decomposition import PCA
 
 from bnn_pref.alg.agent_utils import (
     Agent,
@@ -22,7 +19,6 @@ from bnn_pref.alg.agent_utils import (
     compute_disagreement,
     compute_info_gain,
     generate_random_basis,
-    run_gradient_descent,
     run_sgd,
     sub2full_params_flat,
 )

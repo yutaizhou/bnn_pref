@@ -2,7 +2,6 @@ from functools import partial
 from typing import NamedTuple, Tuple
 
 import flax
-import ipdb
 import jax
 import jax.numpy as jnp
 import jax.random as jr
@@ -18,75 +17,12 @@ from bnn_pref.alg.agent_utils import (
     bt_loss_fn,
     compute_disagreement,
     compute_info_gain,
-    run_gradient_descent,
     run_sgd,
 )
+from bnn_pref.alg.data_buffer import QueryBuffer
 from bnn_pref.data.data_env import PreferenceEnv
 from bnn_pref.utils.network import RewardNet, count_params
 from bnn_pref.utils.type import QueryData, unpackable_dataclass
-
-
-@unpackable_dataclass
-class QueryBuffer:
-    """
-    Store all queries received so far, for sgd training
-    """
-
-    contexts: Float[Array, "Q 2 T D"]
-    labels: Float[Array, "Q 2"]
-    ptr: int = 0  # points to the next empty slot in the buffer
-    max_size: int = 100
-
-    def __len__(self) -> int:
-        return self.ptr
-
-    @classmethod
-    def create(cls, max_size: int, traj_shape: Tuple[int, ...]):
-        buffer = QueryBuffer(
-            contexts=jnp.empty((max_size, 2, *traj_shape)),
-            labels=jnp.empty((max_size, 2)),
-            ptr=0,
-            max_size=max_size,
-        )
-        return buffer
-
-    def add_samples(self, new: QueryData):
-        """Update the buffer with new query data."""
-        n_new = new.contexts.shape[0]
-        assert new.contexts.ndim == self.contexts.ndim, "contexts must have same ndim"
-        assert new.labels.ndim == self.labels.ndim, "labels must have same ndim"
-        assert self.ptr + n_new <= self.max_size, "buffer overflow"
-
-        new_contexts = lax.dynamic_update_slice_in_dim(
-            self.contexts, new.contexts, self.ptr, 0
-        )
-        new_labels = lax.dynamic_update_slice_in_dim(
-            self.labels, new.labels, self.ptr, 0
-        )
-        new_ptr = self.ptr + n_new
-
-        self = self.replace(
-            contexts=new_contexts,
-            labels=new_labels,
-            ptr=new_ptr,
-        )
-        return self
-
-    def get_all(self) -> QueryData:
-        """Get all valid queries from the buffer."""
-        contexts = lax.dynamic_slice_in_dim(self.contexts, 0, slice_size=self.ptr)
-        labels = lax.dynamic_slice_in_dim(self.labels, 0, slice_size=self.ptr)
-        data = QueryData(contexts=contexts, labels=labels)
-        return data
-
-    def get_newest_n(self, n: int) -> QueryData:
-        """Get the most recent `n` queries from the buffer."""
-        assert n <= self.ptr, "n must be less than or equal to the buffer size"
-        start = self.ptr - n
-        contexts = lax.dynamic_slice_in_dim(self.contexts, start, slice_size=n)
-        labels = lax.dynamic_slice_in_dim(self.labels, start, slice_size=n)
-        data = QueryData(contexts=contexts, labels=labels)
-        return data
 
 
 @unpackable_dataclass
@@ -216,6 +152,7 @@ class DeepEnsemble(Agent):
         bel: EnsembleBeliefState,
         batch: QueryData,
     ) -> EnsembleBeliefState:
+        """Train on all queries in the buffer."""
         new_buffer = bel.buffer.add_samples(batch)
         bel = bel.replace(buffer=new_buffer)
 
@@ -244,6 +181,7 @@ class DeepEnsemble(Agent):
         bel: EnsembleBeliefState,
         batch: QueryData,
     ) -> EnsembleBeliefState:
+        """Train on the most recent query."""
         new_buffer = bel.buffer.add_samples(batch)
         bel = bel.replace(buffer=new_buffer)
         ds = bel.buffer.get_newest_n(n=1)
@@ -272,6 +210,8 @@ class DeepEnsemble(Agent):
         batch: QueryData,
     ) -> EnsembleBeliefState:
         """
+        Old implementation, do not use.
+
         Training cases: bs = 1 for all cases
         n_epochs=0: 1 query   1 sgd step:    niters=1
         n_epochs=1: Q queries 1 sgd epoch:   niters=Q

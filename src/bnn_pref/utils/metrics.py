@@ -9,7 +9,7 @@ import jax.numpy as jnp
 import jax.numpy.linalg as jnpl
 import optax
 
-from bnn_pref.alg.ekf_subspace import EKFBeliefState
+from bnn_pref.alg.agent_ekf import EKFBeliefState
 from bnn_pref.data.pref_utils import QueryFeaturesAndResponses
 from bnn_pref.utils.type import NTD, SD, D
 

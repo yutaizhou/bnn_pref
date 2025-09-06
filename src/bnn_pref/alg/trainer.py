@@ -8,9 +8,9 @@ import optax
 from flax.training.train_state import TrainState
 from jaxtyping import Key
 
+from bnn_pref.alg.agent_ekf import EKFBeliefState, SubspaceEKF
+from bnn_pref.alg.agent_ensemble import DeepEnsemble, EnsembleBeliefState
 from bnn_pref.alg.agent_utils import Agent
-from bnn_pref.alg.ekf_subspace import EKFBeliefState, SubspaceEKF
-from bnn_pref.alg.ensemble import DeepEnsemble, EnsembleBeliefState
 from bnn_pref.data.data_env import PreferenceEnv
 from bnn_pref.utils.network import RewardNet
 from bnn_pref.utils.type import QueryData

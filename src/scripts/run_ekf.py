@@ -12,7 +12,7 @@ import jax.random as jr
 import matplotlib.pyplot as plt
 from hydra.core.hydra_config import HydraConfig
 
-from bnn_pref.alg.ekf_subspace import SubspaceEKF
+from bnn_pref.alg.agent_ekf import SubspaceEKF
 from bnn_pref.alg.trainer import alg_pipeline
 from bnn_pref.data import dataset_creators
 from bnn_pref.data.data_env import PreferenceEnv
