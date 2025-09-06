@@ -23,6 +23,7 @@ from bnn_pref.alg.agent_utils import (
     compute_info_gain,
     generate_random_basis,
     run_gradient_descent,
+    run_sgd,
     sub2full_params_flat,
 )
 from bnn_pref.alg.pca_jax import JaxPCA
@@ -136,15 +137,18 @@ class SubspaceEKF(Agent):
         )
 
         key, key_sgd = jr.split(key, 2)
-        warm_ts, warm_metrics = run_gradient_descent(
+        warm_ts, warm_metrics = run_sgd(
             key_sgd,
             ts,
+            dataset=warmup_data,
             loss_fn=bt_loss_fn,
             has_aux=True,
-            dataset=warmup_data,
             niters=self.niters,
             batch_size=self.batch_size,
             l2_reg=self.l2_reg,
+            get_param_trace=True,
+            n_models=1,
+            split_datastream=False,
         )
 
         params_trace = warm_metrics["params"][self.warm_burns :: self.thinning]

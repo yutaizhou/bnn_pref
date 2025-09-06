@@ -19,6 +19,7 @@ from bnn_pref.alg.agent_utils import (
     compute_disagreement,
     compute_info_gain,
     run_gradient_descent,
+    run_sgd,
 )
 from bnn_pref.data.data_env import PreferenceEnv
 from bnn_pref.utils.network import RewardNet, count_params
@@ -26,25 +27,22 @@ from bnn_pref.utils.type import QueryData, unpackable_dataclass
 
 
 @unpackable_dataclass
-class QueryBufferState:
+class QueryBuffer:
+    """
+    Store all queries received so far, for sgd training
+    """
+
     contexts: Float[Array, "Q 2 T D"]
     labels: Float[Array, "Q 2"]
-    ptr: int = 0
+    ptr: int = 0  # points to the next empty slot in the buffer
     max_size: int = 100
 
     def __len__(self) -> int:
         return self.ptr
 
-
-class QueryBuffer:
-    """
-    Store all queries received so far, for sgd training
-    todo - see flax for ways to make this more jax native
-    """
-
-    @staticmethod
-    def create_buffer(max_size: int, traj_shape: Tuple[int, ...]) -> QueryBufferState:
-        buffer = QueryBufferState(
+    @classmethod
+    def create(cls, max_size: int, traj_shape: Tuple[int, ...]):
+        buffer = QueryBuffer(
             contexts=jnp.empty((max_size, 2, *traj_shape)),
             labels=jnp.empty((max_size, 2)),
             ptr=0,
@@ -52,57 +50,58 @@ class QueryBuffer:
         )
         return buffer
 
-    @staticmethod
-    def update(state: QueryBufferState, new: QueryData) -> QueryBufferState:
+    def add_samples(self, new: QueryData):
         """Update the buffer with new query data."""
-        assert new.contexts.ndim == state.contexts.ndim, "contexts must have same ndim"
-        assert new.labels.ndim == state.labels.ndim, "labels must have same ndim"
         n_new = new.contexts.shape[0]
+        assert new.contexts.ndim == self.contexts.ndim, "contexts must have same ndim"
+        assert new.labels.ndim == self.labels.ndim, "labels must have same ndim"
+        assert self.ptr + n_new <= self.max_size, "buffer overflow"
+
         new_contexts = lax.dynamic_update_slice_in_dim(
-            state.contexts, new.contexts, state.ptr, 0
+            self.contexts, new.contexts, self.ptr, 0
         )
         new_labels = lax.dynamic_update_slice_in_dim(
-            state.labels, new.labels, state.ptr, 0
+            self.labels, new.labels, self.ptr, 0
         )
-        new_ptr = state.ptr + n_new
+        new_ptr = self.ptr + n_new
 
-        state = state.replace(
+        self = self.replace(
             contexts=new_contexts,
             labels=new_labels,
             ptr=new_ptr,
         )
-        # Optionally, add a runtime check (outside jit) for overflow
-        # assert state.ptr <= state.max_size, "buffer overflow"
-        return state
+        return self
 
-    @staticmethod
-    def get_all(state: QueryBufferState) -> Tuple[QueryData, int]:
-        """Get all queries from the buffer."""
-        data = QueryData(contexts=state.contexts, labels=state.labels)
-        return data, state.ptr
+    def get_all(self) -> QueryData:
+        """Get all valid queries from the buffer."""
+        contexts = lax.dynamic_slice_in_dim(self.contexts, 0, slice_size=self.ptr)
+        labels = lax.dynamic_slice_in_dim(self.labels, 0, slice_size=self.ptr)
+        data = QueryData(contexts=contexts, labels=labels)
+        return data
 
-    @staticmethod
-    def get_newest_n(state: QueryBufferState, n: int) -> Tuple[QueryData, int]:
-        """Get the last n queries from the buffer."""
-        start = state.ptr - n
-        length = n
-        contexts = lax.dynamic_slice_in_dim(state.contexts, start, length)
-        labels = lax.dynamic_slice_in_dim(state.labels, start, length)
-        return QueryData(contexts=contexts, labels=labels), length
+    def get_newest_n(self, n: int) -> QueryData:
+        """Get the most recent `n` queries from the buffer."""
+        assert n <= self.ptr, "n must be less than or equal to the buffer size"
+        start = self.ptr - n
+        contexts = lax.dynamic_slice_in_dim(self.contexts, start, slice_size=n)
+        labels = lax.dynamic_slice_in_dim(self.labels, start, slice_size=n)
+        data = QueryData(contexts=contexts, labels=labels)
+        return data
 
 
 @unpackable_dataclass
 class EnsembleBeliefState:
     ts: TrainState
-    buffer: QueryBufferState
+    buffer: QueryBuffer
 
 
 def init_model(
     key,
     model: nn.Module,
     tx: optax.GradientTransformation,
-    traj_shape: Tuple[int, ...],
+    traj_shape: Tuple[int, ...],  # batch-less shape like (T, D)
 ) -> TrainState:
+    """create trainstate for a single model"""
     dummy_input = jnp.ones((1, 2, *traj_shape))
     params = model.init(key, dummy_input)["params"]
     ts = TrainState.create(apply_fn=model.apply, params=params, tx=tx)
@@ -171,7 +170,6 @@ class DeepEnsemble(Agent):
 
     @partial(jax.jit, static_argnames=["self"])
     def init_bel(self, key, warmup_data: QueryData) -> EnsembleBeliefState:
-        # todo precompute logits for all items
         key, *keys_init = jr.split(key, 1 + self.n_models)
         ts = jax.vmap(init_model, in_axes=(0, None, None, None))(
             jnp.array(keys_init),
@@ -182,40 +180,92 @@ class DeepEnsemble(Agent):
         self.ensemble_param_count = count_params(ts.params)
         self.param_count = self.ensemble_param_count // self.n_models
 
-        buffer = QueryBuffer.create_buffer(self.max_buffer_size, self.traj_shape)
-        buffer = QueryBuffer.update(buffer, warmup_data)
+        buffer = QueryBuffer.create(self.max_buffer_size, self.traj_shape)
+        buffer = buffer.add_samples(warmup_data)
         bel = EnsembleBeliefState(ts=ts, buffer=buffer)
 
-        sgd_fn = partial(
-            run_gradient_descent,
+        warm_ts, warm_metrics = run_sgd(
+            key,
+            bel.ts,
+            dataset=warmup_data,
             loss_fn=bt_loss_fn,
             has_aux=True,
-            dataset=warmup_data,
             niters=self.niters,
             batch_size=self.batch_size,
             l2_reg=self.l2_reg,
-        )  # remaining args: (key, ts)
-
-        # same datastream for all models
-        key, key_sgd = jr.split(key)
-        if self.use_vmap:
-            sgd_fn = jax.vmap(sgd_fn, in_axes=(None, 0))  # vmap over ts
-            warm_ts, warm_metrics = sgd_fn(key_sgd, bel.ts)
-        else:
-            sgd_fn = partial(sgd_fn, key_sgd)
-            warm_ts, warm_metrics = jax.lax.map(sgd_fn, bel.ts)
-
-        # different datastreams for each model
-        # key, *key_sgd = jr.split(key, 1 + self.n_models)
-        # run_sgd_fn = jax.vmap(run_sgd_fn, in_axes=(0, 0))  # vmap (key, ts)
-        # warm_ts, warm_metrics = run_sgd_fn(jnp.array(key_sgd), ts)
+            get_param_trace=False,
+            n_models=self.n_models,
+            split_datastream=True,
+        )
 
         bel = bel.replace(ts=warm_ts)
 
         return bel
 
-    @partial(jax.jit, static_argnames=["self"])
     def update_bel(
+        self, key, bel: EnsembleBeliefState, batch: QueryData
+    ) -> EnsembleBeliefState:
+        return self.update_bel_all(key, bel, batch)
+        # return self.update_bel_most_recent(key, bel, batch)
+        # return self.update_bel_old(key, bel, batch)
+
+    # @partial(jax.jit, static_argnames=["self"])
+    def update_bel_all(
+        self,
+        key,
+        bel: EnsembleBeliefState,
+        batch: QueryData,
+    ) -> EnsembleBeliefState:
+        new_buffer = bel.buffer.add_samples(batch)
+        bel = bel.replace(buffer=new_buffer)
+
+        ds = bel.buffer.get_all()
+        key, key_sgd = jr.split(key, 2)
+        ts, _ = run_sgd(
+            key_sgd,
+            bel.ts,
+            dataset=ds,
+            loss_fn=bt_loss_fn,
+            has_aux=True,
+            niters=self.niters,
+            batch_size=self.batch_size,
+            l2_reg=self.l2_reg,
+            get_param_trace=False,
+            n_models=self.n_models,
+            split_datastream=True,
+        )
+        bel = bel.replace(ts=ts)
+        return bel
+
+    # @partial(jax.jit, static_argnames=["self"])
+    def update_bel_most_recent(
+        self,
+        key,
+        bel: EnsembleBeliefState,
+        batch: QueryData,
+    ) -> EnsembleBeliefState:
+        new_buffer = bel.buffer.add_samples(batch)
+        bel = bel.replace(buffer=new_buffer)
+        ds = bel.buffer.get_newest_n(n=1)
+
+        def train_fn(ts, batch: QueryData):
+            grad_fn = jax.value_and_grad(bt_loss_fn, has_aux=True)
+            (loss, _), grads = grad_fn(ts.params, ts, batch, self.l2_reg)
+            ts = ts.apply_gradients(grads=grads)
+            return ts
+
+        if self.use_vmap:
+            grad_fn = jax.vmap(train_fn, in_axes=(0, None))  # vmap over ts
+            ts = grad_fn(bel.ts, ds)
+        else:
+            grad_fn = partial(train_fn, batch=ds)
+            ts = jax.lax.map(grad_fn, bel.ts)
+
+        bel = bel.replace(ts=ts)
+        return bel
+
+    # @partial(jax.jit, static_argnames=["self"])
+    def update_bel_old(
         self,
         key,  # currently unused, static shape not compatible with scan epoch shuffle
         bel: EnsembleBeliefState,
@@ -229,14 +279,14 @@ class DeepEnsemble(Agent):
 
         n_valids masking for batch manager is required for jit w/ dynamically sized buffer
         """
-        new_buffer = QueryBuffer.update(bel.buffer, batch)
+        new_buffer = bel.buffer.add_samples(batch)
         bel = bel.replace(buffer=new_buffer)
         key, key_sgd = jr.split(key)
-
         bs = 1  # always train on 1 query at a time
+
         if self.n_epochs == 0:
-            n_newest = 1
-            ds, n_valids = QueryBuffer.get_newest_n(bel.buffer, n_newest)
+            # train only on the newest query, only 1 sgd step
+            ds = bel.buffer.get_newest_n(n=1)
 
             def train_fn(ts, batch: QueryData):
                 grad_fn = jax.value_and_grad(bt_loss_fn, has_aux=True)
@@ -255,7 +305,8 @@ class DeepEnsemble(Agent):
             return bel
 
         else:
-            ds, n_valids = QueryBuffer.get_all(bel.buffer)
+            ds = bel.buffer.get_all()
+            n_valids = len(ds)
             # jax.debug.print("n_valids: {n_valids}", n_valids=n_valids)
 
             def train_fn(

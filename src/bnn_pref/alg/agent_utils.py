@@ -147,3 +147,132 @@ def run_gradient_descent(
     ts, metrics = scan(train_step, init=ts, xs=batch_idxs)
     return ts, metrics
 
+
+def run_sgd(
+    key,
+    ts: TrainState,
+    dataset: QueryData,
+    *,
+    loss_fn: Callable,
+    has_aux: bool,
+    niters: int,
+    batch_size: int = -1,
+    l2_reg: float = 0.0,
+    get_param_trace: bool = False,
+    n_models: int = 1,
+    split_datastream: bool = False,
+) -> Tuple[TrainState, Dict]:
+    """
+    Run SGD training for exactly niters steps, using for loop not scan
+
+    supports:
+    - single or batched trainstate for ensembles
+    - same datastream for all models or different datastreams for each model
+    - bs == -1 for full-batch GD, otherwise mini-batch SGD (maybe not?)
+    """
+
+    def train_step(ts: TrainState, batch: QueryData) -> Tuple[TrainState, Dict]:
+        """unbatched ts and a single batch of data"""
+        grad_fn = jax.value_and_grad(loss_fn, has_aux=has_aux)
+        val, grads = grad_fn(ts.params, ts, batch, l2_reg)
+        loss = val[0] if has_aux else val
+        ts = ts.apply_gradients(grads=grads)
+        flat_params, _ = ravel_pytree(ts.params) if get_param_trace else (None, None)
+        return ts, {"loss": loss, "params": flat_params}
+
+    N = len(dataset)  # note that N is not n_trajs, but n_queries in dataset
+    M = n_models
+    bs = batch_size
+    niters = niters
+
+    def get_batch_iter(key):
+        """
+        Returns a generator over batches
+        - one model, one datastream: (niters, bs)
+        - ensemble model, shared datastream: (niters, bs); broadcasted over train_step
+        - ensemble model, split datastream: (niters, n_models, bs)
+        """
+
+        def create_batches(key) -> Int[Array, "niters bs"]:
+            """
+            Shuffle and split the `N` indices into chunks of size `bs`.
+            Drop last chunk if it's not of size `bs`.
+            Do so for `niters`, reshuffle if: len(curr_batch) < bs)
+
+            for `niters` times:
+                if remaining inds < bs
+                    reshuffle
+                take next chunk of size `bs`
+            """
+
+            # slicer = jax.vmap(jax.lax.dynamic_slice_in_dim, in_axes=(None, 0, None))
+            # rounds = (niters * bs) // N + 1
+            # batch_idxs = []
+            # for _ in range(rounds):
+            #     key, key_perm = jr.split(key)
+            #     idxs = jr.permutation(key_perm, jnp.arange(N))  # N
+            #     starts = jnp.arange(0, len(idxs), bs)
+            #     chunks = slicer(idxs, starts, bs)  # (n_batches, bs)
+            #     batch_idxs.extend(chunks)
+            # batch_idxs = jnp.stack(batch_idxs)
+
+            batch_idxs = jnp.empty((niters, bs), dtype=jnp.int32)
+            idxs = jnp.arange(N, dtype=jnp.int32)
+            cumsum = 0
+            reshuffle_count = 0
+            for i in range(niters):
+                if cumsum + bs > N:
+                    key, key_perm = jr.split(key)
+                    idxs = jr.permutation(key_perm, idxs)  # N
+                    cumsum = 0
+                    reshuffle_count += 1
+                batch = jax.lax.dynamic_slice_in_dim(idxs, cumsum, bs)
+                batch_idxs = batch_idxs.at[i].set(batch)
+                cumsum += bs
+            # print(f"reshuffled {reshuffle_count} times on {N} indices")
+            return batch_idxs  # (niters, bs)
+
+        batch_idxs = None
+        retriever_fn = None
+        key, key_data = jr.split(key)
+        if M > 1 and split_datastream:
+            # retriever: (M, B, 2, T, D), (M, B, 2)
+            batch_fn = jax.vmap(create_batches, out_axes=1)
+            batch_idxs = batch_fn(jr.split(key_data, M))  # (niters, M, bs)
+            retriever_fn = jax.vmap(retrieve, in_axes=(None, 0))
+        else:
+            # retriever: (B, 2, T, D), (B, 2)
+            batch_idxs = create_batches(key_data)  # (niters, bs)
+            retriever_fn = retrieve
+
+        def iterate_over_batches():
+            for batch_idx in batch_idxs:
+                contexts = retriever_fn(dataset.contexts, batch_idx)
+                labels = retriever_fn(dataset.labels, batch_idx)
+                batch = QueryData(contexts=contexts, labels=labels)
+                yield batch
+
+        return iterate_over_batches()
+
+    # * different model training cases:
+    key, key_data = jr.split(key)
+    batch_iterator = get_batch_iter(key_data)
+    if M > 1 and split_datastream:
+        train_step = jax.vmap(train_step, in_axes=(0, 0))
+    elif M > 1 and not split_datastream:
+        train_step = jax.vmap(train_step, in_axes=(0, None))
+    else:
+        train_step = train_step
+
+    # * start training
+    metrics = []
+    train_step = jax.jit(train_step)
+    for _ in range(niters):
+        batch = next(batch_iterator)
+        ts, metric = train_step(ts, batch)
+        metrics.append(metric)
+
+    if get_param_trace:
+        metrics = jax.tree.map(lambda *xs: jnp.stack(xs), *metrics)
+
+    return ts, metrics
