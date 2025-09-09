@@ -44,7 +44,7 @@ class EKFBeliefState:
     offset_ts: TrainState
 
 
-class SubspaceEKF(Agent):
+class EKFAgent(Agent):
     def __init__(
         self,
         model: nn.Module,

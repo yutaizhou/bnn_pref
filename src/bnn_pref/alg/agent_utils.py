@@ -70,15 +70,6 @@ def generate_random_basis(key, d: int, D: int):
     return P
 
 
-# def bt_loss_fn(params, ts: TrainState, batch: QueryData, l2_reg: float = 0.0):
-#     contexts_B2TD, labels_B2 = batch.contexts, batch.labels
-#     logits_B2 = ts.apply_fn({"params": params}, contexts_B2TD)
-#     loss = optax.softmax_cross_entropy(logits_B2, labels_B2).mean()
-#     params_flat, _ = ravel_pytree(params)
-#     l2_loss = l2_reg * (params_flat**2).sum()
-#     return loss + l2_loss, logits_B2
-
-
 def bt_loss_fn(params, logits_B2, labels_B2, l2_reg: float = 0.0):
     loss = optax.softmax_cross_entropy(logits_B2, labels_B2).mean()
     params_flat, _ = ravel_pytree(params)
@@ -220,7 +211,6 @@ def run_sgd(
                 return loss_fn(params, logits_B2, labels_B2, l2_reg)
 
             grad_fn = jax.value_and_grad(parameterized_loss, has_aux=has_aux)
-
             val, grads = grad_fn(ts.params)
             loss = val[0] if has_aux else val
             ts = ts.apply_gradients(grads=grads)
@@ -229,84 +219,6 @@ def run_sgd(
                 ravel_pytree(ts.params) if get_param_trace else (None, None)
             )
             return ts, {"loss": loss, "params": flat_params}
-
-    def get_batch_iter(
-        key,
-        dataset: QueryData,
-        n_models: int,
-        niters: int,
-        bs: int,
-        split_datastream: bool,
-    ):
-        """
-        Returns a generator over batches from `dataset`. Supports two options with differing usecases.
-        - (niters, bs)
-            - one model, one datastream
-            - ensemble models, shared datastream, to be broadcasted over train_step(ts, batch)
-        - (niters, n_models, bs)
-            - ensemble models, split datastream
-
-        Args:
-            key: PRNGKey
-            dataset: QueryData = dataset to sample from
-            n_models: int = number of models
-            split_datastream: bool = whether to split the datastream into n_models
-            niters: int = number of iterations
-            bs: int = batch size
-
-        """
-        N = len(dataset)
-
-        def create_batches(key) -> Int[Array, "niters bs"]:
-            """
-            Shuffle and split the `N` indices into chunks of size `bs`.
-            Drop last chunk if it's not of size `bs`.
-            Do so for `niters`, reshuffle if: len(curr_batch) < bs)
-
-            for `niters` times:
-                if remaining inds < bs
-                    reshuffle
-                take next chunk of size `bs`
-            """
-            batch_idxs = jnp.empty((niters, bs), dtype=jnp.int32)
-            idxs = jnp.arange(N, dtype=jnp.int32)
-            cumsum = 0
-            reshuffle_count = 0
-            for i in range(niters):
-                if cumsum + bs > N:
-                    key, key_perm = jr.split(key)
-                    idxs = jr.permutation(key_perm, idxs)  # N
-                    cumsum = 0
-                    reshuffle_count += 1
-                batch = jax.lax.dynamic_slice_in_dim(idxs, cumsum, bs)
-                batch_idxs = batch_idxs.at[i].set(batch)
-                cumsum += bs
-            # print(f"reshuffled {reshuffle_count} times on {N} indices")
-            return batch_idxs  # (niters, bs)
-
-        batch_idxs = None
-        retriever_fn = None
-        key, key_data = jr.split(key)
-        if n_models > 1 and split_datastream:
-            # retriever: (M, B, 2, T, D), (M, B, 2)
-            batch_fn = jax.vmap(create_batches, out_axes=1)
-            batch_idxs = batch_fn(
-                jr.split(key_data, n_models)
-            )  # (niters, n_models, bs)
-            retriever_fn = jax.vmap(retrieve, in_axes=(None, 0))
-        else:
-            # retriever: (B, 2, T, D), (B, 2)
-            batch_idxs = create_batches(key_data)  # (niters, bs)
-            retriever_fn = retrieve
-
-        def iterate_over_batches():
-            for batch_idx in batch_idxs:
-                contexts = retriever_fn(dataset.contexts, batch_idx)
-                labels = retriever_fn(dataset.labels, batch_idx)
-                batch = QueryData(contexts=contexts, labels=labels)
-                yield batch
-
-        return iterate_over_batches()
 
     # * different model training cases:
     key, key_data = jr.split(key)
@@ -337,3 +249,82 @@ def run_sgd(
         metrics = jax.tree.map(lambda *xs: jnp.stack(xs), *metrics)
 
     return ts, metrics
+
+
+def get_batch_iter(
+    key,
+    dataset: QueryData,
+    n_models: int,
+    niters: int,
+    bs: int,
+    split_datastream: bool,
+):
+    """
+    Returns a generator over batches from `dataset`. Supports two options with differing usecases.
+    - (niters, bs)
+        - one model, one datastream
+        - ensemble models, shared datastream, to be broadcasted over train_step(ts, batch)
+    - (niters, n_models, bs)
+        - ensemble models, split datastream
+
+    Args:
+        key: PRNGKey
+        dataset: QueryData = dataset to sample from
+        n_models: int = number of models
+        split_datastream: bool = whether to split the datastream into n_models
+        niters: int = number of iterations
+        bs: int = batch size
+
+    """
+    N = len(dataset)
+
+    def create_batches(key) -> Int[Array, "niters bs"]:
+        """
+        Shuffle and split the `N` indices into chunks of size `bs`.
+        Drop last chunk if it's not of size `bs`.
+        Do so for `niters`, reshuffle if: len(curr_batch) < bs)
+
+        for `niters` times:
+            if remaining inds < bs
+                reshuffle
+            take next chunk of size `bs`
+        """
+        batch_idxs = jnp.empty((niters, bs), dtype=jnp.int32)
+        idxs = jnp.arange(N, dtype=jnp.int32)
+        cumsum = 0
+        reshuffle_count = 0
+        for i in range(niters):
+            if cumsum + bs > N:
+                key, key_perm = jr.split(key)
+                idxs = jr.permutation(key_perm, idxs)  # N
+                cumsum = 0
+                reshuffle_count += 1
+            batch = jax.lax.dynamic_slice_in_dim(idxs, cumsum, bs)
+            batch_idxs = batch_idxs.at[i].set(batch)
+            cumsum += bs
+        # print(f"reshuffled {reshuffle_count} times on {N} indices")
+        return batch_idxs  # (niters, bs)
+
+    batch_idxs = None
+    retriever_fn = None
+    key, key_data = jr.split(key)
+    if n_models > 1 and split_datastream:
+        # (niters, n_models, bs)
+        # retriever: (M, B, 2, T, D), (M, B, 2)
+        batch_fn = jax.vmap(create_batches, out_axes=1)
+        batch_idxs = batch_fn(jr.split(key_data, n_models))
+        retriever_fn = jax.vmap(retrieve, in_axes=(None, 0))
+    else:
+        # (niters, bs)
+        # retriever: (B, 2, T, D), (B, 2)
+        batch_idxs = create_batches(key_data)  # (niters, bs)
+        retriever_fn = retrieve
+
+    def iterate_over_batches():
+        for batch_idx in batch_idxs:
+            contexts = retriever_fn(dataset.contexts, batch_idx)
+            labels = retriever_fn(dataset.labels, batch_idx)
+            batch = QueryData(contexts=contexts, labels=labels)
+            yield batch
+
+    return iterate_over_batches()

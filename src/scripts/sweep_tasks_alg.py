@@ -19,7 +19,7 @@ import orbax.checkpoint as ocp
 from flax.training import orbax_utils
 from hydra.core.hydra_config import HydraConfig
 
-from bnn_pref.alg.trainer import run_dropout, run_ekf, run_ensemble
+from bnn_pref.alg.trainer import run_alg
 from bnn_pref.data import dataset_creators
 from bnn_pref.data.data_env import PreferenceEnv
 from bnn_pref.data.pref_utils import QueryIndexAndResponses
@@ -64,11 +64,11 @@ def modify_queries(
 def main(cfg):
     seed = get_random_seed(cfg["seed"])
     key = jr.key(seed)
-    run_fns = {
-        "ekf": run_ekf,
-        "sgd": run_ensemble,
-        "do": run_dropout,
-    }
+    # run_fns = {
+    #     "ekf": run_ekf,
+    #     "sgd": run_ensemble,
+    #     "do": run_dropout,
+    # }
     tasks = [
         # * gym
         # "reacher",
@@ -184,8 +184,9 @@ def main(cfg):
         for alg, is_al in it.product(algs, is_als):
             cfg[alg]["active"] = is_al
 
-            run_fn = run_fns[alg]
-            run_fn = partial(run_fn, cfg=cfg, data_dict=data_dict, env=env)
+            # run_fn = run_fns[alg]
+            # run_fn = partial(run_fn, cfg=cfg, data_dict=data_dict, env=env)
+            run_fn = partial(run_alg, alg=alg, cfg=cfg, data_dict=data_dict, env=env)
 
             # run in vmap or lax version (parallel vs. sequential)
             start = datetime.now()

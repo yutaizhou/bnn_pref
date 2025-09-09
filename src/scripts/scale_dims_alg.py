@@ -16,7 +16,7 @@ import jax.random as jr
 import matplotlib.pyplot as plt
 from hydra.core.hydra_config import HydraConfig
 
-from bnn_pref.alg.trainer import run_ekf, run_ensemble
+from bnn_pref.alg.trainer import run_alg  # , run_ekf, run_ensemble
 from bnn_pref.data import dataset_creators
 from bnn_pref.data.data_env import PreferenceEnv
 from bnn_pref.utils.hydra_resolvers import *
@@ -32,12 +32,7 @@ jnp.set_printoptions(precision=2)
 def main(cfg):
     seed = get_random_seed(cfg["seed"])
     key = jr.key(seed)
-    run_fns = {
-        "ekf": run_ekf,
-        "sgd": run_ensemble,
-    }
-
-    algs = ["ekf", "sgd"]
+    algs = ["ekf", "sgd", "do"]
 
     stats = nested_defaultdict()
 
@@ -96,7 +91,7 @@ def main(cfg):
     key, *key_seeds = jr.split(key, 1 + cfg["seeds"])
     seeds = jnp.array(key_seeds)
     for alg in algs:
-        run_fn = partial(run_fns[alg], cfg=cfg, data_dict=data_dict, env=env)
+        run_fn = partial(run_alg, alg=alg, cfg=cfg, data_dict=data_dict, env=env)
 
         start = datetime.now()
         res_m = (

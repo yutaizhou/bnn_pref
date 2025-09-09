@@ -45,7 +45,7 @@ def init_model(
     return ts
 
 
-class DeepEnsemble(Agent):
+class EnsembleAgent(Agent):
     def __init__(
         self,
         model: nn.Module,

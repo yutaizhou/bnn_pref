@@ -12,7 +12,7 @@ import jax.random as jr
 import matplotlib.pyplot as plt
 from hydra.core.hydra_config import HydraConfig
 
-from bnn_pref.alg.agent_ekf import SubspaceEKF
+from bnn_pref.alg.agent_ekf import EKFAgent
 from bnn_pref.alg.trainer import alg_pipeline
 from bnn_pref.data import dataset_creators
 from bnn_pref.data.data_env import PreferenceEnv
@@ -47,7 +47,7 @@ def main(cfg):
         Y=jax.nn.one_hot(train_prefs.responses_Q1.squeeze(), num_classes=2),
     )
 
-    bel_trace, bandit = alg_pipeline(key_pipe, SubspaceEKF, env, ekf_cfg, data_cfg)
+    bel_trace, bandit = alg_pipeline(key_pipe, EKFAgent, env, ekf_cfg, data_cfg)
 
     # * compute metrics
     sub2full_logits_fn = bandit.sub2full_predict_logits  # (params, N2TD) -> (N2,)

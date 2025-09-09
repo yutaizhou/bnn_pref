@@ -9,7 +9,7 @@ import jax.numpy as jnp
 import jax.random as jr
 import matplotlib.pyplot as plt
 
-from bnn_pref.alg.agent_ekf import SubspaceEKF
+from bnn_pref.alg.agent_ekf import EKFAgent
 from bnn_pref.alg.trainer import alg_pipeline, run_ekf
 from bnn_pref.data import make_synthetic_data
 from bnn_pref.data.data_env import PreferenceEnv
