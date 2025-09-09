@@ -56,11 +56,11 @@ class DropoutAgent(Agent):
         n_models: int,
         max_buffer_size: int = 100,
         l2_reg: float = 0.0,
-        niters: int = 1000,
+        niters_init: int = 1,
+        niters_update: int = 1,
         batch_size: int = 32,
         chunk_size: int = 64,
         use_vmap: bool = True,  # for training update_bel in {init,update}_bel
-        n_epochs: int = 0,
         acq: str = "disagreement",
     ):
         self.traj_shape = traj_shape
@@ -68,13 +68,12 @@ class DropoutAgent(Agent):
         self.model = model
         self.opt = opt
         self.l2_reg = l2_reg
-        self.niters = niters
+        self.niters_init = niters_init
+        self.niters_update = niters_update
         self.batch_size = batch_size
         self.chunk_size = chunk_size
         self.use_vmap = use_vmap
         self.max_buffer_size = max_buffer_size
-        assert n_epochs >= 0, "n_epochs must be non-negative"
-        self.n_epochs = n_epochs
         assert acq in ["disagreement", "infogain"]
         self.acq = acq
 
@@ -104,11 +103,11 @@ class DropoutAgent(Agent):
         return {
             "acq": do_cfg["acq"],
             # init
-            "niters": do_cfg["niters"],
+            "niters_init": do_cfg["niters_init"],
             "batch_size": do_cfg["bs"],
             "l2_reg": do_cfg["l2_reg"],
             # update
-            "n_epochs": do_cfg["n_epochs"],
+            "niters_update": do_cfg["niters_update"],
             # ensembling
             "n_models": do_cfg["M"],
             "chunk_size": do_cfg["chunk_size"],
@@ -133,7 +132,7 @@ class DropoutAgent(Agent):
             dataset=warmup_data,
             loss_fn=bt_loss_fn,
             has_aux=True,
-            niters=self.niters,
+            niters=self.niters_init,
             batch_size=self.batch_size,
             l2_reg=self.l2_reg,
             get_param_trace=False,
@@ -142,7 +141,6 @@ class DropoutAgent(Agent):
         )
 
         bel = bel.replace(ts=warm_ts)
-
         return bel
 
     def update_bel(
@@ -170,7 +168,7 @@ class DropoutAgent(Agent):
             dataset=ds,
             loss_fn=bt_loss_fn,
             has_aux=True,
-            niters=self.niters,
+            niters=self.niters_update,
             batch_size=self.batch_size,
             l2_reg=self.l2_reg,
             get_param_trace=False,

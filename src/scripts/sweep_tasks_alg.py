@@ -117,6 +117,7 @@ def main(cfg):
     data_cfg = cfg["data"]
     ekf_cfg = cfg["ekf"]
     sgd_cfg = cfg["sgd"]
+    do_cfg = cfg["do"]
     nq_train, nq_test = data_cfg["nq_train"], data_cfg["nq_test"]
     nq_init, nsteps = data_cfg["nq_init"], data_cfg["nsteps"]
     n_eff_iterates = (ekf_cfg["niters"] - ekf_cfg["warm_burns"]) // ekf_cfg["thinning"]
@@ -137,7 +138,12 @@ def main(cfg):
         f"  init: bs={ekf_cfg['bs']}, niters={ekf_cfg['niters']}[{ekf_cfg['warm_burns']}::{ekf_cfg['thinning']}] ({n_eff_iterates} eff), sub_dim={ekf_cfg['sub_dim']}, rnd_proj={ekf_cfg['rnd_proj']}\n"
         f"Ensemble:\n"
         f"  M={sgd_cfg['M']}, use_vmap={sgd_cfg['use_vmap']}\n"
-        f"  init: bs={sgd_cfg['bs']}, niters={sgd_cfg['niters']}\n"
+        f"  init: bs={sgd_cfg['bs']}, niters={sgd_cfg['niters_init']}\n"
+        f"  update: bs={sgd_cfg['bs']}, niters={sgd_cfg['niters_update']}\n"
+        f"Dropout:\n"
+        f"  M={do_cfg['M']}, use_vmap={do_cfg['use_vmap']}\n"
+        f"  init: bs={do_cfg['bs']}, niters={do_cfg['niters_init']}\n"
+        f"  update: bs={do_cfg['bs']}, niters={do_cfg['niters_update']}\n"
     )
 
     ckpter = ocp.PyTreeCheckpointer()

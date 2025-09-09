@@ -51,11 +51,11 @@ class EKFAgent(Agent):
         opt: optax.GradientTransformation,
         traj_shape: Tuple[int, ...],  # kept for compat with Ensemble buffer
         l2_reg: float = 0.0,
-        niters: int = 1000,
+        niters: int = 420,
         batch_size: int = 32,
         warm_burns: int = 1000,
         thinning: int = 2,
-        sub_dim: Union[float, int] = 0.9999,
+        sub_dim: Union[float, int] = 200,
         rnd_proj: bool = False,
         prior_noise: float = 0.0001,
         dynamics_noise: float = 0.0,

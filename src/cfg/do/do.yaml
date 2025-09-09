@@ -13,10 +13,10 @@ n_splits: ${network.n_splits}
 dropout_prob: 0.1
 
 # * Init
-niters: 420  # Total number of GD steps on warmup data
+niters_init: 5  # Total number of GD steps on warmup data
 bs: 1 # -1 for full batch GD. Otherwise, mini-batch SGD
 l2_reg: 0
 
 # * Update
-n_epochs: 5 # 0 for one SGD step on the single newest query. Otherwise, run multi-epoch SGD
+niters_update: 65
 max_buffer_size: 500 # for SGD during update phase. keep it roughly around nq_updates

@@ -23,7 +23,7 @@ run_alg -> alg_pipeline -> run_updates
 
 
 def run_alg(key, alg: str, cfg, data_dict, env):
-    print(f"Running {alg}...")
+    # print(f"Running {alg}...")
     assert alg in ["ekf", "sgd", "do"]
     alg_cls_dict = {
         "ekf": EKFAgent,
@@ -48,7 +48,7 @@ def run_alg(key, alg: str, cfg, data_dict, env):
             key_postpred, bel, test_trajs_obs, test_prefs.queries_Q2
         )
 
-        # compute accuracy and logpdf
+        # compute metrics
         pred_Q = prob_Q2.argmax(axis=1)
         test_acc = jnp.mean(pred_Q == test_prefs.responses_Q1.squeeze())
         prob_Q1 = jnp.take_along_axis(prob_Q2, test_prefs.responses_Q1, axis=1)
