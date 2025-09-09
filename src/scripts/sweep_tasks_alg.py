@@ -19,7 +19,7 @@ import orbax.checkpoint as ocp
 from flax.training import orbax_utils
 from hydra.core.hydra_config import HydraConfig
 
-from bnn_pref.alg.trainer import run_ekf, run_ensemble
+from bnn_pref.alg.trainer import run_dropout, run_ekf, run_ensemble
 from bnn_pref.data import dataset_creators
 from bnn_pref.data.data_env import PreferenceEnv
 from bnn_pref.data.pref_utils import QueryIndexAndResponses
@@ -67,6 +67,7 @@ def main(cfg):
     run_fns = {
         "ekf": run_ekf,
         "sgd": run_ensemble,
+        "do": run_dropout,
     }
     tasks = [
         # * gym
@@ -101,9 +102,10 @@ def main(cfg):
         "mazeMediumDense",
         # "mazeLargeDense",
     ]
-    # algs = ["ekf", "sgd"]
-    algs = ["sgd"]
+    algs = ["ekf", "sgd"]
+    # algs = ["sgd"]
     # algs = ["ekf"]
+    # algs = ["sgd", "do"]
     is_als = [False, True]
     # is_als = [False]
     # is_als = [True]

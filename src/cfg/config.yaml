@@ -3,9 +3,11 @@ defaults:
 - task: synthetic
 - data: base
 - network: 32x2
+# algs: mcmc, ekf, sgd, do
 - mcmc: mh
 - ekf: ekf
 - sgd: sgd
+- do: do
 - rl: iql
 - optional local: default # specifies project dir & wandb login
 # - optional run: debug

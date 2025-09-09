@@ -1,6 +1,5 @@
 def get_param_count_msg(cfg, alg: str, res_m: dict) -> str:
     if alg == "ekf":
-        ekf_M = cfg["ekf"]["M"]
         param_count = res_m["param_count"][0].item()
         subspace_param_count = res_m["subspace_param_count"][0].item()
         return f"({param_count:,d} -> {subspace_param_count:,d})"
@@ -9,6 +8,9 @@ def get_param_count_msg(cfg, alg: str, res_m: dict) -> str:
         param_count = res_m["param_count"][0].item()
         ensemble_param_count = res_m["ensemble_param_count"][0].item()
         return f"({param_count:,d} x {sgd_M:d} -> {ensemble_param_count:,d})"
+    elif alg == "do":
+        param_count = res_m["param_count"][0].item()
+        return f"({param_count:,d})"
     else:
         raise ValueError(f"Unknown algorithm: {alg}")
 

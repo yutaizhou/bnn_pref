@@ -29,6 +29,7 @@ from bnn_pref.utils.type import QueryData, unpackable_dataclass
 class EnsembleBeliefState:
     ts: TrainState
     buffer: QueryBuffer
+    t: int
 
 
 def init_model(
@@ -104,7 +105,7 @@ class DeepEnsemble(Agent):
             "max_buffer_size": sgd_cfg["max_buffer_size"],
         }
 
-    @partial(jax.jit, static_argnames=["self"])
+    # @partial(jax.jit, static_argnames=["self"])
     def init_bel(self, key, warmup_data: QueryData) -> EnsembleBeliefState:
         key, *keys_init = jr.split(key, 1 + self.n_models)
         ts = jax.vmap(init_model, in_axes=(0, None, None, None))(
@@ -118,7 +119,7 @@ class DeepEnsemble(Agent):
 
         buffer = QueryBuffer.create(self.max_buffer_size, self.traj_shape)
         buffer = buffer.add_samples(warmup_data)
-        bel = EnsembleBeliefState(ts=ts, buffer=buffer)
+        bel = EnsembleBeliefState(ts=ts, buffer=buffer, t=0)
 
         warm_ts, warm_metrics = run_sgd(
             key,
@@ -132,6 +133,7 @@ class DeepEnsemble(Agent):
             get_param_trace=False,
             n_models=self.n_models,
             split_datastream=True,
+            use_dropout=False,
         )
 
         bel = bel.replace(ts=warm_ts)
@@ -170,8 +172,9 @@ class DeepEnsemble(Agent):
             get_param_trace=False,
             n_models=self.n_models,
             split_datastream=True,
+            use_dropout=False,
         )
-        bel = bel.replace(ts=ts)
+        bel = bel.replace(ts=ts, t=bel.t + 1)
         return bel
 
     # @partial(jax.jit, static_argnames=["self"])
@@ -186,9 +189,17 @@ class DeepEnsemble(Agent):
         bel = bel.replace(buffer=new_buffer)
         ds = bel.buffer.get_newest_n(n=1)
 
+        # def train_fn(ts, batch: QueryData):
+        #     grad_fn = jax.value_and_grad(bt_loss_fn, has_aux=True)
+        #     (loss, _), grads = grad_fn(ts.params, ts, batch, self.l2_reg)
+        #     ts = ts.apply_gradients(grads=grads)
+        #     return ts
+
         def train_fn(ts, batch: QueryData):
+            contexts_B2TD, labels_B2 = batch.contexts, batch.labels
+            logits_B2 = ts.apply_fn({"params": ts.params}, contexts_B2TD)
             grad_fn = jax.value_and_grad(bt_loss_fn, has_aux=True)
-            (loss, _), grads = grad_fn(ts.params, ts, batch, self.l2_reg)
+            (loss, _), grads = grad_fn(ts.params, logits_B2, labels_B2, self.l2_reg)
             ts = ts.apply_gradients(grads=grads)
             return ts
 
@@ -199,7 +210,7 @@ class DeepEnsemble(Agent):
             grad_fn = partial(train_fn, batch=ds)
             ts = jax.lax.map(grad_fn, bel.ts)
 
-        bel = bel.replace(ts=ts)
+        bel = bel.replace(ts=ts, t=bel.t + 1)
         return bel
 
     # @partial(jax.jit, static_argnames=["self"])
@@ -241,7 +252,7 @@ class DeepEnsemble(Agent):
                 grad_fn = partial(train_fn, batch=ds)
                 ts = jax.lax.map(grad_fn, bel.ts)
 
-            bel = bel.replace(ts=ts)
+            bel = bel.replace(ts=ts, t=bel.t + 1)
             return bel
 
         else:
@@ -301,13 +312,13 @@ class DeepEnsemble(Agent):
             else:
                 ts = jax.lax.map(partial(sgd_fn, key_sgd), bel.ts)
 
-            bel = bel.replace(ts=ts)
+            bel = bel.replace(ts=ts, t=bel.t + 1)
             return bel
 
     @partial(jax.jit, static_argnames=["self", "env"])
     def compute_next_query(
         self,
-        key,
+        key,  # for compatibility with trainer
         bel: EnsembleBeliefState,
         env: PreferenceEnv,
         pool_idxes_Q: Int[Array, "Q"],
@@ -346,7 +357,8 @@ class DeepEnsemble(Agent):
     @partial(jax.jit, static_argnames=["self"])
     def compute_postpred(
         self,
-        ts: TrainState,
+        key,  # for compatibility with trainer
+        bel: EnsembleBeliefState,
         items_NTD: Float[Array, "N T D"],
         query_idxs_Q2: Int[Array, "Q 2"],
     ) -> Float[Array, "Q 2"]:
@@ -362,7 +374,7 @@ class DeepEnsemble(Agent):
             return _, ret_N
 
         logits_NM = rearrange(
-            jax.lax.scan(scan_ts, init=None, xs=ts)[1],
+            jax.lax.scan(scan_ts, init=None, xs=bel.ts)[1],
             "M N -> N M",
         )
 

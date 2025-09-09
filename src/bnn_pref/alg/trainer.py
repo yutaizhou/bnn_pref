@@ -5,19 +5,19 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 import optax
-from flax.training.train_state import TrainState
 from jaxtyping import Key
 
+from bnn_pref.alg.agent_dropout import DropoutAgent, DropoutBeliefState
 from bnn_pref.alg.agent_ekf import EKFBeliefState, SubspaceEKF
 from bnn_pref.alg.agent_ensemble import DeepEnsemble, EnsembleBeliefState
 from bnn_pref.alg.agent_utils import Agent
 from bnn_pref.data.data_env import PreferenceEnv
-from bnn_pref.utils.network import RewardNet
+from bnn_pref.utils.network import RewardNet, RewardNet2
 from bnn_pref.utils.type import QueryData
 
 warnings.filterwarnings("ignore")
 
-AgentState = Union[EKFBeliefState, EnsembleBeliefState]
+AgentState = Union[EKFBeliefState, EnsembleBeliefState, DropoutBeliefState]
 
 """
 run_{ekf,ensemble}
@@ -41,6 +41,11 @@ def alg_pipeline(
 
     traj_shape = env.get_traj_shape()
     model = RewardNet(alg_cfg["hidden_sizes"], alg_cfg["n_splits"])
+    # model = RewardNet2(
+    #     alg_cfg["hidden_sizes"],
+    #     alg_cfg["n_splits"],
+    #     alg_cfg["dropout_prob"],
+    # )
     opt = optax.adam(alg_cfg["learning_rate"])
     cls_kwargs = alg_cls.get_hydra_config(alg_cfg)
     bandit = alg_cls(model, opt, traj_shape=traj_shape, **cls_kwargs)
@@ -201,13 +206,15 @@ def run_ensemble(key, cfg, data_dict, env):
     test_prefs = data_dict["test_prefs"]
 
     # * build + run ensemble alg
-    key, key_pipe = jr.split(key, 2)
+    key, key_pipe, key_eval = jr.split(key, 3)
     bel_trace, bandit = alg_pipeline(key_pipe, DeepEnsemble, env, alg_cfg, data_cfg)
-    ts_trace = bel_trace.ts
 
     # * compute metrics
-    def eval_bel(_, ts: TrainState):
-        prob_Q2 = bandit.compute_postpred(ts, test_trajs_obs, test_prefs.queries_Q2)
+    def eval_bel(_, bel: EnsembleBeliefState):
+        key = jr.fold_in(key_eval, bel.t)
+        prob_Q2 = bandit.compute_postpred(
+            key, bel, test_trajs_obs, test_prefs.queries_Q2
+        )
 
         # same as other algs
         pred_Q = prob_Q2.argmax(axis=1)
@@ -222,9 +229,54 @@ def run_ensemble(key, cfg, data_dict, env):
         }
         return (), result
 
-    *_, al_results = jax.lax.scan(eval_bel, init=(), xs=ts_trace)
+    *_, al_results = jax.lax.scan(eval_bel, init=(), xs=bel_trace)
 
-    model = jax.tree.map(lambda x: x[-1], ts_trace)  # get only the final model
+    model = jax.tree.map(lambda x: x[-1], bel_trace.ts)  # get only the final model
+    results = {
+        **al_results,  # (n_seeds, 1 + nq_update)
+        "param_count": bandit.param_count,
+        "ensemble_param_count": bandit.ensemble_param_count,
+        "model": model,
+    }
+    return results
+
+
+def run_dropout(key, cfg, data_dict, env):
+    data_cfg = cfg["data"]
+    alg_cfg = cfg["do"]
+    test_trajs_obs = data_dict["test_trajs"]["observations"]
+    test_prefs = data_dict["test_prefs"]
+
+    # * build + run ensemble alg
+    key, key_train, key_eval = jr.split(key, 3)
+    bel_trace, bandit = alg_pipeline(key_train, DropoutAgent, env, alg_cfg, data_cfg)
+
+    # * compute metrics
+    def eval_bel(_, bel: DropoutBeliefState):
+        key = jr.fold_in(key_eval, bel.t)
+        prob_Q2 = bandit.compute_postpred(
+            key, bel, test_trajs_obs, test_prefs.queries_Q2
+        )
+
+        # same as other algs
+        pred_Q = prob_Q2.argmax(axis=1)
+        test_acc = jnp.mean(pred_Q == test_prefs.responses_Q1.squeeze())
+        prob_Q1 = jnp.take_along_axis(prob_Q2, test_prefs.responses_Q1, axis=1)
+        test_logpdf = jnp.log(prob_Q1).mean()
+
+        # all arrays of (1 + nq_updates, )
+        result = {
+            "test_logpdf": test_logpdf,
+            "test_acc": test_acc,
+        }
+        return (), result
+
+    *_, al_results = jax.lax.scan(eval_bel, init=(), xs=bel_trace)
+
+    model = jax.tree.map(lambda x: x[-1], bel_trace.ts)  # get only the final model
+    # remove dropout key if it exists in trainstate
+    model = model.replace(dropout_key=jr.key_data(model.dropout_key))
+
     results = {
         **al_results,  # (n_seeds, 1 + nq_update)
         "param_count": bandit.param_count,

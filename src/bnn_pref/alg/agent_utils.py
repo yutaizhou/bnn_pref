@@ -1,11 +1,11 @@
 from abc import ABC, abstractmethod
-from typing import Callable, Dict, Tuple, Union
+from functools import partial
+from typing import Callable, Dict, Tuple
 
 import jax
 import jax.numpy as jnp
 import jax.random as jr
 import optax
-from flax import linen as nn
 from flax.training.train_state import TrainState
 from jax import jit, value_and_grad
 from jax.flatten_util import ravel_pytree
@@ -47,6 +47,10 @@ class Agent(ABC):
         pass
 
 
+class DropoutTrainState(TrainState):
+    dropout_key: jax.Array
+
+
 def sub2full_params_flat(
     params_subspace: Float[Array, "sub_dim"],
     proj_matrix: Float[Array, "sub_dim full_dim"],
@@ -66,9 +70,16 @@ def generate_random_basis(key, d: int, D: int):
     return P
 
 
-def bt_loss_fn(params, ts: TrainState, batch: QueryData, l2_reg: float = 0.0):
-    contexts_B2TD, labels_B2 = batch.contexts, batch.labels
-    logits_B2 = ts.apply_fn({"params": params}, contexts_B2TD)
+# def bt_loss_fn(params, ts: TrainState, batch: QueryData, l2_reg: float = 0.0):
+#     contexts_B2TD, labels_B2 = batch.contexts, batch.labels
+#     logits_B2 = ts.apply_fn({"params": params}, contexts_B2TD)
+#     loss = optax.softmax_cross_entropy(logits_B2, labels_B2).mean()
+#     params_flat, _ = ravel_pytree(params)
+#     l2_loss = l2_reg * (params_flat**2).sum()
+#     return loss + l2_loss, logits_B2
+
+
+def bt_loss_fn(params, logits_B2, labels_B2, l2_reg: float = 0.0):
     loss = optax.softmax_cross_entropy(logits_B2, labels_B2).mean()
     params_flat, _ = ravel_pytree(params)
     l2_loss = l2_reg * (params_flat**2).sum()
@@ -161,6 +172,7 @@ def run_sgd(
     get_param_trace: bool = False,
     n_models: int = 1,
     split_datastream: bool = False,
+    use_dropout: bool = False,
 ) -> Tuple[TrainState, Dict]:
     """
     Run SGD training for exactly niters steps, using for loop not scan
@@ -168,30 +180,84 @@ def run_sgd(
     supports:
     - single or batched trainstate for ensembles
     - same datastream for all models or different datastreams for each model
-    - bs == -1 for full-batch GD, otherwise mini-batch SGD (maybe not?)
+
     """
+    M = n_models
+    # if not use_dropout:
+    # def train_step(ts: TrainState, batch: QueryData) -> Tuple[TrainState, Dict]:
+    #     """unbatched ts and a single batch of data"""
+    #     grad_fn = jax.value_and_grad(loss_fn, has_aux=has_aux)
+    #     val, grads = grad_fn(ts.params, ts, batch, l2_reg)
+    #     loss = val[0] if has_aux else val
+    #     ts = ts.apply_gradients(grads=grads)
+    #     flat_params, _ = (
+    #         ravel_pytree(ts.params) if get_param_trace else (None, None)
+    #     )
+    #     return ts, {"loss": loss, "params": flat_params}
 
     def train_step(ts: TrainState, batch: QueryData) -> Tuple[TrainState, Dict]:
         """unbatched ts and a single batch of data"""
+        contexts_B2TD, labels_B2 = batch.contexts, batch.labels
+        logits_B2 = ts.apply_fn({"params": ts.params}, contexts_B2TD)
+
         grad_fn = jax.value_and_grad(loss_fn, has_aux=has_aux)
-        val, grads = grad_fn(ts.params, ts, batch, l2_reg)
+        val, grads = grad_fn(ts.params, logits_B2, labels_B2, l2_reg)
         loss = val[0] if has_aux else val
         ts = ts.apply_gradients(grads=grads)
         flat_params, _ = ravel_pytree(ts.params) if get_param_trace else (None, None)
         return ts, {"loss": loss, "params": flat_params}
 
-    N = len(dataset)  # note that N is not n_trajs, but n_queries in dataset
-    M = n_models
-    bs = batch_size
-    niters = niters
+    # else:
 
-    def get_batch_iter(key):
+    #     def train_step(
+    #         ts: DropoutTrainState, batch: QueryData
+    #     ) -> Tuple[DropoutTrainState, Dict]:
+    #         """unbatched ts and a single batch of data"""
+    #         key, key_dropout = jr.split(ts.dropout_key)
+    #         contexts_B2TD, labels_B2 = batch.contexts, batch.labels
+    #         logits_B2 = ts.apply_fn(
+    #             {"params": ts.params},
+    #             contexts_B2TD,
+    #             deterministic=False,
+    #             rngs={"dropout": key_dropout},
+    #         )
+    #         grad_fn = jax.value_and_grad(loss_fn, has_aux=has_aux)
+
+    #         val, grads = grad_fn(ts.params, logits_B2, labels_B2, l2_reg)
+    #         loss = val[0] if has_aux else val
+    #         ts = ts.apply_gradients(grads=grads)
+    #         ts = ts.replace(dropout_key=key)
+    #         flat_params, _ = (
+    #             ravel_pytree(ts.params) if get_param_trace else (None, None)
+    #         )
+    #         return ts, {"loss": loss, "params": flat_params}
+
+    def get_batch_iter(
+        key,
+        dataset: QueryData,
+        M: int,
+        niters: int,
+        bs: int,
+        split_datastream: bool,
+    ):
         """
-        Returns a generator over batches
-        - one model, one datastream: (niters, bs)
-        - ensemble model, shared datastream: (niters, bs); broadcasted over train_step
-        - ensemble model, split datastream: (niters, n_models, bs)
+        Returns a generator over batches from `dataset`. Supports two options with differing usecases.
+        - (niters, bs)
+            - one model, one datastream
+            - ensemble models, shared datastream, to be broadcasted over train_step(ts, batch)
+        - (niters, n_models, bs)
+            - ensemble models, split datastream
+
+        Args:
+            key: PRNGKey
+            dataset: QueryData = dataset to sample from
+            M: int = number of models
+            split_datastream: bool = whether to split the datastream into n_models
+            niters: int = number of iterations
+            bs: int = batch size
+
         """
+        N = len(dataset)
 
         def create_batches(key) -> Int[Array, "niters bs"]:
             """
@@ -256,7 +322,14 @@ def run_sgd(
 
     # * different model training cases:
     key, key_data = jr.split(key)
-    batch_iterator = get_batch_iter(key_data)
+    batch_iterator = get_batch_iter(
+        key_data,
+        dataset=dataset,
+        M=M,
+        niters=niters,
+        bs=batch_size,
+        split_datastream=split_datastream,
+    )
     if M > 1 and split_datastream:
         train_step = jax.vmap(train_step, in_axes=(0, 0))
     elif M > 1 and not split_datastream:

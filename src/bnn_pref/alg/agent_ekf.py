@@ -145,6 +145,7 @@ class SubspaceEKF(Agent):
             get_param_trace=True,
             n_models=1,
             split_datastream=False,
+            use_dropout=False,
         )
 
         params_trace = warm_metrics["params"][self.warm_burns :: self.thinning]
@@ -185,9 +186,10 @@ class SubspaceEKF(Agent):
             items_TD: Float[Array, "T D"],
         ) -> Float[Array, " "]:
             inputs = rearrange(items_TD, "T D -> 1 T D")
-            params = {"params": param}
             outputs = self.model.apply(
-                params, inputs, method=self.model.predict_traj_return
+                {"params": param},
+                inputs,
+                method=self.model.predict_traj_return,
             ).squeeze(0)
             return outputs
 
@@ -209,7 +211,7 @@ class SubspaceEKF(Agent):
             """
             params = sub2full_params(ss_param_flat)
             inputs = rearrange(inputs, "(K T D) -> 1 K T D", K=2, D=self.n_feats)
-            logits = self.model.apply({"params": params}, inputs)
+            logits = self.model.apply({"params": params}, inputs)  # (1,2,T,D) -> (1,2)
             logits = rearrange(logits, "1 K -> K", K=2)
             probs_2 = jnp.exp(jax.nn.log_softmax(logits))
             return probs_2
