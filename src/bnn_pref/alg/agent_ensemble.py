@@ -145,7 +145,6 @@ class DeepEnsemble(Agent):
     ) -> EnsembleBeliefState:
         return self.update_bel_all(key, bel, batch)
         # return self.update_bel_most_recent(key, bel, batch)
-        # return self.update_bel_old(key, bel, batch)
 
     # @partial(jax.jit, static_argnames=["self"])
     def update_bel_all(
@@ -189,17 +188,15 @@ class DeepEnsemble(Agent):
         bel = bel.replace(buffer=new_buffer)
         ds = bel.buffer.get_newest_n(n=1)
 
-        # def train_fn(ts, batch: QueryData):
-        #     grad_fn = jax.value_and_grad(bt_loss_fn, has_aux=True)
-        #     (loss, _), grads = grad_fn(ts.params, ts, batch, self.l2_reg)
-        #     ts = ts.apply_gradients(grads=grads)
-        #     return ts
-
         def train_fn(ts, batch: QueryData):
             contexts_B2TD, labels_B2 = batch.contexts, batch.labels
-            logits_B2 = ts.apply_fn({"params": ts.params}, contexts_B2TD)
-            grad_fn = jax.value_and_grad(bt_loss_fn, has_aux=True)
-            (loss, _), grads = grad_fn(ts.params, logits_B2, labels_B2, self.l2_reg)
+
+            def parameterized_loss(params):
+                logits_B2 = ts.apply_fn({"params": params}, contexts_B2TD)
+                return bt_loss_fn(params, logits_B2, labels_B2, self.l2_reg)
+
+            grad_fn = jax.value_and_grad(parameterized_loss, has_aux=True)
+            (loss, _), grads = grad_fn(ts.params)
             ts = ts.apply_gradients(grads=grads)
             return ts
 
@@ -212,108 +209,6 @@ class DeepEnsemble(Agent):
 
         bel = bel.replace(ts=ts, t=bel.t + 1)
         return bel
-
-    # @partial(jax.jit, static_argnames=["self"])
-    def update_bel_old(
-        self,
-        key,  # currently unused, static shape not compatible with scan epoch shuffle
-        bel: EnsembleBeliefState,
-        batch: QueryData,
-    ) -> EnsembleBeliefState:
-        """
-        Old implementation, do not use.
-
-        Training cases: bs = 1 for all cases
-        n_epochs=0: 1 query   1 sgd step:    niters=1
-        n_epochs=1: Q queries 1 sgd epoch:   niters=Q
-        n_epochs>1: Q queries M sgd epochs:  niters=Q * M
-
-        n_valids masking for batch manager is required for jit w/ dynamically sized buffer
-        """
-        new_buffer = bel.buffer.add_samples(batch)
-        bel = bel.replace(buffer=new_buffer)
-        key, key_sgd = jr.split(key)
-        bs = 1  # always train on 1 query at a time
-
-        if self.n_epochs == 0:
-            # train only on the newest query, only 1 sgd step
-            ds = bel.buffer.get_newest_n(n=1)
-
-            def train_fn(ts, batch: QueryData):
-                grad_fn = jax.value_and_grad(bt_loss_fn, has_aux=True)
-                (loss, _), grads = grad_fn(ts.params, ts, batch, self.l2_reg)
-                ts = ts.apply_gradients(grads=grads)
-                return ts
-
-            if self.use_vmap:
-                grad_fn = jax.vmap(train_fn, in_axes=(0, None))  # vmap over ts
-                ts = grad_fn(bel.ts, ds)
-            else:
-                grad_fn = partial(train_fn, batch=ds)
-                ts = jax.lax.map(grad_fn, bel.ts)
-
-            bel = bel.replace(ts=ts, t=bel.t + 1)
-            return bel
-
-        else:
-            ds = bel.buffer.get_all()
-            n_valids = len(ds)
-            # jax.debug.print("n_valids: {n_valids}", n_valids=n_valids)
-
-            def train_fn(
-                key,
-                ts: TrainState,
-                dataset: QueryData,
-                n_valids: int,
-            ) -> TrainState:
-                """
-                lax.scan for epochs, lax.while for iterations within each epoch
-                one iteration per valid query.
-                """
-                key, *keys_epochs = jr.split(key, 1 + self.n_epochs)
-                keys_epochs = jnp.array(keys_epochs)
-
-                def scan_fn(carry, key_epoch):
-                    ts, epoch = carry
-                    ds_e = dataset  # todo shuffle only the valid queries
-
-                    def body_fn(carry: Tuple[TrainState, int]):
-                        ts, itr = carry
-
-                        batch = QueryData(
-                            contexts=lax.dynamic_slice_in_dim(ds_e.contexts, itr, bs),
-                            labels=lax.dynamic_slice_in_dim(ds_e.labels, itr, bs),
-                        )
-                        grad_fn = jax.value_and_grad(bt_loss_fn, has_aux=True)
-                        (loss, _), grads = grad_fn(ts.params, ts, batch, self.l2_reg)
-                        ts = ts.apply_gradients(grads=grads)
-                        return (ts, itr + 1)
-
-                    def cond_fn(carry: Tuple[TrainState, int]):
-                        ts, itr = carry
-                        return itr < n_valids
-
-                    init_itr_val = (ts, 0)  # (ts, itr)
-                    ts, itr = jax.lax.while_loop(cond_fn, body_fn, init_itr_val)
-                    return (ts, epoch + 1), itr
-
-                init_epoch_val = (ts, 0)  # (ts, epoch)
-                (ts, epochs), itrs = jax.lax.scan(
-                    scan_fn, init=init_epoch_val, xs=keys_epochs
-                )
-                # jax.debug.print("epochs: {epochs}", epochs=epochs)
-                # jax.debug.print("itrs: {itrs}", itrs=itrs)
-                return ts
-
-            sgd_fn = partial(train_fn, dataset=ds, n_valids=n_valids)
-
-            if self.use_vmap:  # vmap over ts
-                ts = jax.vmap(sgd_fn, in_axes=(None, 0))(key_sgd, bel.ts)
-            else:
-                ts = jax.lax.map(partial(sgd_fn, key_sgd), bel.ts)
-
-            bel = bel.replace(ts=ts, t=bel.t + 1)
-            return bel
 
     @partial(jax.jit, static_argnames=["self", "env"])
     def compute_next_query(

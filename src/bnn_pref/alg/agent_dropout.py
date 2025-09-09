@@ -137,7 +137,7 @@ class DropoutAgent(Agent):
             batch_size=self.batch_size,
             l2_reg=self.l2_reg,
             get_param_trace=False,
-            M=1,
+            n_models=1,
             use_dropout=True,
         )
 
@@ -174,7 +174,7 @@ class DropoutAgent(Agent):
             batch_size=self.batch_size,
             l2_reg=self.l2_reg,
             get_param_trace=False,
-            M=1,
+            n_models=1,
             use_dropout=True,
         )
         bel = bel.replace(ts=ts, t=bel.t + 1)
@@ -195,14 +195,18 @@ class DropoutAgent(Agent):
         def train_step(ts, batch: QueryData):
             key, key_dropout = jr.split(ts.dropout_key)
             contexts_B2TD, labels_B2 = batch.contexts, batch.labels
-            logits_B2 = ts.apply_fn(
-                {"params": ts.params},
-                contexts_B2TD,
-                deterministic=False,
-                rngs={"dropout": key_dropout},
-            )
-            grad_fn = jax.value_and_grad(bt_loss_fn, has_aux=True)
-            (loss, _), grads = grad_fn(ts.params, logits_B2, labels_B2, self.l2_reg)
+
+            def parameterized_loss(params):
+                logits_B2 = ts.apply_fn(
+                    {"params": params},
+                    contexts_B2TD,
+                    deterministic=False,
+                    rngs={"dropout": key_dropout},
+                )
+                return bt_loss_fn(params, logits_B2, labels_B2, self.l2_reg)
+
+            grad_fn = jax.value_and_grad(parameterized_loss, has_aux=True)
+            (loss, _), grads = grad_fn(ts.params)
             ts = ts.apply_gradients(grads=grads)
             ts = ts.replace(dropout_key=key)
             return ts

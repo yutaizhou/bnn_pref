@@ -40,12 +40,12 @@ def alg_pipeline(
         # print(f"WARNING: {nq_init=} < {bs=}, setting alg_cfg.bs = 1")
 
     traj_shape = env.get_traj_shape()
-    model = RewardNet(alg_cfg["hidden_sizes"], alg_cfg["n_splits"])
-    # model = RewardNet2(
-    #     alg_cfg["hidden_sizes"],
-    #     alg_cfg["n_splits"],
-    #     alg_cfg["dropout_prob"],
-    # )
+    # model = RewardNet(alg_cfg["hidden_sizes"], alg_cfg["n_splits"])
+    model = RewardNet2(
+        alg_cfg["hidden_sizes"],
+        alg_cfg["n_splits"],
+        alg_cfg["dropout_prob"],
+    )
     opt = optax.adam(alg_cfg["learning_rate"])
     cls_kwargs = alg_cls.get_hydra_config(alg_cfg)
     bandit = alg_cls(model, opt, traj_shape=traj_shape, **cls_kwargs)
