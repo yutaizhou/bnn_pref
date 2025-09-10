@@ -208,6 +208,10 @@ def create_pref_data(
     bt_beta: float = 1.0,
     # mistake_prob: float = 0.0,  # label flip mistake (not rly used)
 ) -> QueryIndexAndResponses:
+    """
+    Fast vectorized version of create_pref_data_old.
+    """
+
     n_demos = len(ranked_returns)
     n_queries = n_queries if n_queries != -1 else math.comb(n_demos, 2)
     # iterator = random_query_iter_perm if n_demos <= 1000 else random_query_iter_sample

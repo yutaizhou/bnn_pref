@@ -13,12 +13,12 @@ TASKS=(
     # "penHuman"
     # "penExpert"
     # "penCloned"
-    # "mazeUDense"
-    # "mazeMediumDense"
-    # "mazeLargeDense"
     # "kitchenComplete"
     # "kitchenPartial"
     # "kitchenMixed"
+    # "mazeUDense"
+    # "mazeMediumDense"
+    # "mazeLargeDense"
 )
 TASK_LIST=$(IFS=,; echo "${TASKS[*]}")
 

@@ -1,32 +1,33 @@
 #!/bin/bash
 
-# TASKS=(
-#     "cheetahRandom"
-#     "cheetahMediumReplay"
-#     "cheetahMediumExpert"
-#     "hopperRandom"
-#     "hopperMediumReplay"
-#     "hopperMediumExpert"
-#     "walkerRandom"
-#     "walkerMediumReplay"
-#     "walkerMediumExpert"
-#     "penHuman"
-#     "penExpert"
-#     "penCloned"
-#     "mazeUDense"
-#     "mazeMediumDense"
-#     "mazeLargeDense"
-#     "kitchenComplete"
-#     "kitchenPartial"
-#     "kitchenMixed"
-# )
-# TASK_LIST=$(IFS=,; echo "${TASKS[*]}")
+TASKS=(
+    "cheetahRandom"
+    "cheetahMediumReplay"
+    "cheetahMediumExpert"
+    "hopperRandom"
+    "hopperMediumReplay"
+    "hopperMediumExpert"
+    "walkerRandom"
+    "walkerMediumReplay"
+    "walkerMediumExpert"
+    "penHuman"
+    "penExpert"
+    "penCloned"
+    "kitchenComplete"
+    "kitchenPartial"
+    "kitchenMixed"
+    "mazeUDense"
+    "mazeMediumDense"
+    "mazeLargeDense"
+)
+TASK_LIST=$(IFS=,; echo "${TASKS[*]}")
 
-# this script runs through all product(task, alg, is_al) in sequence
-python scripts/sweep_tasks_alg.py \
-    -m seed=-1 seeds=5 seed_vmap=False \
+
+# this runs through product (alg, is_al) in sequence, for each task
+python scripts/run_rm.py \
+    -m seed=-1 seeds=5 \
+    task=$TASK_LIST \
     data.nq_train=50000 \
     data.nq_update=60 \
     sgd.max_buffer_size=500 \
-    sgd.n_epochs=0 \
     hydra/launcher=slurm

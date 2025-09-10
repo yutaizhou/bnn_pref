@@ -164,6 +164,7 @@ def run_sgd(
     n_models: int = 1,
     split_datastream: bool = False,
     use_dropout: bool = False,
+    use_vmap: bool = True,
 ) -> Tuple[TrainState, Dict]:
     """
     Run SGD training for exactly niters steps, using for loop not scan
@@ -231,10 +232,13 @@ def run_sgd(
         split_datastream=split_datastream,
     )
     if n_models > 1 and split_datastream:
+        # (niters, n_models, bs)
         train_step = jax.vmap(train_step, in_axes=(0, 0))
     elif n_models > 1 and not split_datastream:
+        # (niters, bs)
         train_step = jax.vmap(train_step, in_axes=(0, None))
     else:
+        # (niters, bs)
         train_step = train_step
 
     # * start training
