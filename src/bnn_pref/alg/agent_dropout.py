@@ -1,14 +1,13 @@
 from functools import partial
-from typing import NamedTuple, Tuple
+from typing import Tuple
 
-import flax
 import jax
 import jax.numpy as jnp
 import jax.random as jr
 import optax
 from einops import rearrange
 from flax import linen as nn
-from jaxtyping import Array, Float, Int, Scalar
+from jaxtyping import Array, Float, Int
 
 from bnn_pref.alg.agent_utils import (
     Agent,
@@ -62,6 +61,7 @@ class DropoutAgent(Agent):
         chunk_size: int = 64,
         use_vmap: bool = True,  # for training update_bel in {init,update}_bel
         acq: str = "disagreement",
+        update_all: bool = True,
     ):
         self.traj_shape = traj_shape
         self.n_models = n_models
@@ -76,6 +76,7 @@ class DropoutAgent(Agent):
         self.max_buffer_size = max_buffer_size
         assert acq in ["disagreement", "infogain"]
         self.acq = acq
+        self.update_all = update_all
 
         # * prepare ensemble predictors
         def pred_return(
@@ -107,6 +108,7 @@ class DropoutAgent(Agent):
             "batch_size": do_cfg["bs"],
             "l2_reg": do_cfg["l2_reg"],
             # update
+            "update_all": do_cfg["update_all"],
             "niters_update": do_cfg["niters_update"],
             # ensembling
             "n_models": do_cfg["M"],
@@ -146,7 +148,10 @@ class DropoutAgent(Agent):
     def update_bel(
         self, key, bel: DropoutBeliefState, batch: QueryData
     ) -> DropoutBeliefState:
-        return self.update_bel_all(key, bel, batch)
+        if self.update_all:
+            return self.update_bel_all(key, bel, batch)
+        else:
+            return self.update_bel_most_recent(key, bel, batch)
         # return self.update_bel_most_recent(key, bel, batch)
 
     # @partial(jax.jit, static_argnames=["self"])
@@ -209,12 +214,7 @@ class DropoutAgent(Agent):
             ts = ts.replace(dropout_key=key)
             return ts
 
-        if self.use_vmap:
-            grad_fn = jax.vmap(train_step, in_axes=(0, None))  # vmap over ts
-            ts = grad_fn(bel.ts, ds)
-        else:
-            grad_fn = partial(train_step, batch=ds)
-            ts = jax.lax.map(grad_fn, bel.ts)
+        ts = train_step(bel.ts, ds)
 
         bel = bel.replace(ts=ts, t=bel.t + 1)
         return bel

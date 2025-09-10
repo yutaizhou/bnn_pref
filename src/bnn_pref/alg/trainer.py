@@ -52,6 +52,7 @@ def run_alg(key, alg: str, cfg, data_dict, env):
         pred_Q = prob_Q2.argmax(axis=1)
         test_acc = jnp.mean(pred_Q == test_prefs.responses_Q1.squeeze())
         prob_Q1 = jnp.take_along_axis(prob_Q2, test_prefs.responses_Q1, axis=1)
+        prob_Q1 = jnp.clip(prob_Q1, a_min=1e-7, a_max=1 - 1e-7)  # numerical stability
         test_logpdf = jnp.log(prob_Q1).mean()
 
         # all arrays of (1 + nq_updates, )

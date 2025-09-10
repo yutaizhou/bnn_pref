@@ -27,7 +27,7 @@ TASK_LIST=$(IFS=,; echo "${TASKS[*]}")
 python scripts/run_rm.py \
     -m seed=-1 seeds=5 \
     task=$TASK_LIST \
-    data.nq_train=50000 \
+    data.nq_train=100000 \
     data.nq_update=60 \
     sgd.max_buffer_size=500 \
     hydra/launcher=slurm

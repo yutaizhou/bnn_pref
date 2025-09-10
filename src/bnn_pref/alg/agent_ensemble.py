@@ -1,7 +1,6 @@
 from functools import partial
-from typing import NamedTuple, Tuple
+from typing import Tuple
 
-import flax
 import jax
 import jax.numpy as jnp
 import jax.random as jr
@@ -9,7 +8,6 @@ import optax
 from einops import rearrange
 from flax import linen as nn
 from flax.training.train_state import TrainState
-from jax import lax
 from jaxtyping import Array, Float, Int, Scalar
 
 from bnn_pref.alg.agent_utils import (
@@ -60,6 +58,7 @@ class EnsembleAgent(Agent):
         chunk_size: int = 64,
         use_vmap: bool = True,  # for training update_bel in {init,update}_bel
         acq: str = "disagreement",
+        update_all: bool = True,
     ):
         self.traj_shape = traj_shape
         self.n_models = n_models
@@ -74,6 +73,7 @@ class EnsembleAgent(Agent):
         self.max_buffer_size = max_buffer_size
         assert acq in ["disagreement", "infogain"]
         self.acq = acq
+        self.update_all = update_all
 
         # * prepare ensemble predictors
         def pred_return(ts: TrainState, x: Float[Array, "T D"]) -> Float[Array, " "]:
@@ -98,6 +98,7 @@ class EnsembleAgent(Agent):
             "batch_size": sgd_cfg["bs"],
             "l2_reg": sgd_cfg["l2_reg"],
             # update
+            "update_all": sgd_cfg["update_all"],
             "niters_update": sgd_cfg["niters_update"],
             # ensembling
             "n_models": sgd_cfg["M"],
@@ -144,8 +145,10 @@ class EnsembleAgent(Agent):
     def update_bel(
         self, key, bel: EnsembleBeliefState, batch: QueryData
     ) -> EnsembleBeliefState:
-        return self.update_bel_all(key, bel, batch)
-        # return self.update_bel_most_recent(key, bel, batch)
+        if self.update_all:
+            return self.update_bel_all(key, bel, batch)
+        else:
+            return self.update_bel_most_recent(key, bel, batch)
 
     # @partial(jax.jit, static_argnames=["self"])
     def update_bel_all(

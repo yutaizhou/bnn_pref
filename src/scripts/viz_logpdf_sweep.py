@@ -5,11 +5,8 @@ For aggregated logpdf plots over all tasks and seeds, per each algorithm variant
 import itertools as it
 import logging
 import os
-import re
 from collections import defaultdict
 from datetime import datetime
-from functools import partial
-from typing import Tuple
 
 import ipdb
 
@@ -17,15 +14,9 @@ os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
 os.environ["DISABLE_CODESIGN_WARNING"] = "1"
 logging.getLogger("absl").setLevel(logging.WARNING)
 
-import hydra
-import jax
 import jax.numpy as jnp
-import jax.random as jr
 import matplotlib.pyplot as plt
 import numpy as np
-import orbax.checkpoint as ocp
-from flax.training import orbax_utils
-from hydra.core.hydra_config import HydraConfig
 
 from bnn_pref.utils.plotting import (
     get_font_kw,
@@ -38,19 +29,8 @@ from bnn_pref.utils.plotting import (
 )
 
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
 tasks = [
-    # * gym
-    # "reacher",
-    # "lunar",
-    # "cheetah",
-    # # * Deepmind Control
-    # "acrobot",
-    # "ball",
-    # "cartpoleSwing",
-    # "cheetahDMC",
-    # "hopperHop",
-    # "pendulum",
-    # "walkerWalk",
     # # * D4RL
     # "cheetahRandom",
     "cheetahMediumReplay",
@@ -61,7 +41,7 @@ tasks = [
     "walkerRandom",
     "walkerMediumReplay",
     "walkerMediumExpert",
-    "penHuman",
+    # "penHuman",
     "penExpert",
     # "penCloned",
     # "kitchenComplete",
@@ -71,28 +51,61 @@ tasks = [
     "mazeMediumDense",
     # "mazeLargeDense",
 ]
-algs = ["ekf", "sgd"]
+
+# tasks = [
+#     # # * D4RL
+#     "cheetahRandom",
+#     "cheetahMediumReplay",
+#     "cheetahMediumExpert",
+#     "hopperRandom",
+#     "hopperMediumReplay",
+#     "hopperMediumExpert",
+#     "walkerRandom",
+#     "walkerMediumReplay",
+#     "walkerMediumExpert",
+#     "penHuman",
+#     "penExpert",
+#     "penCloned",
+#     "kitchenComplete",
+#     "kitchenPartial",
+#     "kitchenMixed",
+#     "mazeUDense",
+#     "mazeMediumDense",
+#     "mazeLargeDense",
+# ]
+
+algs = ["ekf", "sgd", "do"]
 is_als = [True, False]
 
 use_smooth = True
 
-# * == change this block ==
+# * == vv change this block vv ==
 # save_dir: where to save
 # dirp: where to load
-save_dir = "/scr/yutaizho/projects/bnn_pref/_viz/logpdf"  # where to save
-dirp = "/scr/yutaizho/projects/bnn_pref/_runs/pref/20250501_002234_rm_d4rl_18tasks"  # where to load
-# * == change this block ==
+dirp = "/scr/yutaizho/projects/bnn_pref/results_sweep/pref/20250910_051334"  # where to load
+dirp = "/scr/yutaizho/projects/bnn_pref/results_sweep/pref/20250910_155616"
+# save_dir = "/scr/yutaizho/projects/bnn_pref/_viz/logpdf"  # where to save
+save_dir = dirp
+# * == ^^ change this block ^^ ==
 
-out = np.load(f"{dirp}/stats.npz", allow_pickle=True)
+
+# stats["cheetahRandom"]["ekf"][False]["test_logpdf_all"] = (n_seeds, n_steps)
+stats = {}
+for task in tasks:
+    for folder in os.listdir(dirp):
+        if f"task={task}" in folder:
+            path = os.path.join(dirp, folder, "stats.npz")
+            stats[task] = np.load(path, allow_pickle=True)[task].item()
+
 
 test_logpdf_all = defaultdict(lambda: list())
 for alg, is_al in it.product(algs, is_als):
     for task in tasks:
-        res = out[task].item()[alg][is_al]
+        res = stats[task][alg][is_al]
         test_logpdf_all[f"{alg}_{is_al}"].append(res["test_logpdf_all"])
 
 test_logpdf_all = {k: np.array(v) for k, v in test_logpdf_all.items()}
-# dict[alg_is_al] = (n_tasks, seeds, steps)
+# dict[alg_is_al] = (n_tasks, seeds, steps); e.g. dict["ekf_True"]
 
 # * aggregate over tasks and seeds
 test_logpdf_aggregate = {}
@@ -104,17 +117,29 @@ for alg, is_al in it.product(algs, is_als):
 def get_label(alg: str, is_al: bool) -> str:
     if alg == "ekf":
         return "PreferenceEKF (Active)" if is_al else "PreferenceEKF (Random)"
-    else:
+    elif alg == "sgd":
         return "DeepEnsemble (Active)" if is_al else "DeepEnsemble (Random)"
+    elif alg == "do":
+        return "Dropout (Active)" if is_al else "Dropout (Random)"
+    else:
+        raise ValueError(f"Invalid algorithm: {alg}")
 
 
 def get_style(alg: str, is_al: bool) -> dict:
-    color = rgb_values["orange"] if alg == "ekf" else rgb_values["blue"]
+    if alg == "ekf":
+        color = rgb_values["orange"]
+    elif alg == "sgd":
+        color = rgb_values["blue"]
+    elif alg == "do":
+        color = rgb_values["green"]
+    else:
+        raise ValueError(f"Invalid algorithm: {alg}")
     linestyle = "-" if is_al else "--"
     return {"color": color, "linestyle": linestyle}
 
 
-fig, axs = plt.subplots(3, 4, figsize=(12, 7.5), sharex=True)
+# fig, axs = plt.subplots(3, 4, figsize=(12, 7.5), sharex=True)
+fig, axs = plt.subplots(5, 4, figsize=(12, 15), sharex=True)
 axs = axs.flatten()
 
 for i, task in enumerate(tasks):
@@ -162,6 +187,8 @@ dummy_lines = [
     plt.plot([], [], **get_style("ekf", False), label=get_label("ekf", False))[0],
     plt.plot([], [], **get_style("sgd", True), label=get_label("sgd", True))[0],
     plt.plot([], [], **get_style("sgd", False), label=get_label("sgd", False))[0],
+    plt.plot([], [], **get_style("do", True), label=get_label("do", True))[0],
+    plt.plot([], [], **get_style("do", False), label=get_label("do", False))[0],
 ]
 fig.supxlabel("Number of Queries", **get_font_kw(16))
 fig.supylabel("Test Log-Likelihood", **get_font_kw(16))
@@ -172,10 +199,12 @@ fig.legend(
         get_label("ekf", False),
         get_label("sgd", True),
         get_label("sgd", False),
+        get_label("do", True),
+        get_label("do", False),
     ],
     loc="lower center",
     bbox_to_anchor=(0.5, -0.08),
-    ncol=4,
+    ncol=3,
     handlelength=2,
     **get_legend_kw(16),
 )
