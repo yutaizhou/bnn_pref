@@ -148,6 +148,7 @@ class EKFAgent(Agent):
             use_dropout=False,
         )
 
+        # (niters, full_dim)
         params_trace = warm_metrics["params"][self.warm_burns :: self.thinning]
 
         if self.rnd_proj:

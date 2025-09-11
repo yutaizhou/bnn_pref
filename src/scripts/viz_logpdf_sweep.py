@@ -5,6 +5,7 @@ For aggregated logpdf plots over all tasks and seeds, per each algorithm variant
 import itertools as it
 import logging
 import os
+import sys
 from collections import defaultdict
 from datetime import datetime
 
@@ -12,6 +13,7 @@ import ipdb
 
 os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
 os.environ["DISABLE_CODESIGN_WARNING"] = "1"
+os.environ["JAX_PLATFORM_NAME"] = "cpu"
 logging.getLogger("absl").setLevel(logging.WARNING)
 
 import matplotlib.pyplot as plt
@@ -31,7 +33,7 @@ timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
 tasks = [
     # # * D4RL
-    # "cheetahRandom",
+    "cheetahRandom",
     "cheetahMediumReplay",
     "cheetahMediumExpert",
     "hopperRandom",
@@ -41,52 +43,48 @@ tasks = [
     "walkerMediumReplay",
     "walkerMediumExpert",
     # "penHuman",
-    "penExpert",
+    # "penExpert",
     # "penCloned",
-    # "kitchenComplete",
-    # "kitchenPartial",
-    # "kitchenMixed",
+    "kitchenComplete",
+    "kitchenPartial",
+    "kitchenMixed",
     "mazeUDense",
     "mazeMediumDense",
     # "mazeLargeDense",
 ]
 
-# tasks = [
-#     # # * D4RL
-#     "cheetahRandom",
-#     "cheetahMediumReplay",
-#     "cheetahMediumExpert",
-#     "hopperRandom",
-#     "hopperMediumReplay",
-#     "hopperMediumExpert",
-#     "walkerRandom",
-#     "walkerMediumReplay",
-#     "walkerMediumExpert",
-#     "penHuman",
-#     "penExpert",
-#     "penCloned",
-#     "kitchenComplete",
-#     "kitchenPartial",
-#     "kitchenMixed",
-#     "mazeUDense",
-#     "mazeMediumDense",
-#     "mazeLargeDense",
-# ]
+tasks = [
+    # # * D4RL
+    "cheetahRandom",
+    "cheetahMediumReplay",
+    "cheetahMediumExpert",
+    "hopperRandom",
+    "hopperMediumReplay",
+    "hopperMediumExpert",
+    "walkerRandom",
+    "walkerMediumReplay",
+    "walkerMediumExpert",
+    "penHuman",
+    "penExpert",
+    "penCloned",
+    "kitchenComplete",
+    # "kitchenPartial",
+    "kitchenMixed",
+    "mazeUDense",
+    "mazeMediumDense",
+    "mazeLargeDense",
+]
 
 algs = ["ekf", "sgd", "do"]
 is_als = [True, False]
+n_tasks = len(tasks)
 
 use_smooth = True
 
 # * == vv change this block vv ==
 # save_dir: where to save
 # dirp: where to load
-dirp = "/scr/yutaizho/projects/bnn_pref/results_sweep/pref/20250910_051334"  # where to load
-dirp = "/scr/yutaizho/projects/bnn_pref/results_sweep/pref/20250910_155616"
-dirp = "/scr/yutaizho/projects/bnn_pref/results_sweep/pref/20250910_165026_updateAll=False_lr=0.001"
-dirp = "/scr/yutaizho/projects/bnn_pref/results_sweep/pref/20250910_202559_updateAll=True_lr=0.0003_ekfM=100"
-dirp = "/scr/yutaizho/projects/bnn_pref/results_sweep/pref/20250910_211702_updateAll=True_niters=1epoch_lr=0.0001_ekfM=100"
-dirp = "/scr/yutaizho/projects/bnn_pref/results_sweep/pref/20250910_221157_updateAll=True_niters=1epoch_lr=0.0003_allDisagreement"
+dirp = sys.argv[1]
 # save_dir = "/scr/yutaizho/projects/bnn_pref/_viz/logpdf"  # where to save
 save_dir = dirp
 # * == ^^ change this block ^^ ==
@@ -212,7 +210,7 @@ fig.legend(
     **get_legend_kw(16),
 )
 plt.tight_layout(rect=[0, 0.03, 1, 1])
-save_path = f"{save_dir}/logpdf_{timestamp}.png"
+save_path = f"{save_dir}/logpdf_{timestamp}_nTasks={n_tasks}.png"
 plt.savefig(save_path, bbox_inches="tight", dpi=300)
 plt.close()
 print(f"Plot saved as: {save_path}")
@@ -289,7 +287,7 @@ ax.set_yticklabels([f"{y:.2f}" for y in yticks], **get_font_kw(16))
 
 # ax.set_title("Test Log-Likelihood Across Tasks", **get_font_kw(13))
 ax.legend(**get_legend_kw(18), loc="lower right")
-save_path = f"{save_dir}/logpdf_{timestamp}_agg.png"
+save_path = f"{save_dir}/logpdf_{timestamp}_nTasks={n_tasks}_agg.png"
 plt.savefig(save_path, bbox_inches="tight", dpi=300)
 plt.close()
 

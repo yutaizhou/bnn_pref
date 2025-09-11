@@ -20,6 +20,7 @@ from hydra.core.hydra_config import HydraConfig
 from bnn_pref.alg.trainer import run_alg
 from bnn_pref.data import dataset_creators
 from bnn_pref.data.data_env import PreferenceEnv
+from bnn_pref.data.pref_utils import modify_queries
 from bnn_pref.utils.hydra_resolvers import *
 from bnn_pref.utils.metrics import MeanStd
 from bnn_pref.utils.print_utils import get_param_count_msg
@@ -96,6 +97,15 @@ def main(cfg):
     nt_test = test_trajs["observations"].shape[0]
     nq_train = train_prefs.queries_Q2.shape[0]
     nq_test = test_prefs.queries_Q2.shape[0]
+
+    n_dups = 0
+    if cfg["sanity"]:
+        train_prefs, n_dups = modify_queries(
+            train_prefs,
+            real_frac=cfg["sanity_frac"],
+            nq_train=nq_train,
+            nq_init=nq_init,
+        )
 
     mislabel_ratio = train_prefs.n_mislabels / nq_train
     # get hydra choice override name

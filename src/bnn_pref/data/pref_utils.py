@@ -2,7 +2,7 @@ import itertools as it
 import math
 import time
 from functools import partial
-from typing import Callable, NamedTuple
+from typing import Callable, Tuple
 
 import jax
 import jax.numpy as jnp
@@ -266,6 +266,35 @@ def create_pref_data(
         n_mislabels = jr.permutation(subkey, flip_mask)[:n_queries].sum()
 
     return QueryIndexAndResponses(queries, labels, n_mislabels)
+
+
+def modify_queries(
+    pref_data: QueryIndexAndResponses,
+    real_frac: float,
+    nq_train: int,
+    nq_init: int,
+) -> Tuple[QueryIndexAndResponses, int]:
+    """
+    Sanity check for active learning acquisition functions
+    Modify all queries past nq_init: `real_frac` real, and rest duplicate.
+    In the query pool (past nq_init), take the last `n_reals`th query and duplicate it.
+    This should hinder performance of random querying, but not active querying.
+    """
+    queries_Q2, responses_Q1 = pref_data.queries_Q2, pref_data.responses_Q1
+    pool_size = nq_train - nq_init
+    n_dups = int(pool_size * (1 - real_frac))
+    n_reals = pool_size - n_dups
+    dup_queries = jnp.tile(queries_Q2[nq_init + n_reals], (n_dups, 1))
+    dup_responses = jnp.tile(responses_Q1[nq_init + n_reals], (n_dups, 1))
+    new_queries_Q2 = queries_Q2.at[-n_dups:].set(dup_queries)
+    new_responses_Q1 = responses_Q1.at[-n_dups:].set(dup_responses)
+
+    new_pref_data = pref_data.replace(
+        queries_Q2=new_queries_Q2,
+        responses_Q1=new_responses_Q1,
+    )
+
+    return new_pref_data, n_dups
 
 
 if __name__ == "__main__":

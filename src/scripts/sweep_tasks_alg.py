@@ -3,7 +3,6 @@ import logging
 import os
 from datetime import datetime
 from functools import partial
-from typing import Tuple
 
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
@@ -17,12 +16,11 @@ import jax.random as jr
 import matplotlib.pyplot as plt
 import orbax.checkpoint as ocp
 from flax.training import orbax_utils
-from hydra.core.hydra_config import HydraConfig
 
 from bnn_pref.alg.trainer import run_alg
 from bnn_pref.data import dataset_creators
 from bnn_pref.data.data_env import PreferenceEnv
-from bnn_pref.data.pref_utils import QueryIndexAndResponses
+from bnn_pref.data.pref_utils import modify_queries
 from bnn_pref.utils.hydra_resolvers import *
 from bnn_pref.utils.metrics import MeanStd
 from bnn_pref.utils.print_utils import get_param_count_msg
@@ -30,34 +28,6 @@ from bnn_pref.utils.utils import get_random_seed, nested_defaultdict, slurm_auto
 
 logging.getLogger("jax._src.xla_bridge").setLevel(logging.ERROR)
 jnp.set_printoptions(precision=2)
-
-
-def modify_queries(
-    pref_data: QueryIndexAndResponses,
-    real_frac: float,
-    nq_train: int,
-    nq_init: int,
-) -> Tuple[QueryIndexAndResponses, int]:
-    """
-    Sanity check for active learning acquisition functions
-    Modify all queries past nq_init: 5% real, and rest duplicate.
-    This should hinder performance of random querying, but not active querying.
-    """
-    queries_Q2, responses_Q1 = pref_data.queries_Q2, pref_data.responses_Q1
-    pool_size = nq_train - nq_init
-    n_dups = int(pool_size * (1 - real_frac))
-    n_reals = pool_size - n_dups
-    dup_queries = jnp.tile(queries_Q2[nq_init + n_reals], (n_dups, 1))
-    dup_responses = jnp.tile(responses_Q1[nq_init + n_reals], (n_dups, 1))
-    new_queries_Q2 = queries_Q2.at[-n_dups:].set(dup_queries)
-    new_responses_Q1 = responses_Q1.at[-n_dups:].set(dup_responses)
-
-    new_pref_data = pref_data.replace(
-        queries_Q2=new_queries_Q2,
-        responses_Q1=new_responses_Q1,
-    )
-
-    return new_pref_data, n_dups
 
 
 @hydra.main(version_base=None, config_name="configPref", config_path="../cfg")
