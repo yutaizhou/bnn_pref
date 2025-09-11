@@ -14,7 +14,6 @@ os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
 os.environ["DISABLE_CODESIGN_WARNING"] = "1"
 logging.getLogger("absl").setLevel(logging.WARNING)
 
-import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -84,6 +83,10 @@ use_smooth = True
 # dirp: where to load
 dirp = "/scr/yutaizho/projects/bnn_pref/results_sweep/pref/20250910_051334"  # where to load
 dirp = "/scr/yutaizho/projects/bnn_pref/results_sweep/pref/20250910_155616"
+dirp = "/scr/yutaizho/projects/bnn_pref/results_sweep/pref/20250910_165026_updateAll=False_lr=0.001"
+dirp = "/scr/yutaizho/projects/bnn_pref/results_sweep/pref/20250910_202559_updateAll=True_lr=0.0003_ekfM=100"
+dirp = "/scr/yutaizho/projects/bnn_pref/results_sweep/pref/20250910_211702_updateAll=True_niters=1epoch_lr=0.0001_ekfM=100"
+dirp = "/scr/yutaizho/projects/bnn_pref/results_sweep/pref/20250910_221157_updateAll=True_niters=1epoch_lr=0.0003_allDisagreement"
 # save_dir = "/scr/yutaizho/projects/bnn_pref/_viz/logpdf"  # where to save
 save_dir = dirp
 # * == ^^ change this block ^^ ==

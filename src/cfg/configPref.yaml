@@ -11,5 +11,5 @@ hydra:
     dir: ${paths.results_dir}/${now:%Y%m%d_%H%M%S}_nqu=${data.nq_update}
 
   sweep:
-    dir: ${paths.sweep_dir}/${now:%Y%m%d_%H%M%S}
-    subdir: ${hydra.job.num}_${hydra.job.override_dirname}
+    dir: ${paths.sweep_dir}/${now:%Y%m%d_%H%M%S}_updateAll=${update_all}_nitersUpdate=${niters_update}_lr=${learning_rate}_ekfM=${ekf.M}_ekfAcq=${ekf.acq}_acq=${acq}
+    subdir: ${hydra.job.num}_task=${hydra.runtime.choices.task}

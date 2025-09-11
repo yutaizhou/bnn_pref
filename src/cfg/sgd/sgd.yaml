@@ -4,8 +4,8 @@ active: ${..active}
 M: ${..M}
 use_vmap: True # turned off for scalability experiments. whether to use vectorized NN training & prediction
 chunk_size: ${..chunk_size}
-acq: "disagreement" # "infogain" or "disagreement"
-max_buffer_size: 500 # for SGD during update phase. keep it roughly around nq_updates
+acq: ${..acq} # "infogain" or "disagreement"
+max_buffer_size: ${..max_buffer_size} # for SGD during update phase. keep it roughly around nq_updates
 
 # * NN model
 hidden_sizes: ${network.hidden_sizes}
@@ -16,10 +16,12 @@ dropout_prob: 0.0
 bs: 1
 l2_reg: 0
 
-niters_init: 5  # Total number of GD steps on warmup data
+niters_init: ${..niters_init}  # Total number of GD steps on warmup data
 # update_all=True: updates for `niters_update` iterations on all queries seen so far in the buffer. 
 # update_all=False: updates one iteration on most recent query
 # make sure to adjust `learning_rate` according to update strategy
-update_all: True 
-niters_update: 65
-learning_rate: 0.0001
+# update_all: True 
+update_all: ${..update_all}
+niters_update: ${..niters_update}
+# learning_rate: 0.0001
+learning_rate: ${..learning_rate}
