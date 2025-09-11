@@ -14,7 +14,7 @@ dropout_prob: 0.0
 
 # * Init + Update
 bs: 1
-l2_reg: 0
+l2_reg: ${..l2_reg}
 
 niters_init: ${..niters_init}  # Total number of GD steps on warmup data
 # update_all=True: updates for `niters_update` iterations on all queries seen so far in the buffer. 

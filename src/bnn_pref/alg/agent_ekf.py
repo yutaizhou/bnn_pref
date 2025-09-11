@@ -51,7 +51,7 @@ class EKFAgent(Agent):
         opt: optax.GradientTransformation,
         traj_shape: Tuple[int, ...],  # kept for compat with Ensemble buffer
         l2_reg: float = 0.0,
-        niters: int = 420,
+        niters_init: int = 420,
         batch_size: int = 32,
         warm_burns: int = 1000,
         thinning: int = 2,
@@ -69,7 +69,7 @@ class EKFAgent(Agent):
         self.model = model
         self.opt = opt
         self.l2_reg = l2_reg
-        self.niters = niters
+        self.niters_init = niters_init
         self.batch_size = batch_size
         self.warm_burns = warm_burns
         self.thinning = thinning
@@ -84,7 +84,7 @@ class EKFAgent(Agent):
         self.chunk_size = chunk_size
         self.use_vmap = use_vmap
         if not rnd_proj:
-            n_eff_iterates = (niters - warm_burns) // thinning
+            n_eff_iterates = (niters_init - warm_burns) // thinning
             assert n_eff_iterates >= sub_dim, f"{n_eff_iterates=} < {sub_dim=}"
         assert acq in ["infogain", "disagreement"]
         self.acq = acq
@@ -95,7 +95,7 @@ class EKFAgent(Agent):
         return {
             "acq": ekf_cfg["acq"],
             # subspace init
-            "niters": ekf_cfg["niters"],
+            "niters_init": ekf_cfg["niters_init"],
             "batch_size": ekf_cfg["bs"],
             "l2_reg": ekf_cfg["l2_reg"],
             "warm_burns": ekf_cfg["warm_burns"],
@@ -139,7 +139,7 @@ class EKFAgent(Agent):
             dataset=warmup_data,
             loss_fn=bt_loss_fn,
             has_aux=True,
-            niters=self.niters,
+            niters=self.niters_init,
             batch_size=self.batch_size,
             l2_reg=self.l2_reg,
             get_param_trace=True,
@@ -148,7 +148,7 @@ class EKFAgent(Agent):
             use_dropout=False,
         )
 
-        # (niters, full_dim)
+        # (niters_init, full_dim)
         params_trace = warm_metrics["params"][self.warm_burns :: self.thinning]
 
         if self.rnd_proj:

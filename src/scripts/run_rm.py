@@ -51,7 +51,9 @@ def main(cfg):
 
     nq_train, nq_test = data_cfg["nq_train"], data_cfg["nq_test"]
     nq_init, nsteps = data_cfg["nq_init"], data_cfg["nsteps"]
-    n_eff_iterates = (ekf_cfg["niters"] - ekf_cfg["warm_burns"]) // ekf_cfg["thinning"]
+    n_eff_iterates = (ekf_cfg["niters_init"] - ekf_cfg["warm_burns"]) // ekf_cfg[
+        "thinning"
+    ]
 
     print(
         f"Run:\n"
@@ -66,7 +68,7 @@ def main(cfg):
         f"EKF:\n"
         f"  M={ekf_cfg['M']}, use_vmap={ekf_cfg['use_vmap']}\n"
         f"  prior / dynamics / obs noise: {ekf_cfg['prior_noise']} / {ekf_cfg['dynamics_noise']} / {ekf_cfg['obs_noise']}\n"
-        f"  init: bs={ekf_cfg['bs']}, niters={ekf_cfg['niters']}[{ekf_cfg['warm_burns']}::{ekf_cfg['thinning']}] ({n_eff_iterates} eff), sub_dim={ekf_cfg['sub_dim']}, rnd_proj={ekf_cfg['rnd_proj']}\n"
+        f"  init: bs={ekf_cfg['bs']}, niters={ekf_cfg['niters_init']}[{ekf_cfg['warm_burns']}::{ekf_cfg['thinning']}] ({n_eff_iterates} eff), sub_dim={ekf_cfg['sub_dim']}, rnd_proj={ekf_cfg['rnd_proj']}\n"
         f"Ensemble:\n"
         f"  M={sgd_cfg['M']}, use_vmap={sgd_cfg['use_vmap']}\n"
         f"  init: bs={sgd_cfg['bs']}, niters={sgd_cfg['niters_init']}\n"

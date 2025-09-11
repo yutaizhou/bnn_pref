@@ -29,13 +29,13 @@ def print_ekf_cfg(seed, cfg, length=None, n_feats=None):
     nq_init, nsteps = data_cfg["nq_init"], data_cfg["nsteps"]
     assert nsteps > 0, "nsteps must be positive"
 
-    niters = ekf_cls_cfg["niters"]
+    niters_init = ekf_cls_cfg["niters_init"]
     batch_size = ekf_cls_cfg["batch_size"]
     warm_burns = ekf_cls_cfg["warm_burns"]
     thinning = ekf_cls_cfg["thinning"]
     sub_dim = ekf_cls_cfg["sub_dim"]
     rnd_proj = ekf_cls_cfg["rnd_proj"]
-    n_eff_iterates = (niters - warm_burns) // thinning
+    n_eff_iterates = (niters_init - warm_burns) // thinning
 
     if task_cfg["ds_type"] == "synthetic":
         # todo fix this fhat thing
@@ -51,7 +51,7 @@ def print_ekf_cfg(seed, cfg, length=None, n_feats=None):
         f"  Samples for init/update = {nq_init}/{nsteps}\n"
         f"EKF:\n"
         f"  active={alg_cfg['active']}\n"
-        f"  init: bs={batch_size}, niters={niters}[{warm_burns}::{thinning}] ({n_eff_iterates} eff), {sub_dim=}, {rnd_proj=}\n"
+        f"  init: bs={batch_size}, niters={niters_init}[{warm_burns}::{thinning}] ({n_eff_iterates} eff), {sub_dim=}, {rnd_proj=}\n"
     )
 
 
