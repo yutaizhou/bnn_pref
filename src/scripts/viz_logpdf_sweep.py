@@ -33,29 +33,7 @@ timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
 tasks = [
     # # * D4RL
-    "cheetahRandom",
-    "cheetahMediumReplay",
-    "cheetahMediumExpert",
-    "hopperRandom",
-    "hopperMediumReplay",
-    "hopperMediumExpert",
-    "walkerRandom",
-    "walkerMediumReplay",
-    "walkerMediumExpert",
-    # "penHuman",
-    # "penExpert",
-    # "penCloned",
-    "kitchenComplete",
-    "kitchenPartial",
-    "kitchenMixed",
-    "mazeUDense",
-    "mazeMediumDense",
-    # "mazeLargeDense",
-]
-
-tasks = [
-    # # * D4RL
-    "cheetahRandom",
+    # "cheetahRandom",
     "cheetahMediumReplay",
     "cheetahMediumExpert",
     "hopperRandom",
@@ -66,14 +44,36 @@ tasks = [
     "walkerMediumExpert",
     "penHuman",
     "penExpert",
-    "penCloned",
-    "kitchenComplete",
+    # "penCloned",
+    # "kitchenComplete",
     # "kitchenPartial",
-    "kitchenMixed",
+    # "kitchenMixed",
     "mazeUDense",
     "mazeMediumDense",
-    "mazeLargeDense",
+    # "mazeLargeDense",
 ]
+
+# tasks = [
+#     # # * D4RL
+#     "cheetahRandom",
+#     "cheetahMediumReplay",
+#     "cheetahMediumExpert",
+#     "hopperRandom",
+#     "hopperMediumReplay",
+#     "hopperMediumExpert",
+#     "walkerRandom",
+#     "walkerMediumReplay",
+#     "walkerMediumExpert",
+#     "penHuman",
+#     "penExpert",
+#     "penCloned",
+#     "kitchenComplete",
+#     "kitchenPartial",
+#     "kitchenMixed",
+#     "mazeUDense",
+#     "mazeMediumDense",
+#     "mazeLargeDense",
+# ]
 
 algs = ["ekf", "sgd", "do"]
 is_als = [True, False]

@@ -2,21 +2,21 @@
 # ensembling only used for computing predictive & acquisition function (not training)
 active: ${..active}
 # M: ${..M}
-M: 150
+M: 100
 use_vmap: True # turned off for scalability experiments. whether to use vectorized NN prediction
 chunk_size: ${..chunk_size}
 acq: "infogain" # "infogain" or "disagreement"
 # acq: "disagreement" # "infogain" or "disagreement"
 
 # * NN model
-learning_rate: 0.001
 hidden_sizes: ${network.hidden_sizes}
 n_splits: ${network.n_splits}
 dropout_prob: 0.0
 
 # * Subspace Init w/ SGD 
-niters: 420  # Total number of GD steps on warmup data
 bs: 1 # -1 for full batch GD. Otherwise, mini-batch SGD
+niters_init: 420  # Total number of GD steps on warmup data
+learning_rate: 0.001
 l2_reg: 0
 
 # subspace construction, SVD takes full space param array as X[warm_burns::thinning], only keep the top sub_dim components

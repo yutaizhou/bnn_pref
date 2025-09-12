@@ -118,7 +118,7 @@ def random_query_iter_perm(key, n_trajs: int, n_queries: int):
         yield query
 
 
-def create_pref_data_old(
+def create_pref_data_loop(
     key,
     ranked_returns: Float[Array, "n_trajs"],
     n_queries: int = -1,
@@ -196,7 +196,7 @@ def create_pref_data_old(
     return QueryIndexAndResponses(queries_Q2, labels_Q1, n_mislabels)
 
 
-def create_pref_data(
+def create_pref_data_vectorized(
     key,
     ranked_returns: Float[Array, "n_trajs"],
     n_queries: int = -1,
@@ -266,6 +266,10 @@ def create_pref_data(
         n_mislabels = jr.permutation(subkey, flip_mask)[:n_queries].sum()
 
     return QueryIndexAndResponses(queries, labels, n_mislabels)
+
+
+# create_pref_data = create_pref_data_loop
+create_pref_data = create_pref_data_vectorized
 
 
 def modify_queries(
