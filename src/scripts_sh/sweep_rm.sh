@@ -30,6 +30,9 @@ python scripts/run_rm.py \
     task=$TASK_LIST \
     data.nq_train=100000 \
     data.nq_update=60 \
-    update_all=False \
-    learning_rate=0.003 \
+    update_all=True \
+    niters_update=-3 \
+    learning_rate=0.0001 \
+    ekf.acq=disagreement \
+    acq=disagreement \
     hydra/launcher=slurm

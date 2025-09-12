@@ -1,8 +1,8 @@
 # * model ensembling & active learning
 # ensembling only used for computing predictive & acquisition function (not training)
 active: ${..active}
-# M: ${..M}
-M: 100
+M: ${..M}
+# M: 100
 use_vmap: True # turned off for scalability experiments. whether to use vectorized NN prediction
 chunk_size: ${..chunk_size}
 acq: "infogain" # "infogain" or "disagreement"

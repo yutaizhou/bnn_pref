@@ -1,8 +1,8 @@
 # * dropout agent & active learning
 # dropout used for training, computing predictive & acquisition function
 active: ${..active}
-# M: ${..M}
-M: 150
+M: ${..M}
+# M: 100
 use_vmap: True # turned off for scalability experiments. whether to use vectorized NN training & prediction
 chunk_size: ${..chunk_size}
 acq: ${..acq} # "infogain" or "disagreement"
