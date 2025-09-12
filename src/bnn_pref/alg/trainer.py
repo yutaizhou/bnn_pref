@@ -11,7 +11,8 @@ from bnn_pref.alg.agent_ekf import EKFAgent, EKFBeliefState
 from bnn_pref.alg.agent_ensemble import EnsembleAgent, EnsembleBeliefState
 from bnn_pref.alg.agent_utils import Agent
 from bnn_pref.data.data_env import PreferenceEnv
-from bnn_pref.utils.network import RewardNet, RewardNet2
+from bnn_pref.utils.metrics import compute_ece
+from bnn_pref.utils.network import RewardNet2
 
 warnings.filterwarnings("ignore")
 
@@ -48,17 +49,27 @@ def run_alg(key, alg: str, cfg, data_dict, env):
             key_postpred, bel, test_trajs_obs, test_prefs.queries_Q2
         )
 
-        # compute metrics
+        # compute accuracy
         pred_Q = prob_Q2.argmax(axis=1)
         test_acc = jnp.mean(pred_Q == test_prefs.responses_Q1.squeeze())
+
+        # compute logpdf
+        prob_Q2 = jnp.clip(prob_Q2, a_min=1e-4)  # stability; log is sensitive to 0
         prob_Q1 = jnp.take_along_axis(prob_Q2, test_prefs.responses_Q1, axis=1)
-        prob_Q1 = jnp.clip(prob_Q1, a_min=1e-7, a_max=1 - 1e-7)  # numerical stability
         test_logpdf = jnp.log(prob_Q1).mean()
+
+        # compute expected calibration error
+        test_ece = compute_ece(prob_Q2, test_prefs.responses_Q1.squeeze())
+
+        # compute brier score
+
+        # compute coverage probability
 
         # all arrays of (1 + nq_updates, )
         result = {
             "test_logpdf": test_logpdf,
             "test_acc": test_acc,
+            "test_ece": test_ece,
         }
         return (), result
 

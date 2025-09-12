@@ -198,3 +198,45 @@ def alignment_metric(true_D: D, est_SD: SD):
     """
     m = (est_SD @ true_D) / (jnpl.norm(est_SD, axis=1) * jnpl.norm(true_D, axis=0))
     return jnp.mean(m)
+
+
+def compute_ece(
+    probs_Q2: jnp.ndarray, labels_Q1: jnp.ndarray, n_bins: int = 5
+) -> jnp.ndarray:
+    """
+    Compute Expected Calibration Error (ECE) for binary classification.
+
+    Args:
+        probs_Q2: (Q, 2) predicted probabilities for each class
+        labels_Q1: (Q,) true labels (0 or 1)
+        n_bins: number of bins for calibration plot
+
+    Returns:
+        ece: scalar Expected Calibration Error
+    """
+    # Get confidence (max probability) and predictions
+    conf_Q = jnp.max(probs_Q2, axis=1)
+    pred_Q = jnp.argmax(probs_Q2, axis=1)
+    correct_Q = pred_Q == labels_Q1.squeeze()
+
+    # Create bins
+    bin_boundaries = jnp.linspace(0, 1, n_bins + 1)
+    bin_lowers = bin_boundaries[:-1]
+    bin_uppers = bin_boundaries[1:]
+
+    # Compute ECE
+    ece = 0.0
+    for bin_lower, bin_upper in zip(bin_lowers, bin_uppers):
+        # Find samples in this bin
+        bin_mask_Q = (bin_lower < conf_Q) & (conf_Q <= bin_upper)  # Bool["Q"]
+        bin_weight = jnp.mean(bin_mask_Q)  # proportion of samples in this bin
+
+        if bin_weight > 0:
+            # Get accuracy and confidence for samples in this bin
+            avg_acc = jnp.mean(correct_Q[bin_mask_Q])
+            avg_conf = jnp.mean(conf_Q[bin_mask_Q])
+
+            # Add to ECE
+            ece += jnp.abs(avg_conf - avg_acc) * bin_weight
+
+    return ece
