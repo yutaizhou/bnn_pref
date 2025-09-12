@@ -23,13 +23,15 @@ tasks_to_rebalance = [
 ]
 
 
-def split_and_rank_ds(
+def split_subsample_rank_ds(
     key,
     ds: ArrayDict,
     train_frac: float = 0.8,
+    n_segments_train: int = 1000,
+    n_segments_test: int = 300,
 ) -> Tuple[ArrayDict, ArrayDict]:
     """
-    take (optionally ranked) ds, split into train/test, each sorted by return (ascending)
+    take trajectory or segment ds, split into train/test, each sorted by return (ascending)
 
     ds = {
         "observations": (N, T, D),
@@ -38,12 +40,24 @@ def split_and_rank_ds(
         "returns": (N,),
     }
     """
+    # split into train/test based on `train_frac`
+    key, key_split = jr.split(key, 2)
     n = len(ds["returns"])
-    idxs = jr.permutation(key, n)
+    idxs = jr.permutation(key_split, n)
     n_train = int(n * train_frac)
     train_idxs, test_idxs = idxs[:n_train], idxs[n_train:]
     train_ds = jax.tree.map(lambda x: x[train_idxs], ds)
     test_ds = jax.tree.map(lambda x: x[test_idxs], ds)
+
+    # take a subset of trajectory segments via uniform sampling
+    key, key_train, key_test = jr.split(key, 3)
+
+    def subsample_fn(key, ds, n_segments):
+        idxs = jr.permutation(key, len(ds["returns"]))[:n_segments]
+        return jax.tree.map(lambda x: x[idxs], ds)
+
+    train_ds = subsample_fn(key_train, train_ds, n_segments_train)
+    test_ds = subsample_fn(key_test, test_ds, n_segments_test)
 
     # sort by return (ascending)
     train_sorted_idxes = jnp.argsort(train_ds["returns"])

@@ -156,6 +156,9 @@ def main(cfg):
             # * acc
             "test_acc_all": res_m["test_acc"],
             "test_acc_final": MeanStd(res_m["test_acc"][:, -1]).get_stats(),
+            # * ece
+            "test_ece_all": res_m["test_ece"],
+            "test_ece_final": MeanStd(res_m["test_ece"][:, -1]).get_stats(),
         }
         best_seed = jnp.argmax(res_m["test_logpdf"][:, -1])
         best_model = jax.tree.map(lambda x: x[best_seed], res_m["model"])
@@ -176,6 +179,7 @@ def main(cfg):
             f"  {alg} active={str(is_al):5}, "
             f"acc: {res['test_acc_final']['mean']:.2%} ± {res['test_acc_final']['std']:.2%}, "
             f"logpdf: {res['test_logpdf_final']['mean']:.2f} ± {res['test_logpdf_final']['std']:.2f}; "
+            f"ece: {res['test_ece_final']['mean']:.2%} ± {res['test_ece_final']['std']:.2%}, "
             f"{get_param_count_msg(cfg, alg, res_m)}, "
             f"({res['duration']:.1f}s)"
         )

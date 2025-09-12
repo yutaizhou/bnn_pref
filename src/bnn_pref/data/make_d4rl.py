@@ -18,7 +18,7 @@ from bnn_pref.data.traj_utils import (
     normalize,
     rebalance,
     segment_traj_masked,
-    split_and_rank_ds,
+    split_subsample_rank_ds,
 )
 from bnn_pref.utils.type import ArrayDict
 
@@ -60,8 +60,9 @@ def make_d4rl_data(key, cfg) -> ArrayDict:
     demo_train_frac = data_cfg["demo_train_frac"]
     nq_train, nq_test = data_cfg["nq_train"], data_cfg["nq_test"]
     sz = data_cfg["segment_size"]
+    ns_train, ns_test = (data_cfg["n_segments_train"], data_cfg["n_segments_test"])
 
-    # * transitions -> trajs, pad to max length w/ masks, filter out short traj length
+    # * d4rl transitions -> trajs, pad to max length w/ masks, filter out short traj length
     ds = gym.make(task_cfg["name"]).get_dataset()
     trajs = process_d4rl_data(ds, min_traj_len=data_cfg["min_traj_len"])
 
@@ -84,9 +85,11 @@ def make_d4rl_data(key, cfg) -> ArrayDict:
     if sz != -1:
         trajs = segment_arraydict_masked(trajs, sz)
 
-    # * split into train/test, each sorted by ascending return
+    # * split segments into train/test, each sorted by ascending return
     key, key_split = jr.split(key, 2)
-    train_trajs, test_trajs = split_and_rank_ds(key_split, trajs, demo_train_frac)
+    train_trajs, test_trajs = split_subsample_rank_ds(
+        key_split, trajs, demo_train_frac, ns_train, ns_test
+    )
 
     # if sz != -1:
     #     train_trajs = segment_arraydict_masked(train_trajs, sz)
@@ -122,6 +125,10 @@ def process_d4rl_data(
     Convert d4rl dataset to ArrayDict, where trajs are padded to the max traj length
     found in the dataset.
 
+    S: number of transitions
+    N: number of trajectories
+    T: max traj length
+
     Inputs:
       observations: (S, O)
       actions: (S, A)
@@ -130,7 +137,7 @@ def process_d4rl_data(
       terminals: (S,)
       timeouts: (S,)
     Outputs:
-      observations: (N, T, D)
+      observations: (N, T, O)
       rewards: (N, T)
       masks: (N, T)
       returns: (N,)
@@ -188,12 +195,13 @@ if __name__ == "__main__":
     from bnn_pref.utils.utils import get_random_seed
 
     with initialize(version_base=None, config_path="../../cfg"):
-        cfg = compose(config_name="config", overrides=["task=cheetah_medexp"])
+        cfg = compose(config_name="config", overrides=["task=cheetahMediumReplay"])
 
     key = jr.key(get_random_seed())
     data = make_d4rl_data(key, cfg)
     train_trajs, test_trajs = data["train_trajs"], data["test_trajs"]
     train_prefs, test_prefs = data["train_prefs"], data["test_prefs"]
-    import ipdb
-
-    ipdb.set_trace()
+    print(f"{train_trajs['observations'].shape=}")
+    print(f"{test_trajs['observations'].shape=}")
+    print(f"{train_prefs.queries_Q2.shape=}")
+    print(f"{test_prefs.queries_Q2.shape=}")

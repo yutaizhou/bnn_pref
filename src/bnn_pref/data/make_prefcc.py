@@ -10,7 +10,7 @@ from bnn_pref.data.traj_utils import (
     normalize,
     rebalance,
     segment_traj,
-    split_and_rank_ds,
+    split_subsample_rank_ds,
 )
 from bnn_pref.utils.type import ArrayDict
 
@@ -70,7 +70,7 @@ def make_prefcc_data(key, cfg) -> ArrayDict:
 
     # * split into train/test
     key, key_split = jr.split(key, 2)
-    train_trajs, test_trajs = split_and_rank_ds(key_split, trajs, demo_train_frac)
+    train_trajs, test_trajs = split_subsample_rank_ds(key_split, trajs, demo_train_frac)
 
     # if sz != -1:
     #     train_trajs = segment_arraydict(train_trajs, sz)

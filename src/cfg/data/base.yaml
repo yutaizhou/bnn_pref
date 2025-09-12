@@ -7,6 +7,9 @@ n_bins: 10 # number of bins to split trajectories into based on return
 max_count_per_bin: 100 # bin refers to a given trajectory return range
 tokeep: 375  # total number of trajectories to keep for both train + test
 demo_train_frac: 0.8 # fraction of trajectories to keep for train
+# takes a subset of trajectory segments, limit it to this many segments for train/test
+n_segments_train: 1000 
+n_segments_test: 300
 
 # prune strategy: (max_count / tokeep / beta)
 # 60/200/15 -> 13000 ish, 5-10% error rate

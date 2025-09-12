@@ -71,24 +71,13 @@ class BradleyTerry:
         return joint_ll
 
 
-def bt_likelihood(r1: float, r2: float, beta: float = 1.0) -> float:
+def bt_likelihood(rewards: Float[Array, "2"], beta: float = 1.0) -> Float[Array, " "]:
     """
-    computes Bernoulli likelihood of the preference relation t2 > t1, given their rewards
+    computes Bernoulli likelihood of the preference relation item 2 > item 1, given their rewards
+    p(t2 > t1) = exp(beta * r2) / (exp(beta * r1) + exp(beta * r2))
+    assumes rewards[0] = item 1 reward, rewards[1] = item 2 reward
     """
-
-    # a = jnp.exp(return_i * beta)
-    # b = jnp.exp(return_j * beta)
-    # return b / (a + b)
-
-    logits = jnp.asarray([r1 * beta, r2 * beta])
-    return jnp.exp(jax.nn.log_softmax(logits))[1]
-
-
-def bt_vec(rewards: Float[Array, "2"], beta: float = 1.0) -> Float[Array, " "]:
-    """
-    vectorized version of bt_likelihood
-    """
-    logits = rewards * beta
+    logits = rewards * beta  # (2,)
     return jnp.exp(jax.nn.log_softmax(logits))[1]
 
 
@@ -175,7 +164,8 @@ def create_pref_data_loop(
 
         # * noisily rational prefs (finite beta in the BT Likelihood)
         if noisy_label:
-            prob = bt_likelihood(ranked_returns[ti], ranked_returns[tj], bt_beta)
+            rewards = jnp.asarray([ranked_returns[ti], ranked_returns[tj]])  # (2,)
+            prob = bt_likelihood(rewards, bt_beta)
 
             key, subkey = jr.split(key)
             if jr.uniform(subkey) > prob:
@@ -222,8 +212,9 @@ def create_pref_data_vectorized(
         std = jnp.std(ranked_returns)
         ranked_returns = (ranked_returns - mean) / std
 
-    queries_gen = it.combinations(range(n_demos), 2)
-    queries = jnp.asarray(list(queries_gen), dtype=jnp.int32)  # (n_queries, 2)
+    queries = jnp.asarray(
+        list(it.combinations(range(n_demos), 2)), dtype=jnp.int32
+    )  # (n_queries, 2)
     labels = jnp.ones((len(queries),), dtype=jnp.int32)  # (n_queries,)
     n_mislabels = 0
 
@@ -250,7 +241,7 @@ def create_pref_data_vectorized(
         qi, qj = queries[:, 0], queries[:, 1]  # (n_queries,), (n_queries,)
         ri, rj = ranked_returns[qi], ranked_returns[qj]  # (n_queries,), (n_queries,)
         rewards = jnp.stack([ri, rj], axis=1)  # (n_queries, 2)
-        btl_fn = partial(bt_vec, beta=bt_beta)
+        btl_fn = partial(bt_likelihood, beta=bt_beta)
         p = jax.lax.map(btl_fn, rewards, batch_size=256)  # Float[Array, "n_queries"]
 
         flip_mask = jr.uniform(subkey, (len(queries))) >= p  # Int[Array, "n_queries"]
@@ -313,9 +304,9 @@ if __name__ == "__main__":
     cfg = {
         "data": {
             "n_feats": 2,
-            "n_demos": 3000,
+            "n_demos": 6000,
             "length": 5,
-            "nq_train": 10000,
+            "nq_train": -1,
             "nq_test": 5,
         },
         "f": "linear",  # Using linear reward function for simplicity
@@ -354,12 +345,13 @@ if __name__ == "__main__":
 
     time_start = time.time()
     noisy_label = True
-    queries2_Q2, labels2_Q1, mislabels2 = create_pref_data(
+    queries2_Q2, labels2_Q1, mislabels2 = create_pref_data_vectorized(
         pref_key,
         ranked_returns=returns_N,
         n_queries=nq_train,
         noisy_label=noisy_label,
     )
+    print(f"{queries2_Q2.shape=}")
     print(f"{mislabels2=}")
     time_end = time.time()
     print(f"create_pref_data_vectorized time: {time_end - time_start}")
