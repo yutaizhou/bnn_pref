@@ -11,7 +11,13 @@ from bnn_pref.alg.agent_ekf import EKFAgent, EKFBeliefState
 from bnn_pref.alg.agent_ensemble import EnsembleAgent, EnsembleBeliefState
 from bnn_pref.alg.agent_utils import Agent
 from bnn_pref.data.data_env import PreferenceEnv
-from bnn_pref.utils.metrics import compute_ece
+from bnn_pref.utils.metrics import (
+    compute_accuracy,
+    compute_brier_score,
+    compute_coverage_rate,
+    compute_ece,
+    compute_logpdf,
+)
 from bnn_pref.utils.network import RewardNet2
 
 warnings.filterwarnings("ignore")
@@ -36,6 +42,7 @@ def run_alg(key, alg: str, cfg, data_dict, env):
     data_cfg = cfg["data"]
     test_trajs_obs = data_dict["test_trajs"]["observations"]
     test_prefs = data_dict["test_prefs"]
+    queries_Q2, labels_Q1 = test_prefs.queries_Q2, test_prefs.responses_Q1
 
     # * build + train
     key, key_train, key_eval = jr.split(key, 3)
@@ -45,36 +52,31 @@ def run_alg(key, alg: str, cfg, data_dict, env):
     def eval_bel(_, bel: AgentState):
         # compute posterior predictive
         key_postpred = jr.fold_in(key_eval, bel.t)
-        prob_Q2 = bandit.compute_postpred(
-            key_postpred, bel, test_trajs_obs, test_prefs.queries_Q2
-        )
+        prob_Q2 = bandit.compute_postpred(key_postpred, bel, test_trajs_obs, queries_Q2)
 
-        # compute accuracy
-        pred_Q = prob_Q2.argmax(axis=1)
-        test_acc = jnp.mean(pred_Q == test_prefs.responses_Q1.squeeze())
+        # compute metrics
+        test_acc = compute_accuracy(prob_Q2, labels_Q1)
 
-        # compute logpdf
-        prob_Q2 = jnp.clip(prob_Q2, a_min=1e-4)  # stability; log is sensitive to 0
-        prob_Q1 = jnp.take_along_axis(prob_Q2, test_prefs.responses_Q1, axis=1)
-        test_logpdf = jnp.log(prob_Q1).mean()
+        clipped_prob_Q2 = jnp.clip(prob_Q2, a_min=1e-4)  # stability
+        test_logpdf = compute_logpdf(clipped_prob_Q2, labels_Q1)
 
-        # compute expected calibration error
-        test_ece = compute_ece(prob_Q2, test_prefs.responses_Q1.squeeze())
+        test_ece = compute_ece(prob_Q2, labels_Q1)
+        test_brier_score = compute_brier_score(prob_Q2, labels_Q1)
+        test_coverage_rate = compute_coverage_rate(prob_Q2, labels_Q1)
 
-        # compute brier score
-
-        # compute coverage probability
-
-        # all arrays of (1 + nq_updates, )
+        # all scalar arrays: concatenated to form array of (1 + nq_updates, )
         result = {
             "test_logpdf": test_logpdf,
             "test_acc": test_acc,
             "test_ece": test_ece,
+            "test_brier": test_brier_score,
+            "test_coverage": test_coverage_rate,
         }
         return (), result
 
     *_, al_results = jax.lax.scan(eval_bel, init=(), xs=bel_trace)
 
+    # * aggregate eval results and model trace
     model_trace = bel_trace if alg == "ekf" else bel_trace.ts
     model = jax.tree.map(lambda x: x[-1], model_trace)  # get only the final model
     if alg == "do":

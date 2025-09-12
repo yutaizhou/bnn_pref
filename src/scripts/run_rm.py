@@ -159,6 +159,12 @@ def main(cfg):
             # * ece
             "test_ece_all": res_m["test_ece"],
             "test_ece_final": MeanStd(res_m["test_ece"][:, -1]).get_stats(),
+            # * brier
+            "test_brier_all": res_m["test_brier"],
+            "test_brier_final": MeanStd(res_m["test_brier"][:, -1]).get_stats(),
+            # * coverage
+            "test_coverage_all": res_m["test_coverage"],
+            "test_coverage_final": MeanStd(res_m["test_coverage"][:, -1]).get_stats(),
         }
         best_seed = jnp.argmax(res_m["test_logpdf"][:, -1])
         best_model = jax.tree.map(lambda x: x[best_seed], res_m["model"])
@@ -180,6 +186,8 @@ def main(cfg):
             f"acc: {res['test_acc_final']['mean']:.2%} ± {res['test_acc_final']['std']:.2%}, "
             f"logpdf: {res['test_logpdf_final']['mean']:.2f} ± {res['test_logpdf_final']['std']:.2f}; "
             f"ece: {res['test_ece_final']['mean']:.2%} ± {res['test_ece_final']['std']:.2%}, "
+            f"brier: {res['test_brier_final']['mean']:.2%} ± {res['test_brier_final']['std']:.2%}, "
+            f"coverage: {res['test_coverage_final']['mean']:.2%} ± {res['test_coverage_final']['std']:.2%}, "
             f"{get_param_count_msg(cfg, alg, res_m)}, "
             f"({res['duration']:.1f}s)"
         )

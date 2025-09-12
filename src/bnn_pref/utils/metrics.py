@@ -7,7 +7,8 @@ import ipdb
 import jax
 import jax.numpy as jnp
 import jax.numpy.linalg as jnpl
-import optax
+from jax import Array
+from jaxtyping import Scalar
 
 from bnn_pref.alg.agent_ekf import EKFBeliefState
 from bnn_pref.data.pref_utils import QueryFeaturesAndResponses
@@ -200,11 +201,20 @@ def alignment_metric(true_D: D, est_SD: SD):
     return jnp.mean(m)
 
 
-def compute_ece(
-    probs_Q2: jnp.ndarray, labels_Q1: jnp.ndarray, n_bins: int = 5
-) -> jnp.ndarray:
+def compute_accuracy(probs_Q2: Array, labels_Q1: Array) -> Scalar:
+    pred_Q = jnp.argmax(probs_Q2, axis=1)
+    return jnp.mean(pred_Q == labels_Q1.squeeze())
+
+
+def compute_logpdf(probs_Q2: Array, labels_Q1: Array) -> Scalar:
+    prob_Q1 = jnp.take_along_axis(probs_Q2, labels_Q1, axis=1)
+    return jnp.log(prob_Q1).mean()
+
+
+def compute_ece(probs_Q2: Array, labels_Q1: Array, n_bins: int = 5) -> Scalar:
     """
     Compute Expected Calibration Error (ECE) for binary classification.
+    JAX JIT/vmap friendly version.
 
     Args:
         probs_Q2: (Q, 2) predicted probabilities for each class
@@ -224,19 +234,65 @@ def compute_ece(
     bin_lowers = bin_boundaries[:-1]
     bin_uppers = bin_boundaries[1:]
 
-    # Compute ECE
-    ece = 0.0
-    for bin_lower, bin_upper in zip(bin_lowers, bin_uppers):
+    def compute_bin_contribution(bin_lower, bin_upper):
+        """Compute ECE contribution for a single bin."""
         # Find samples in this bin
-        bin_mask_Q = (bin_lower < conf_Q) & (conf_Q <= bin_upper)  # Bool["Q"]
-        bin_weight = jnp.mean(bin_mask_Q)  # proportion of samples in this bin
+        bin_mask_Q = (bin_lower < conf_Q) & (conf_Q <= bin_upper)
+        bin_count = jnp.sum(bin_mask_Q)
+        bin_weight = bin_count / conf_Q.size
 
-        if bin_weight > 0:
-            # Get accuracy and confidence for samples in this bin
-            avg_acc = jnp.mean(correct_Q[bin_mask_Q])
-            avg_conf = jnp.mean(conf_Q[bin_mask_Q])
+        # Avoid division by zero by using safe_count
+        safe_count = jnp.maximum(bin_count, 1)
 
-            # Add to ECE
-            ece += jnp.abs(avg_conf - avg_acc) * bin_weight
+        # Compute accuracy and confidence for samples in this bin
+        # Use jnp.where to handle empty bins gracefully
+        acc_sum = jnp.sum(jnp.where(bin_mask_Q, correct_Q.astype(jnp.float32), 0.0))
+        conf_sum = jnp.sum(jnp.where(bin_mask_Q, conf_Q, 0.0))
+
+        avg_acc = acc_sum / safe_count
+        avg_conf = conf_sum / safe_count
+
+        # Return contribution (will be 0 for empty bins)
+        return jnp.abs(avg_conf - avg_acc) * bin_weight
+
+    # Vectorize over all bins
+    bin_contributions = jax.vmap(compute_bin_contribution)(bin_lowers, bin_uppers)
+
+    # Sum all contributions
+    ece = jnp.sum(bin_contributions)
 
     return ece
+
+
+def compute_brier_score(probs_Q2: Array, labels_Q1: Array) -> Scalar:
+    """
+    Compute Brier Score for binary classification.
+    """
+    labels_Q2 = jax.nn.one_hot(labels_Q1.squeeze(), 2)
+    brier_score = jnp.mean(jnp.sum((probs_Q2 - labels_Q2) ** 2, axis=1))
+    return brier_score
+
+
+def compute_coverage_rate(
+    probs_Q2: Array, labels_Q1: Array, alpha: float = 0.95
+) -> Scalar:
+    """
+    Compute coverage rate for prediction regions.
+
+    Args:
+        alpha: confidence level (e.g., 0.95 for 95% coverage)
+
+    Returns:
+        coverage_rate: scalar coverage rate (should be close to alpha)
+    """
+    # Get the predicted class and its probability
+    pred_Q = jnp.argmax(probs_Q2, axis=1)
+    conf_Q = jnp.max(probs_Q2, axis=1)
+    is_correct_Q = pred_Q == labels_Q1.squeeze()
+
+    # For correct predictions, check if confidence is above threshold
+    # For incorrect predictions, coverage is 0 (not covered)
+    coverage_Q = jnp.where(is_correct_Q, conf_Q >= alpha, 0.0)
+
+    coverage_rate = jnp.mean(coverage_Q)
+    return coverage_rate

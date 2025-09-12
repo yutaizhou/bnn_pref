@@ -90,7 +90,9 @@ def main(cfg):
     do_cfg = cfg["do"]
     nq_train, nq_test = data_cfg["nq_train"], data_cfg["nq_test"]
     nq_init, nsteps = data_cfg["nq_init"], data_cfg["nsteps"]
-    n_eff_iterates = (ekf_cfg["niters"] - ekf_cfg["warm_burns"]) // ekf_cfg["thinning"]
+    n_eff_iterates = (ekf_cfg["niters_init"] - ekf_cfg["warm_burns"]) // ekf_cfg[
+        "thinning"
+    ]
 
     print(
         f"Run:\n"
@@ -105,7 +107,7 @@ def main(cfg):
         f"EKF:\n"
         f"  M={ekf_cfg['M']}, use_vmap={ekf_cfg['use_vmap']}\n"
         f"  prior / dynamics / obs noise: {ekf_cfg['prior_noise']} / {ekf_cfg['dynamics_noise']} / {ekf_cfg['obs_noise']}\n"
-        f"  init: bs={ekf_cfg['bs']}, niters={ekf_cfg['niters']}[{ekf_cfg['warm_burns']}::{ekf_cfg['thinning']}] ({n_eff_iterates} eff), sub_dim={ekf_cfg['sub_dim']}, rnd_proj={ekf_cfg['rnd_proj']}\n"
+        f"  init: bs={ekf_cfg['bs']}, niters={ekf_cfg['niters_init']}[{ekf_cfg['warm_burns']}::{ekf_cfg['thinning']}] ({n_eff_iterates} eff), sub_dim={ekf_cfg['sub_dim']}, rnd_proj={ekf_cfg['rnd_proj']}\n"
         f"Ensemble:\n"
         f"  M={sgd_cfg['M']}, use_vmap={sgd_cfg['use_vmap']}\n"
         f"  init: bs={sgd_cfg['bs']}, niters={sgd_cfg['niters_init']}\n"
@@ -189,6 +191,17 @@ def main(cfg):
                 # * acc
                 "test_acc_all": res_m["test_acc"],
                 "test_acc_final": MeanStd(res_m["test_acc"][:, -1]).get_stats(),
+                # * ece
+                "test_ece_all": res_m["test_ece"],
+                "test_ece_final": MeanStd(res_m["test_ece"][:, -1]).get_stats(),
+                # * brier
+                "test_brier_all": res_m["test_brier"],
+                "test_brier_final": MeanStd(res_m["test_brier"][:, -1]).get_stats(),
+                # * coverage
+                "test_coverage_all": res_m["test_coverage"],
+                "test_coverage_final": MeanStd(
+                    res_m["test_coverage"][:, -1]
+                ).get_stats(),
             }
             best_seed = jnp.argmax(res_m["test_logpdf"][:, -1])
             best_model = jax.tree.map(lambda x: x[best_seed], res_m["model"])
@@ -210,6 +223,9 @@ def main(cfg):
                 f"  {alg} active={str(is_al):5}, "
                 f"acc: {res['test_acc_final']['mean']:.2%} ± {res['test_acc_final']['std']:.2%}, "
                 f"logpdf: {res['test_logpdf_final']['mean']:.2f} ± {res['test_logpdf_final']['std']:.2f}; "
+                f"ece: {res['test_ece_final']['mean']:.4f} ± {res['test_ece_final']['std']:.4f}; "
+                f"brier: {res['test_brier_final']['mean']:.2%} ± {res['test_brier_final']['std']:.2%}, "
+                f"coverage: {res['test_coverage_final']['mean']:.2%} ± {res['test_coverage_final']['std']:.2%}, "
                 f"{get_param_count_msg(cfg, alg, res_m)}, "
                 f"({res['duration']:.1f}s)"
             )
