@@ -42,8 +42,8 @@ tasks = [
     "walkerRandom",
     "walkerMediumReplay",
     "walkerMediumExpert",
-    "penHuman",
-    "penExpert",
+    # "penHuman",
+    # "penExpert",
     # "penCloned",
     # "kitchenComplete",
     # "kitchenPartial",
@@ -106,6 +106,7 @@ stats = {
     "ece": defaultdict(lambda: list()),
     "brier": defaultdict(lambda: list()),
     "coverage": defaultdict(lambda: list()),
+    "sharpness": defaultdict(lambda: list()),
 }
 for alg, is_al in it.product(algs, is_als):
     for task in tasks:
@@ -115,6 +116,7 @@ for alg, is_al in it.product(algs, is_als):
         stats["ece"][f"{alg}_{is_al}"].append(res["test_ece_all"])
         stats["brier"][f"{alg}_{is_al}"].append(res["test_brier_all"])
         stats["coverage"][f"{alg}_{is_al}"].append(res["test_coverage_all"])
+        stats["sharpness"][f"{alg}_{is_al}"].append(res["test_sharpness_all"])
 
 
 def list2array(stats: dict) -> dict:
@@ -130,15 +132,24 @@ stats["acc"] = list2array(stats["acc"])
 stats["ece"] = list2array(stats["ece"])
 stats["brier"] = list2array(stats["brier"])
 stats["coverage"] = list2array(stats["coverage"])
+stats["sharpness"] = list2array(stats["sharpness"])
 
 logpdf_all = stats["logpdf"]  # (n_tasks, seeds, steps)
 acc_all = stats["acc"]
 ece_all = stats["ece"]
 brier_all = stats["brier"]
 coverage_all = stats["coverage"]
+sharpness_all = stats["sharpness"]
 
 # * aggregate over tasks and seeds
-logpdf_agg, acc_agg, ece_agg, brier_agg, coverage_agg = {}, {}, {}, {}, {}
+logpdf_agg, acc_agg, ece_agg, brier_agg, coverage_agg, sharpness_agg = (
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+)
 for alg, is_al in it.product(algs, is_als):
     arr = logpdf_all[f"{alg}_{is_al}"]  # (n_tasks, seeds, steps)
     logpdf_agg[f"{alg}_{is_al}"] = arr.mean(axis=(0,))
@@ -146,12 +157,14 @@ for alg, is_al in it.product(algs, is_als):
     ece_agg[f"{alg}_{is_al}"] = ece_all[f"{alg}_{is_al}"].mean(axis=(0,))
     brier_agg[f"{alg}_{is_al}"] = brier_all[f"{alg}_{is_al}"].mean(axis=(0,))
     coverage_agg[f"{alg}_{is_al}"] = coverage_all[f"{alg}_{is_al}"].mean(axis=(0,))
+    sharpness_agg[f"{alg}_{is_al}"] = sharpness_all[f"{alg}_{is_al}"].mean(axis=(0,))
 stats_agg = {
     "logpdf": logpdf_agg,
     "acc": acc_agg,
     "ece": ece_agg,
     "brier": brier_agg,
     "coverage": coverage_agg,
+    "sharpness": sharpness_agg,
 }
 
 
@@ -334,11 +347,11 @@ plt.close()
 
 print(f"Plot saved as: {save_path}")
 
-# * plot all metrics aggregated over tasks: logpdf, acc, ece, brier, coverage
+# * plot all metrics aggregated over tasks: logpdf, acc, ece, brier, coverage, sharpness
 fig, axes = plt.subplots(3, 2, figsize=(10, 10))
 axes = axes.flatten()
 
-for i, metric in enumerate(["logpdf", "acc", "ece", "brier", "coverage"]):
+for i, metric in enumerate(["logpdf", "acc", "ece", "brier", "coverage", "sharpness"]):
     ax = axes[i]
     invisible_topright_spines(ax)
     for alg, is_al in it.product(algs, is_als):

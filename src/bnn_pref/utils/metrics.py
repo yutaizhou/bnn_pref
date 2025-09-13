@@ -296,3 +296,13 @@ def compute_coverage_rate(
 
     coverage_rate = jnp.mean(coverage_Q)
     return coverage_rate
+
+
+def compute_sharpness(probs_Q2: Array) -> Scalar:
+    """
+    Compute sharpness of predictions.
+
+    Returns:
+        sharpness: scalar sharpness of predictions
+    """
+    return jnp.var(probs_Q2, axis=1).mean()

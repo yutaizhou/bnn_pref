@@ -14,7 +14,7 @@ n_splits: ${network.n_splits}
 dropout_prob: 0.0
 
 # * Init + Update
-bs: 1
+bs: ${..bs}
 l2_reg: ${..l2_reg}
 
 niters_init: ${..niters_init}  # Total number of GD steps on warmup data

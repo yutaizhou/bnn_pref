@@ -17,6 +17,7 @@ from bnn_pref.utils.metrics import (
     compute_coverage_rate,
     compute_ece,
     compute_logpdf,
+    compute_sharpness,
 )
 from bnn_pref.utils.network import RewardNet2
 
@@ -43,6 +44,7 @@ def run_alg(key, alg: str, cfg, data_dict, env):
     test_trajs_obs = data_dict["test_trajs"]["observations"]
     test_prefs = data_dict["test_prefs"]
     queries_Q2, labels_Q1 = test_prefs.queries_Q2, test_prefs.responses_Q1
+    alpha = cfg["coverage_alpha"]
 
     # * build + train
     key, key_train, key_eval = jr.split(key, 3)
@@ -62,7 +64,8 @@ def run_alg(key, alg: str, cfg, data_dict, env):
 
         test_ece = compute_ece(prob_Q2, labels_Q1)
         test_brier_score = compute_brier_score(prob_Q2, labels_Q1)
-        test_coverage_rate = compute_coverage_rate(prob_Q2, labels_Q1)
+        test_coverage_rate = compute_coverage_rate(prob_Q2, labels_Q1, alpha=alpha)
+        test_sharpness = compute_sharpness(prob_Q2)
 
         # all scalar arrays: concatenated to form array of (1 + nq_updates, )
         result = {
@@ -71,6 +74,7 @@ def run_alg(key, alg: str, cfg, data_dict, env):
             "test_ece": test_ece,
             "test_brier": test_brier_score,
             "test_coverage": test_coverage_rate,
+            "test_sharpness": test_sharpness,
         }
         return (), result
 

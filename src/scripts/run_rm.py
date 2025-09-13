@@ -165,6 +165,9 @@ def main(cfg):
             # * coverage
             "test_coverage_all": res_m["test_coverage"],
             "test_coverage_final": MeanStd(res_m["test_coverage"][:, -1]).get_stats(),
+            # * sharpness
+            "test_sharpness_all": res_m["test_sharpness"],
+            "test_sharpness_final": MeanStd(res_m["test_sharpness"][:, -1]).get_stats(),
         }
         best_seed = jnp.argmax(res_m["test_logpdf"][:, -1])
         best_model = jax.tree.map(lambda x: x[best_seed], res_m["model"])
@@ -188,6 +191,7 @@ def main(cfg):
             f"ece: {res['test_ece_final']['mean']:.2%} ± {res['test_ece_final']['std']:.2%}, "
             f"brier: {res['test_brier_final']['mean']:.2%} ± {res['test_brier_final']['std']:.2%}, "
             f"coverage: {res['test_coverage_final']['mean']:.2%} ± {res['test_coverage_final']['std']:.2%}, "
+            f"sharpness: {res['test_sharpness_final']['mean']:.2f} ± {res['test_sharpness_final']['std']:.2f}, "
             f"{get_param_count_msg(cfg, alg, res_m)}, "
             f"({res['duration']:.1f}s)"
         )
