@@ -33,6 +33,6 @@ python scripts/run_rm.py \
     update_all=True \
     niters_update=-3 \
     learning_rate=0.0001 \
-    ekf.acq=disagreement \
-    acq=disagreement \
+    ekf.acq=infogain \
+    acq=infogain \
     hydra/launcher=slurm

@@ -90,31 +90,72 @@ save_dir = dirp
 # * == ^^ change this block ^^ ==
 
 
-# stats["cheetahRandom"]["ekf"][False]["test_logpdf_all"] = (n_seeds, n_steps)
-stats = {}
+# data["cheetahRandom"]["ekf"][False]["test_logpdf_all"] = (n_seeds, n_steps)
+data = {}
 for task in tasks:
     for folder in os.listdir(dirp):
         if f"task={task}" in folder:
             path = os.path.join(dirp, folder, "stats.npz")
-            stats[task] = np.load(path, allow_pickle=True)[task].item()
+            data[task] = np.load(path, allow_pickle=True)[task].item()
 
 
-test_logpdf_all = defaultdict(lambda: list())
+# stats["logpdf"][alg_is_al] = (n_tasks, seeds, steps); e.g. stats["logpdf"]["ekf_True"]
+stats = {
+    "logpdf": defaultdict(lambda: list()),
+    "acc": defaultdict(lambda: list()),
+    "ece": defaultdict(lambda: list()),
+    "brier": defaultdict(lambda: list()),
+    "coverage": defaultdict(lambda: list()),
+}
 for alg, is_al in it.product(algs, is_als):
     for task in tasks:
-        res = stats[task][alg][is_al]
-        test_logpdf_all[f"{alg}_{is_al}"].append(res["test_logpdf_all"])
+        res = data[task][alg][is_al]
+        stats["logpdf"][f"{alg}_{is_al}"].append(res["test_logpdf_all"])
+        stats["acc"][f"{alg}_{is_al}"].append(res["test_acc_all"])
+        stats["ece"][f"{alg}_{is_al}"].append(res["test_ece_all"])
+        stats["brier"][f"{alg}_{is_al}"].append(res["test_brier_all"])
+        stats["coverage"][f"{alg}_{is_al}"].append(res["test_coverage_all"])
 
-test_logpdf_all = {k: np.array(v) for k, v in test_logpdf_all.items()}
-# dict[alg_is_al] = (n_tasks, seeds, steps); e.g. dict["ekf_True"]
+
+def list2array(stats: dict) -> dict:
+    """
+    stats: dict[str, list] -> dict[str, np.ndarray]
+    stats[alg_is_al] = List[n_tasks] -> np.ndarray(n_tasks, seeds, steps)
+    """
+    return {k: np.array(v) for k, v in stats.items()}
+
+
+stats["logpdf"] = list2array(stats["logpdf"])
+stats["acc"] = list2array(stats["acc"])
+stats["ece"] = list2array(stats["ece"])
+stats["brier"] = list2array(stats["brier"])
+stats["coverage"] = list2array(stats["coverage"])
+
+logpdf_all = stats["logpdf"]  # (n_tasks, seeds, steps)
+acc_all = stats["acc"]
+ece_all = stats["ece"]
+brier_all = stats["brier"]
+coverage_all = stats["coverage"]
 
 # * aggregate over tasks and seeds
-test_logpdf_aggregate = {}
+logpdf_agg, acc_agg, ece_agg, brier_agg, coverage_agg = {}, {}, {}, {}, {}
 for alg, is_al in it.product(algs, is_als):
-    arr = test_logpdf_all[f"{alg}_{is_al}"]  # (n_tasks, seeds, steps)
-    test_logpdf_aggregate[f"{alg}_{is_al}"] = arr.mean(axis=(0,))
+    arr = logpdf_all[f"{alg}_{is_al}"]  # (n_tasks, seeds, steps)
+    logpdf_agg[f"{alg}_{is_al}"] = arr.mean(axis=(0,))
+    acc_agg[f"{alg}_{is_al}"] = acc_all[f"{alg}_{is_al}"].mean(axis=(0,))
+    ece_agg[f"{alg}_{is_al}"] = ece_all[f"{alg}_{is_al}"].mean(axis=(0,))
+    brier_agg[f"{alg}_{is_al}"] = brier_all[f"{alg}_{is_al}"].mean(axis=(0,))
+    coverage_agg[f"{alg}_{is_al}"] = coverage_all[f"{alg}_{is_al}"].mean(axis=(0,))
+stats_agg = {
+    "logpdf": logpdf_agg,
+    "acc": acc_agg,
+    "ece": ece_agg,
+    "brier": brier_agg,
+    "coverage": coverage_agg,
+}
 
 
+# * plot logpdf
 def get_label(alg: str, is_al: bool) -> str:
     if alg == "ekf":
         return "PreferenceEKF (Active)" if is_al else "PreferenceEKF (Random)"
@@ -149,7 +190,7 @@ for i, task in enumerate(tasks):
     # ax.axhline(y=-0.69, linestyle=":", linewidth=1, color="red")  # ln(0.5) = -0.69
     # y_lim_min, y_lim_max = -0.73, 0
     for alg, is_al in it.product(algs, is_als):
-        arr = test_logpdf_all[f"{alg}_{is_al}"][i, :, :]  # (seeds, steps)
+        arr = logpdf_all[f"{alg}_{is_al}"][i, :, :]  # (seeds, steps)
         mean_E = arr.mean(axis=0)  # (steps, )
         std_E = arr.std(axis=0)  # (steps, )
         mean_E = smooth(mean_E) if use_smooth else mean_E
@@ -210,7 +251,7 @@ fig.legend(
     **get_legend_kw(16),
 )
 plt.tight_layout(rect=[0, 0.03, 1, 1])
-save_path = f"{save_dir}/logpdf_{timestamp}_nTasks={n_tasks}.png"
+save_path = f"{save_dir}/{timestamp}_logpdf_nTasks={n_tasks}.png"
 plt.savefig(save_path, bbox_inches="tight", dpi=300)
 plt.close()
 print(f"Plot saved as: {save_path}")
@@ -221,7 +262,7 @@ fig, ax = plt.subplots(figsize=(10, 6))
 invisible_topright_spines(ax)
 for alg, is_al in it.product(algs, is_als):
     key = f"{alg}_{is_al}"
-    data_T = test_logpdf_aggregate[key]  # (S: seeds), (T: steps, )
+    data_T = logpdf_agg[key]  # (S: seeds), (T: steps, )
     data_mean = data_T.mean(axis=0)
     data_std = data_T.std(axis=0)
     label = get_label(alg, is_al)
@@ -237,8 +278,8 @@ for alg, is_al in it.product(algs, is_als):
 # --- Add "x% fewer samples" annotation between EKF (Active) and EKF (Random) ---
 
 # Get means for EKF (Active) and EKF (Random)
-ekf_active_mean_T = test_logpdf_aggregate["ekf_True"].mean(axis=0)
-ekf_random_mean_T = test_logpdf_aggregate["ekf_False"].mean(axis=0)
+ekf_active_mean_T = logpdf_agg["ekf_True"].mean(axis=0)
+ekf_random_mean_T = logpdf_agg["ekf_False"].mean(axis=0)
 
 # Find the y-value at the last step of EKF (Random)
 y_tgt = ekf_random_mean_T[-1]
@@ -287,8 +328,53 @@ ax.set_yticklabels([f"{y:.2f}" for y in yticks], **get_font_kw(16))
 
 # ax.set_title("Test Log-Likelihood Across Tasks", **get_font_kw(13))
 ax.legend(**get_legend_kw(18), loc="lower right")
-save_path = f"{save_dir}/logpdf_{timestamp}_nTasks={n_tasks}_agg.png"
+save_path = f"{save_dir}/{timestamp}_logpdf_nTasks={n_tasks}_agg.png"
 plt.savefig(save_path, bbox_inches="tight", dpi=300)
 plt.close()
 
+print(f"Plot saved as: {save_path}")
+
+# * plot all metrics aggregated over tasks: logpdf, acc, ece, brier, coverage
+fig, axes = plt.subplots(3, 2, figsize=(10, 10))
+axes = axes.flatten()
+
+for i, metric in enumerate(["logpdf", "acc", "ece", "brier", "coverage"]):
+    ax = axes[i]
+    invisible_topright_spines(ax)
+    for alg, is_al in it.product(algs, is_als):
+        key = f"{alg}_{is_al}"
+        data_T = stats_agg[metric][key]  # (S: seeds), (T: steps, )
+        data_mean = data_T.mean(axis=0)
+        data_std = data_T.std(axis=0)
+        label = get_label(alg, is_al)
+        style = get_style(alg, is_al)
+        ax.plot(data_mean, label=label, **style, linewidth=2)
+        ax.fill_between(
+            range(len(data_mean)),
+            data_mean - data_std,
+            data_mean + data_std,
+            alpha=0.2,
+            **style,
+        )
+    ax.set_ylabel(prettify_title(metric), **get_font_kw(18))
+fig.supxlabel("Number of Queries", **get_font_kw(16))
+fig.legend(
+    dummy_lines,
+    [
+        get_label("ekf", True),
+        get_label("ekf", False),
+        get_label("sgd", True),
+        get_label("sgd", False),
+        get_label("do", True),
+        get_label("do", False),
+    ],
+    loc="lower center",
+    bbox_to_anchor=(0.5, -0.08),
+    ncol=3,
+    handlelength=2,
+    **get_legend_kw(16),
+)
+save_path = f"{save_dir}/{timestamp}_metrics_nTasks={n_tasks}_agg.png"
+plt.savefig(save_path, bbox_inches="tight", dpi=300)
+plt.close()
 print(f"Plot saved as: {save_path}")
