@@ -129,8 +129,9 @@ class EnsembleAgent(Agent):
             else int(len(warmup_data) * jnp.abs(self.niters_init))
         )
 
+        key, key_sgd = jr.split(key, 2)
         warm_ts, warm_metrics = run_sgd(
-            key,
+            key_sgd,
             bel.ts,
             dataset=warmup_data,
             loss_fn=bt_loss_fn,
@@ -151,10 +152,11 @@ class EnsembleAgent(Agent):
     def update_bel(
         self, key, bel: EnsembleBeliefState, batch: QueryData
     ) -> EnsembleBeliefState:
+        key, key_update = jr.split(key)
         if self.update_all:
-            return self.update_bel_all(key, bel, batch)
+            return self.update_bel_all(key_update, bel, batch)
         else:
-            return self.update_bel_most_recent(key, bel, batch)
+            return self.update_bel_most_recent(key_update, bel, batch)
 
     # @partial(jax.jit, static_argnames=["self"])
     def update_bel_all(

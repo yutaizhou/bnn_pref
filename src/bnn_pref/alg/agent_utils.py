@@ -222,6 +222,8 @@ def run_sgd(
             return ts, {"loss": loss, "params": flat_params}
 
     # * different model training cases:
+    # (niters, bs) -> single model or multiple models with shared datastream
+    # (niters, n_models, bs) -> multiple models with split datastream
     key, key_data = jr.split(key)
     batch_iterator = get_batch_iter(
         key_data,
