@@ -14,7 +14,7 @@ defaults:
 - hydra: default
 
 fhat: linear # only used for synthetic tasks
-M: 15 # number of models / samples for ensembling / EKF sampling
+M: 100 # number of models / samples for ensembling / EKF sampling
 active: False # active vs. random querying
 chunk_size: 128 # for jax.lax.map()
 seed_vmap: True # whether to use vmap to parallelize run seeds. good for 3 seeds or under

@@ -79,6 +79,7 @@ algs = ["ekf", "sgd", "do"]
 is_als = [True, False]
 n_tasks = len(tasks)
 
+use_stderr = True  # otherwise use stderr
 use_smooth = True
 
 # * == vv change this block vv ==
@@ -205,7 +206,11 @@ for i, task in enumerate(tasks):
     for alg, is_al in it.product(algs, is_als):
         arr = logpdf_all[f"{alg}_{is_al}"][i, :, :]  # (seeds, steps)
         mean_E = arr.mean(axis=0)  # (steps, )
-        std_E = arr.std(axis=0)  # (steps, )
+        std_E = (
+            arr.std(axis=0)
+            if not use_stderr
+            else arr.std(axis=0) / np.sqrt(arr.shape[0])
+        )  # (steps, )
         mean_E = smooth(mean_E) if use_smooth else mean_E
         std_E = smooth(std_E) if use_smooth else std_E
         label = get_label(alg, is_al)
@@ -277,7 +282,11 @@ for alg, is_al in it.product(algs, is_als):
     key = f"{alg}_{is_al}"
     data_T = logpdf_agg[key]  # (S: seeds), (T: steps, )
     data_mean = data_T.mean(axis=0)
-    data_std = data_T.std(axis=0)
+    data_std = (
+        data_T.std(axis=0)
+        if not use_stderr
+        else data_T.std(axis=0) / np.sqrt(data_T.shape[0])
+    )
     label = get_label(alg, is_al)
     style = get_style(alg, is_al)
     ax.plot(data_mean, label=label, **style, linewidth=2)
@@ -358,7 +367,11 @@ for i, metric in enumerate(["logpdf", "acc", "ece", "brier", "coverage", "sharpn
         key = f"{alg}_{is_al}"
         data_T = stats_agg[metric][key]  # (S: seeds), (T: steps, )
         data_mean = data_T.mean(axis=0)
-        data_std = data_T.std(axis=0)
+        data_std = (
+            data_T.std(axis=0)
+            if not use_stderr
+            else data_T.std(axis=0) / np.sqrt(data_T.shape[0])
+        )
         label = get_label(alg, is_al)
         style = get_style(alg, is_al)
         ax.plot(data_mean, label=label, **style, linewidth=2)
