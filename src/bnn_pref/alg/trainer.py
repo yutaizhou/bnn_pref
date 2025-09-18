@@ -19,7 +19,7 @@ from bnn_pref.utils.metrics import (
     compute_logpdf,
     compute_sharpness,
 )
-from bnn_pref.utils.network import RewardNet2
+from bnn_pref.utils.network import RewardNet2, isfinite_param, isfinite_param_pytree
 
 warnings.filterwarnings("ignore")
 
@@ -55,13 +55,11 @@ def run_alg(key, alg: str, cfg, data_dict, env):
         # compute posterior predictive
         key_postpred = jr.fold_in(key_eval, bel.t)
         prob_Q2 = bandit.compute_postpred(key_postpred, bel, test_trajs_obs, queries_Q2)
+        prob_Q2 = jnp.clip(prob_Q2, min=1e-4, max=1 - 1e-4)  # stability
 
         # compute metrics
         test_acc = compute_accuracy(prob_Q2, labels_Q1)
-
-        clipped_prob_Q2 = jnp.clip(prob_Q2, a_min=1e-4)  # stability
-        test_logpdf = compute_logpdf(clipped_prob_Q2, labels_Q1)
-
+        test_logpdf = compute_logpdf(prob_Q2, labels_Q1)
         test_ece = compute_ece(prob_Q2, labels_Q1)
         test_brier_score = compute_brier_score(prob_Q2, labels_Q1)
         test_coverage_rate = compute_coverage_rate(prob_Q2, labels_Q1, alpha=alpha)

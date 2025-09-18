@@ -1,9 +1,7 @@
 import itertools as it
 from typing import List, Union
 
-import einops
 import flax.linen as nn
-import ipdb
 import jax
 import jax.numpy as jnp
 from einops import rearrange
@@ -25,6 +23,22 @@ def count_params(params_dict: dict) -> int:
     params_dict = model.init(key, dummy)["params"]
     """
     return sum(x.size for x in jax.tree.leaves(params_dict))
+
+
+def isfinite_param_pytree(param):
+    """
+    pytree param finiteness check. works on both pytree and arrays, count number of non-finite params
+    """
+    isfinite = jax.tree.map(lambda x: jnp.isfinite(x).all(), param)
+    # return sum(si for si in isfinite if ~si)
+    return jax.tree.all(isfinite)
+
+
+def isfinite_param(param):
+    return jnp.isfinite(param).all()
+
+
+default_init = nn.initializers.xavier_uniform
 
 
 class RewardNet(nn.Module):
@@ -93,7 +107,7 @@ class PositionWiseMLP(nn.Module):
                 else self.dropout_prob
             )
             for i in range(n_hidden):
-                x = nn.Dense(self.hidden_sizes[i])(x)
+                x = nn.Dense(self.hidden_sizes[i], kernel_init=default_init())(x)
                 x = nn.leaky_relu(x)
                 prob = dropout_probs[i]
                 if prob > 0:
