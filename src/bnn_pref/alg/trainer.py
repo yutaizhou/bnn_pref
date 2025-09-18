@@ -120,7 +120,10 @@ def alg_pipeline(
         alg_cfg["n_splits"],
         alg_cfg["dropout_prob"],
     )
-    opt = optax.adam(alg_cfg["learning_rate"])
+    if alg_cls == EKFAgent:
+        opt = optax.sgd(alg_cfg["learning_rate"], momentum=alg_cfg["momentum"])
+    else:
+        opt = optax.adam(alg_cfg["learning_rate"])
     cls_kwargs = alg_cls.get_hydra_config(alg_cfg)
     bandit = alg_cls(model, opt, traj_shape=traj_shape, **cls_kwargs)
 

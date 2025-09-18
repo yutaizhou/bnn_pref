@@ -328,7 +328,7 @@ class EKFAgent(Agent):
         M = self.n_models
         distr = distrax.MultivariateNormalFullCovariance(bel.mean, bel.cov)
         key, key_sample = jr.split(key, 2)
-        ss_params = distr.sample(seed=key_sample, sample_shape=(M,))
+        ss_params = distr.sample(seed=key_sample, sample_shape=(M,))  # (M, sub_dim)
         params = jax.vmap(self.sub2full_params)(ss_params)  # pytree (lead axis M)
 
         # * precompute logits for all items, assume ts lead dimension is M

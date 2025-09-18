@@ -162,8 +162,6 @@ def main(cfg):
         for alg, is_al in it.product(algs, is_als):
             cfg[alg]["active"] = is_al
 
-            # run_fn = run_fns[alg]
-            # run_fn = partial(run_fn, cfg=cfg, data_dict=data_dict, env=env)
             run_fn = partial(run_alg, alg=alg, cfg=cfg, data_dict=data_dict, env=env)
 
             # run in vmap or lax version (parallel vs. sequential)
@@ -222,21 +220,21 @@ def main(cfg):
 
             stats[task][alg][is_al] = res
             test_logpdf_all = res_m["test_logpdf"]
-            nans = ~jnp.isfinite(test_logpdf_all)
+            nonfinites = ~jnp.isfinite(test_logpdf_all)
 
             print(
                 f"  {alg} active={str(is_al):5}, "
                 f"acc: {res['test_acc_final']['mean']:.2%} ± {res['test_acc_final']['std']:.2%}, "
                 f"logpdf: {res['test_logpdf_final']['mean']:.2f} ± {res['test_logpdf_final']['std']:.2f}; "
                 f"ece: {res['test_ece_final']['mean']:.4f} ± {res['test_ece_final']['std']:.4f}; "
-                f"brier: {res['test_brier_final']['mean']:.2%} ± {res['test_brier_final']['std']:.2%}, "
+                f"brier: {res['test_brier_final']['mean']:.2f} ± {res['test_brier_final']['std']:.2f}, "
                 f"coverage: {res['test_coverage_final']['mean']:.2%} ± {res['test_coverage_final']['std']:.2%}, "
                 f"sharpness: {res['test_sharpness_final']['mean']:.2f} ± {res['test_sharpness_final']['std']:.2f}, "
                 f"{get_param_count_msg(cfg, alg, res_m)}, "
                 f"({res['duration']:.1f}s)"
             )
-            if nans.any():
-                print(f"nans: {nans.sum(1)}")
+            if nonfinites.any():
+                print(f"nonfinites: {nonfinites.sum(1)}")
     total_duration = (datetime.now() - total_duration).total_seconds()
     print(f"Total duration: {total_duration:.1f}s")
     jnp.savez(f"{cfg.paths.output_dir}/stats.npz", **stats)
@@ -265,8 +263,8 @@ def main(cfg):
             # (n_seeds, 1 + nq_update)
             stat = stats[task][alg][is_al]
             values = stat["test_logpdf_all"]
-            nans = ~jnp.isfinite(values)
-            if nans.any():
+            nonfinites = ~jnp.isfinite(values)
+            if nonfinites.any():
                 continue
             label = get_label(alg, is_al)
             style = get_style(alg, is_al)
