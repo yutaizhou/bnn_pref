@@ -59,6 +59,7 @@ class EnsembleAgent(Agent):
         use_vmap: bool = True,  # for training update_bel in {init,update}_bel
         acq: str = "disagreement",
         update_all: bool = True,
+        split_datastream: bool = True,
     ):
         self.traj_shape = traj_shape
         self.n_models = n_models
@@ -74,6 +75,7 @@ class EnsembleAgent(Agent):
         assert acq in ["disagreement", "infogain"]
         self.acq = acq
         self.update_all = update_all
+        self.split_datastream = split_datastream
 
         # * prepare ensemble predictors
         def pred_return(ts: TrainState, x: Float[Array, "T D"]) -> Float[Array, " "]:
@@ -105,6 +107,7 @@ class EnsembleAgent(Agent):
             "chunk_size": sgd_cfg["chunk_size"],
             "use_vmap": sgd_cfg["use_vmap"],
             "max_buffer_size": sgd_cfg["max_buffer_size"],
+            "split_datastream": sgd_cfg["split_datastream"],
         }
 
     # @partial(jax.jit, static_argnames=["self"])
@@ -141,7 +144,7 @@ class EnsembleAgent(Agent):
             l2_reg=self.l2_reg,
             get_param_trace=False,
             n_models=self.n_models,
-            split_datastream=True,
+            split_datastream=self.split_datastream,
             use_dropout=False,
         )
 
@@ -187,7 +190,7 @@ class EnsembleAgent(Agent):
             l2_reg=self.l2_reg,
             get_param_trace=False,
             n_models=self.n_models,
-            split_datastream=True,
+            split_datastream=self.split_datastream,
             use_dropout=False,
         )
         bel = bel.replace(ts=ts, t=bel.t + 1)

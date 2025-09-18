@@ -130,11 +130,14 @@ def run_gradient_descent(
         # retrieve batch. If full batch (bs==-1), use all data
         contexts_B2TD = contexts if batch_size == -1 else retrieve(contexts, idxs_B)
         labels_B2 = labels if batch_size == -1 else retrieve(labels, idxs_B)  # one-hot
-        batch = QueryData(contexts_B2TD, labels_B2)
+
+        def parameterized_loss(params):
+            logits_B2 = ts.apply_fn({"params": params}, contexts_B2TD)
+            return loss_fn(params, logits_B2, labels_B2, l2_reg)
 
         # loss, grad, update
-        grad_fn = value_and_grad(loss_fn, has_aux=has_aux)
-        val, grads = grad_fn(ts.params, ts, batch, l2_reg)
+        grad_fn = jax.value_and_grad(parameterized_loss, has_aux=has_aux)
+        val, grads = grad_fn(ts.params)
         loss = val[0] if has_aux else val
         ts = ts.apply_gradients(grads=grads)
         flat_params, _ = ravel_pytree(ts.params)
@@ -143,7 +146,7 @@ def run_gradient_descent(
     # Create batch manager and get all batches upfront
     key, key_data = jr.split(key)
     batch_manager = BatchIndexManager(key_data, data_size=N, batch_size=batch_size)
-    batch_idxs = batch_manager.get_n_batches(n=niters)  # (niters, batch_size)
+    batch_idxs = batch_manager.get_n_batches(n=niters)  # (niters, bs)
 
     # Run `niters` steps
     ts, metrics = scan(train_step, init=ts, xs=batch_idxs)

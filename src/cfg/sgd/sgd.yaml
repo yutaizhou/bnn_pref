@@ -26,3 +26,4 @@ update_all: ${..update_all}
 niters_update: ${..niters_update}
 # learning_rate: 0.0001
 learning_rate: ${..learning_rate}
+split_datastream: True
