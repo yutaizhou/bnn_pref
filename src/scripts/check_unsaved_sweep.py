@@ -47,7 +47,6 @@ for task in tasks:
     task_exists.append(found_task)
     stats_exists.append(found_stats)
 
-
 for task, task_exists, stats_exists in zip(tasks, task_exists, stats_exists):
     if not task_exists:
         print(f"{task}: task not found")

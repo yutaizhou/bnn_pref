@@ -41,48 +41,6 @@ def isfinite_param(param):
 default_init = nn.initializers.xavier_uniform
 
 
-class RewardNet(nn.Module):
-    hidden_sizes: List[int]
-    n_splits: int = 1
-
-    def setup(self):
-        assert self.n_splits > 0, f"{self.n_splits=} must be positive"
-        layers = [[nn.Dense(size), nn.leaky_relu] for size in self.hidden_sizes]
-        layers += [[nn.Dense(1)]]
-        self.layers = nn.Sequential(list(it.chain.from_iterable(layers)))
-
-    def __call__(self, x: B2TD) -> B2:
-        """
-        Take batches of trajectory pairs, outputs returns for both trajectories
-        """
-        r1 = self.predict_traj_return(x[:, 0])  # B
-        r2 = self.predict_traj_return(x[:, 1])  # B
-        logits = rearrange([r1, r2], "K B -> B K", K=2)  # B 2
-        return logits
-
-    def predict_traj_return(self, x: BTD) -> B:
-        B, T, D = x.shape
-        rewards = self.predict_traj_rewards(x)  # (B,T,D) -> (B,T)
-        returns = rewards.sum(axis=1)  # (B,)
-        returns /= T
-        return returns
-
-    def predict_traj_rewards(self, x: BTD) -> BT:
-        """
-        batch MLP over T dimension
-        if n_splits > 1, split T into `n_splits` (divisible) chunks, avoid OOM
-        """
-        if self.n_splits == 1:
-            x = self.layers(x)  # (B,T,D) -> (B,T,1)
-        else:
-            T = x.shape[1]
-            split_size = T // self.n_splits
-            x_chunks = jnp.split(x, self.n_splits, axis=1)  # List[(B,S,D) * n_splits]
-            out = [self.layers(x_chunk) for x_chunk in x_chunks]
-            x = rearrange(out, "k B S 1 -> B (k S) 1", k=self.n_splits, S=split_size)
-        return jnp.squeeze(x, axis=-1)  # works also for batch-less TD -> T
-
-
 class PositionWiseMLP(nn.Module):
     hidden_sizes: List[int]
     n_splits: int = 1
@@ -163,3 +121,49 @@ class RewardNet2(nn.Module):
 
     def predict_traj_rewards(self, x: BTD, deterministic: bool = True) -> BT:
         return self.pw_mlp(x, deterministic=deterministic)
+
+
+class RewardNet(nn.Module):
+    """
+    Deprecated. Use RewardNet2 instead.
+    """
+
+    hidden_sizes: List[int]
+    n_splits: int = 1
+
+    def setup(self):
+        assert self.n_splits > 0, f"{self.n_splits=} must be positive"
+        layers = [[nn.Dense(size), nn.leaky_relu] for size in self.hidden_sizes]
+        layers += [[nn.Dense(1)]]
+        self.layers = nn.Sequential(list(it.chain.from_iterable(layers)))
+
+    def __call__(self, x: B2TD) -> B2:
+        """
+        Take batches of trajectory pairs, outputs returns for both trajectories
+        """
+        r1 = self.predict_traj_return(x[:, 0])  # B
+        r2 = self.predict_traj_return(x[:, 1])  # B
+        logits = rearrange([r1, r2], "K B -> B K", K=2)  # B 2
+        return logits
+
+    def predict_traj_return(self, x: BTD) -> B:
+        B, T, D = x.shape
+        rewards = self.predict_traj_rewards(x)  # (B,T,D) -> (B,T)
+        returns = rewards.sum(axis=1)  # (B,)
+        returns /= T
+        return returns
+
+    def predict_traj_rewards(self, x: BTD) -> BT:
+        """
+        batch MLP over T dimension
+        if n_splits > 1, split T into `n_splits` (divisible) chunks, avoid OOM
+        """
+        if self.n_splits == 1:
+            x = self.layers(x)  # (B,T,D) -> (B,T,1)
+        else:
+            T = x.shape[1]
+            split_size = T // self.n_splits
+            x_chunks = jnp.split(x, self.n_splits, axis=1)  # List[(B,S,D) * n_splits]
+            out = [self.layers(x_chunk) for x_chunk in x_chunks]
+            x = rearrange(out, "k B S 1 -> B (k S) 1", k=self.n_splits, S=split_size)
+        return jnp.squeeze(x, axis=-1)  # works also for batch-less TD -> T

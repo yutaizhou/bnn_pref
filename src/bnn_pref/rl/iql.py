@@ -198,7 +198,7 @@ def run_iql(rng, cfg):
             tags=cfg.wandb.tags,
         )
 
-    # --- Initialize environment and dataset ---
+    # --- Initialize environment, dataset, reward labeling ---
     env = gym.vector.make(task_cfg.name, num_envs=rl_cfg.n_eval_workers)
     dataset = d4rl.qlearning_dataset(gym.make(task_cfg.name))
     dataset = Transition(

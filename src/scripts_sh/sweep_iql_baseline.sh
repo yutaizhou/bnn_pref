@@ -25,9 +25,9 @@ TASK_LIST=$(IFS=,; echo "${TASKS[*]}")
 # submitit
 python bnn_pref/rl/iql.py \
     -m task=$TASK_LIST \
-    rl.reward=zero,gt \
     rl.n_updates=1000000 \
     rl.eval_interval=25000 \
+    rl.reward=zero,gt \
     rl.use_wandb=True \
     wandb.group=rl_baseline \
     hydra/launcher=slurm 

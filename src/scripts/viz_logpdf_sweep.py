@@ -10,6 +10,8 @@ from collections import defaultdict
 from datetime import datetime
 
 import ipdb
+import jax
+import jax.numpy as jnp
 
 os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
 os.environ["DISABLE_CODESIGN_WARNING"] = "1"
@@ -30,7 +32,16 @@ from bnn_pref.utils.plotting import (
 )
 
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+dirp = sys.argv[1]  # where to load
+save_dir = dirp  # where to save
+metric_names = ["logpdf", "acc", "ece", "brier", "coverage", "sharpness"]
+use_stderr = True  # otherwise use stderr
+use_smooth = True
+handle_nan = False
+nan_mask = False
 
+
+# neurips tasks
 tasks = [
     # # * D4RL
     # "cheetahRandom",
@@ -42,8 +53,8 @@ tasks = [
     "walkerRandom",
     "walkerMediumReplay",
     "walkerMediumExpert",
-    # "penHuman",
-    # "penExpert",
+    "penHuman",
+    "penExpert",
     # "penCloned",
     # "kitchenComplete",
     # "kitchenPartial",
@@ -53,6 +64,30 @@ tasks = [
     # "mazeLargeDense",
 ]
 
+# iclr tasks
+tasks = [
+    # # * D4RL
+    "cheetahRandom",
+    "cheetahMediumReplay",
+    "cheetahMediumExpert",
+    "hopperRandom",
+    "hopperMediumReplay",
+    "hopperMediumExpert",
+    "walkerRandom",
+    "walkerMediumReplay",
+    "walkerMediumExpert",
+    "penHuman",
+    # "penExpert",
+    # "penCloned",
+    # "kitchenComplete",
+    # "kitchenPartial",
+    # "kitchenMixed",
+    # "mazeUDense",
+    "mazeMediumDense",
+    "mazeLargeDense",
+]
+
+# # all tasks
 # tasks = [
 #     # # * D4RL
 #     "cheetahRandom",
@@ -67,30 +102,65 @@ tasks = [
 #     "penHuman",
 #     "penExpert",
 #     "penCloned",
-#     "kitchenComplete",
-#     "kitchenPartial",
-#     "kitchenMixed",
+#     # "kitchenComplete",
+#     # "kitchenPartial",
+#     # "kitchenMixed",
 #     "mazeUDense",
 #     "mazeMediumDense",
 #     "mazeLargeDense",
 # ]
 
+n_tasks = len(tasks)
 algs = ["ekf", "sgd", "do"]
 is_als = [True, False]
-n_tasks = len(tasks)
-
-use_stderr = True  # otherwise use stderr
-use_smooth = True
-
-# * == vv change this block vv ==
-# save_dir: where to save
-# dirp: where to load
-dirp = sys.argv[1]
-# save_dir = "/scr/yutaizho/projects/bnn_pref/_viz/logpdf"  # where to save
-save_dir = dirp
-# * == ^^ change this block ^^ ==
 
 
+"""
+Given arr of shape (nseeds, steps) -> (steps, ) with mean, std, sterr, etc.
+two ways to handle nans:
+1. use nanmean, nanstd, etc: each timestep may have different number of nans, so sample size may differ across timesteps
+2. mask out rows that contain at least one nan: this ensure that the sample size is the same across timesteps
+"""
+
+
+def mean(arr, axis, nan=False, nan_mask=False):
+    if nan:
+        if nan_mask:
+            row_mask = np.isfinite(arr).all(1)  # (nseeds, )
+            arr = arr[row_mask]
+            return np.mean(arr, axis=axis)
+        else:
+            return np.nanmean(arr, axis=axis)
+    else:
+        return np.mean(arr, axis=axis)
+
+
+def std(arr, axis, nan=False, nan_mask=False):
+    if nan:
+        if nan_mask:
+            row_mask = np.isfinite(arr).all(1)  # (nseeds, )
+            arr = arr[row_mask]
+            return np.std(arr, axis=axis)
+        else:
+            return np.nanstd(arr, axis=axis)
+    else:
+        return np.std(arr, axis=axis)
+
+
+def sterr(arr, axis, nan=False, nan_mask=False):
+    if nan:
+        if nan_mask:
+            row_mask = np.isfinite(arr).all(1)  # (nseeds, )
+            arr = arr[row_mask]
+            return np.std(arr, axis=axis) / np.sqrt(arr.shape[0])
+        else:
+            nonnans_per_step = np.isfinite(arr).sum(0)  # (steps, )
+            return np.nanstd(arr, axis=0) / np.sqrt(nonnans_per_step)
+    else:
+        return np.std(arr, axis=axis) / np.sqrt(arr.shape[0])
+
+
+# *load data from stats.npz -> stats[metric][alg_is_al] = array(n_tasks, seeds, steps)
 # data["cheetahRandom"]["ekf"][False]["test_logpdf_all"] = (n_seeds, n_steps)
 data = {}
 for task in tasks:
@@ -101,23 +171,13 @@ for task in tasks:
 
 
 # stats["logpdf"][alg_is_al] = (n_tasks, seeds, steps); e.g. stats["logpdf"]["ekf_True"]
-stats = {
-    "logpdf": defaultdict(lambda: list()),
-    "acc": defaultdict(lambda: list()),
-    "ece": defaultdict(lambda: list()),
-    "brier": defaultdict(lambda: list()),
-    "coverage": defaultdict(lambda: list()),
-    "sharpness": defaultdict(lambda: list()),
-}
+stats = {metric: defaultdict(lambda: list()) for metric in metric_names}
+
 for alg, is_al in it.product(algs, is_als):
     for task in tasks:
-        res = data[task][alg][is_al]
-        stats["logpdf"][f"{alg}_{is_al}"].append(res["test_logpdf_all"])
-        stats["acc"][f"{alg}_{is_al}"].append(res["test_acc_all"])
-        stats["ece"][f"{alg}_{is_al}"].append(res["test_ece_all"])
-        stats["brier"][f"{alg}_{is_al}"].append(res["test_brier_all"])
-        stats["coverage"][f"{alg}_{is_al}"].append(res["test_coverage_all"])
-        stats["sharpness"][f"{alg}_{is_al}"].append(res["test_sharpness_all"])
+        res = data[task][alg][is_al]  # (n_seeds, n_steps)
+        for metric in metric_names:
+            stats[metric][f"{alg}_{is_al}"].append(res[f"test_{metric}_all"])
 
 
 def list2array(stats: dict) -> dict:
@@ -128,48 +188,19 @@ def list2array(stats: dict) -> dict:
     return {k: np.array(v) for k, v in stats.items()}
 
 
-stats["logpdf"] = list2array(stats["logpdf"])
-stats["acc"] = list2array(stats["acc"])
-stats["ece"] = list2array(stats["ece"])
-stats["brier"] = list2array(stats["brier"])
-stats["coverage"] = list2array(stats["coverage"])
-stats["sharpness"] = list2array(stats["sharpness"])
+for metric in metric_names:
+    stats[metric] = list2array(stats[metric])
 
-logpdf_all = stats["logpdf"]  # (n_tasks, seeds, steps)
-acc_all = stats["acc"]
-ece_all = stats["ece"]
-brier_all = stats["brier"]
-coverage_all = stats["coverage"]
-sharpness_all = stats["sharpness"]
+# * aggregate over tasks -> stats_agg[metric][alg_is_al] = array(seeds, steps)
+stats_agg = {metric: {} for metric in metric_names}
 
-# * aggregate over tasks and seeds
-logpdf_agg, acc_agg, ece_agg, brier_agg, coverage_agg, sharpness_agg = (
-    {},
-    {},
-    {},
-    {},
-    {},
-    {},
-)
 for alg, is_al in it.product(algs, is_als):
-    arr = logpdf_all[f"{alg}_{is_al}"]  # (n_tasks, seeds, steps)
-    logpdf_agg[f"{alg}_{is_al}"] = arr.mean(axis=(0,))
-    acc_agg[f"{alg}_{is_al}"] = acc_all[f"{alg}_{is_al}"].mean(axis=(0,))
-    ece_agg[f"{alg}_{is_al}"] = ece_all[f"{alg}_{is_al}"].mean(axis=(0,))
-    brier_agg[f"{alg}_{is_al}"] = brier_all[f"{alg}_{is_al}"].mean(axis=(0,))
-    coverage_agg[f"{alg}_{is_al}"] = coverage_all[f"{alg}_{is_al}"].mean(axis=(0,))
-    sharpness_agg[f"{alg}_{is_al}"] = sharpness_all[f"{alg}_{is_al}"].mean(axis=(0,))
-stats_agg = {
-    "logpdf": logpdf_agg,
-    "acc": acc_agg,
-    "ece": ece_agg,
-    "brier": brier_agg,
-    "coverage": coverage_agg,
-    "sharpness": sharpness_agg,
-}
+    for metric in metric_names:
+        arr = stats[metric][f"{alg}_{is_al}"]  # (n_tasks, seeds, steps)
+        stats_agg[metric][f"{alg}_{is_al}"] = mean(arr, axis=(0,), nan=handle_nan)
 
 
-# * plot logpdf
+# * plot logpdf for each task
 def get_label(alg: str, is_al: bool) -> str:
     if alg == "ekf":
         return "PreferenceEKF (Active)" if is_al else "PreferenceEKF (Random)"
@@ -204,12 +235,13 @@ for i, task in enumerate(tasks):
     # ax.axhline(y=-0.69, linestyle=":", linewidth=1, color="red")  # ln(0.5) = -0.69
     # y_lim_min, y_lim_max = -0.73, 0
     for alg, is_al in it.product(algs, is_als):
-        arr = logpdf_all[f"{alg}_{is_al}"][i, :, :]  # (seeds, steps)
-        mean_E = arr.mean(axis=0)  # (steps, )
+        arr = stats["logpdf"][f"{alg}_{is_al}"]  # (tasks, seeds, steps)
+        arr_task = arr[i, :, :]  # (seeds, steps)
+        mean_E = mean(arr_task, axis=0, nan=handle_nan)  # (steps, )
         std_E = (
-            arr.std(axis=0)
+            std(arr_task, axis=0, nan=handle_nan)
             if not use_stderr
-            else arr.std(axis=0) / np.sqrt(arr.shape[0])
+            else sterr(arr_task, axis=0, nan=handle_nan)
         )  # (steps, )
         mean_E = smooth(mean_E) if use_smooth else mean_E
         std_E = smooth(std_E) if use_smooth else std_E
@@ -243,25 +275,14 @@ for i, task in enumerate(tasks):
 
 # --- Shared legend using dummy lines, outside the subplots ---
 dummy_lines = [
-    plt.plot([], [], **get_style("ekf", True), label=get_label("ekf", True))[0],
-    plt.plot([], [], **get_style("ekf", False), label=get_label("ekf", False))[0],
-    plt.plot([], [], **get_style("sgd", True), label=get_label("sgd", True))[0],
-    plt.plot([], [], **get_style("sgd", False), label=get_label("sgd", False))[0],
-    plt.plot([], [], **get_style("do", True), label=get_label("do", True))[0],
-    plt.plot([], [], **get_style("do", False), label=get_label("do", False))[0],
+    plt.plot([], [], **get_style(alg, is_al), label=get_label(alg, is_al))[0]
+    for alg, is_al in it.product(algs, is_als)
 ]
 fig.supxlabel("Number of Queries", **get_font_kw(16))
 fig.supylabel("Test Log-Likelihood", **get_font_kw(16))
 fig.legend(
     dummy_lines,
-    [
-        get_label("ekf", True),
-        get_label("ekf", False),
-        get_label("sgd", True),
-        get_label("sgd", False),
-        get_label("do", True),
-        get_label("do", False),
-    ],
+    [get_label(alg, is_al) for alg, is_al in it.product(algs, is_als)],
     loc="lower center",
     bbox_to_anchor=(0.5, -0.08),
     ncol=3,
@@ -275,17 +296,17 @@ plt.close()
 print(f"Plot saved as: {save_path}")
 
 
-# * logpdf plot, averaged over all tasks and seeds, for each algorithm variant
+# * plot logpdf aggregated over all tasks
 fig, ax = plt.subplots(figsize=(10, 6))
 invisible_topright_spines(ax)
 for alg, is_al in it.product(algs, is_als):
-    key = f"{alg}_{is_al}"
-    data_T = logpdf_agg[key]  # (S: seeds), (T: steps, )
-    data_mean = data_T.mean(axis=0)
+    alg_isactive = f"{alg}_{is_al}"
+    arr = stats_agg["logpdf"][alg_isactive]  # (seeds, steps)
+    data_mean = mean(arr, axis=0, nan=handle_nan)
     data_std = (
-        data_T.std(axis=0)
+        std(arr, axis=0, nan=handle_nan)
         if not use_stderr
-        else data_T.std(axis=0) / np.sqrt(data_T.shape[0])
+        else sterr(arr, axis=0, nan=handle_nan)
     )
     label = get_label(alg, is_al)
     style = get_style(alg, is_al)
@@ -300,8 +321,8 @@ for alg, is_al in it.product(algs, is_als):
 # --- Add "x% fewer samples" annotation between EKF (Active) and EKF (Random) ---
 
 # Get means for EKF (Active) and EKF (Random)
-ekf_active_mean_T = logpdf_agg["ekf_True"].mean(axis=0)
-ekf_random_mean_T = logpdf_agg["ekf_False"].mean(axis=0)
+ekf_active_mean_T = mean(stats_agg["logpdf"]["ekf_True"], axis=0, nan=handle_nan)
+ekf_random_mean_T = mean(stats_agg["logpdf"]["ekf_False"], axis=0, nan=handle_nan)
 
 # Find the y-value at the last step of EKF (Random)
 y_tgt = ekf_random_mean_T[-1]
@@ -348,29 +369,28 @@ yticks = ax.get_yticks()
 ax.set_yticks(yticks)
 ax.set_yticklabels([f"{y:.2f}" for y in yticks], **get_font_kw(16))
 
-# ax.set_title("Test Log-Likelihood Across Tasks", **get_font_kw(13))
-ax.legend(**get_legend_kw(18), loc="lower right")
+ax.legend(**get_legend_kw(18), loc="upper center", bbox_to_anchor=(0.5, -0.12), ncol=3)
 save_path = f"{save_dir}/{timestamp}_logpdf_nTasks={n_tasks}_agg.png"
 plt.savefig(save_path, bbox_inches="tight", dpi=300)
 plt.close()
 
 print(f"Plot saved as: {save_path}")
 
-# * plot all metrics aggregated over tasks: logpdf, acc, ece, brier, coverage, sharpness
+# * plot all metrics aggregated over tasks
 fig, axes = plt.subplots(3, 2, figsize=(10, 10))
 axes = axes.flatten()
 
-for i, metric in enumerate(["logpdf", "acc", "ece", "brier", "coverage", "sharpness"]):
+for i, metric in enumerate(metric_names):
     ax = axes[i]
     invisible_topright_spines(ax)
     for alg, is_al in it.product(algs, is_als):
-        key = f"{alg}_{is_al}"
-        data_T = stats_agg[metric][key]  # (S: seeds), (T: steps, )
-        data_mean = data_T.mean(axis=0)
+        alg_isactive = f"{alg}_{is_al}"
+        arr = stats_agg[metric][alg_isactive]  # (seeds, steps)
+        data_mean = mean(arr, axis=0, nan=handle_nan)  # (steps, )
         data_std = (
-            data_T.std(axis=0)
+            std(arr, axis=0, nan=handle_nan)
             if not use_stderr
-            else data_T.std(axis=0) / np.sqrt(data_T.shape[0])
+            else sterr(arr, axis=0, nan=handle_nan)
         )
         label = get_label(alg, is_al)
         style = get_style(alg, is_al)
@@ -386,14 +406,7 @@ for i, metric in enumerate(["logpdf", "acc", "ece", "brier", "coverage", "sharpn
 fig.supxlabel("Number of Queries", **get_font_kw(16))
 fig.legend(
     dummy_lines,
-    [
-        get_label("ekf", True),
-        get_label("ekf", False),
-        get_label("sgd", True),
-        get_label("sgd", False),
-        get_label("do", True),
-        get_label("do", False),
-    ],
+    [get_label(alg, is_al) for alg, is_al in it.product(algs, is_als)],
     loc="lower center",
     bbox_to_anchor=(0.5, -0.08),
     ncol=3,
