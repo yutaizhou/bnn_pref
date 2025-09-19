@@ -31,13 +31,25 @@ tasks = [
 ]
 
 dirp = sys.argv[1]
-# dirp = "/scr/yutaizho/projects/bnn_pref/results_sweep/pref/20250911_204747_updateAll=True_nitersUpdate=-1_lr=0.0003_ekfM=150_ekfAcq=infogain_acq=disagreement"
-# stats["cheetahRandom"]["ekf"][False]["test_logpdf_all"] = (n_seeds, n_steps)
-stats = {}
+task_exists = []
+stats_exists = []
 print(f"Checking {dirp}")
 for task in tasks:
+    found_task = False
+    found_stats = False
     for folder in os.listdir(dirp):
         if f"task={task}" in folder:
-            if not os.path.exists(os.path.join(dirp, folder, "stats.npz")):
-                print(f"stats.npz not found for {task}")
+            found_task = True
+            if os.path.exists(os.path.join(dirp, folder, "stats.npz")):
+                found_stats = True
                 continue
+
+    task_exists.append(found_task)
+    stats_exists.append(found_stats)
+
+
+for task, task_exists, stats_exists in zip(tasks, task_exists, stats_exists):
+    if not task_exists:
+        print(f"{task}: task not found")
+    elif task_exists and not stats_exists:
+        print(f"{task}: stats not found")
