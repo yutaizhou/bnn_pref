@@ -304,15 +304,15 @@ class EnsembleAgent(Agent):
 if __name__ == "__main__":
     import ipdb
 
-    def init_model(key, model, input_shape, tx):
-        dummy_input = jnp.ones((1, *input_shape))
-        params = model.init(key, dummy_input)["params"]
-        ts = TrainState.create(
-            apply_fn=model.apply,
-            params=params,
-            tx=tx,
-        )
-        return ts
+    # def init_model(key, model, input_shape, tx):
+    #     dummy_input = jnp.ones((1, *input_shape))
+    #     params = model.init(key, dummy_input)["params"]
+    #     ts = TrainState.create(
+    #         apply_fn=model.apply,
+    #         params=params,
+    #         tx=tx,
+    #     )
+    #     return ts
 
     def train_step(ts: TrainState, batch) -> Tuple[TrainState, Scalar]:
         """Forward pass and loss computation vectorized across models."""

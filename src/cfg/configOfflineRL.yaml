@@ -5,3 +5,11 @@ paths:
   results_dir: ${paths.root_dir}/results/offline_rl
   sweep_dir: ${paths.root_dir}/results_sweep/offline_rl
 
+
+hydra:
+  # run:
+  #   dir: ${paths.results_dir}/${now:%Y%m%d_%H%M%S}_nqu=${data.nq_update}
+
+  sweep:
+    dir: ${paths.sweep_dir}/${now:%Y%m%d_%H%M%S}_nitersUpdate=${niters_update}_acq=${acq}
+    subdir: ${hydra.job.num}_prefAlg=${rl.pref_alg}_prefIsAl=${rl.pref_is_al}_task=${hydra.runtime.choices.task}

@@ -19,6 +19,7 @@ import numpy as np
 import optax
 import wandb
 from flax.training.train_state import TrainState
+from hydra.core.hydra_config import HydraConfig
 from jaxtyping import Array, Float, PRNGKeyArray
 from omegaconf import OmegaConf
 
@@ -179,6 +180,9 @@ def run_iql(rng, cfg):
     rl_cfg = cfg["rl"]
     task_cfg = cfg["task"]
     assert rl_cfg["reward"] in ["gt", "pref", "zero"]
+    assert rl_cfg["pref_alg"] in ["ekf", "sgd", "do"]
+    task_name = task_cfg.name
+    task_choice = HydraConfig.get()["runtime"]["choices"]["task"]
 
     # --- Initialize logger ---
     alg_str = (
@@ -217,9 +221,11 @@ def run_iql(rng, cfg):
         reward_fn, ckpt_fp = load_reward_model(
             key=rng_reward,
             run_dir=rl_cfg["run_dir"],
-            task_name=rl_cfg["task_name"],
+            task_name=task_name,
             alg=rl_cfg["pref_alg"],
             is_al=rl_cfg["pref_is_al"],
+            sweeped_rm=True,
+            task_choice=task_choice,
         )
         reward_src = ckpt_fp
         obs = normalize(dataset.obs, axis=(0,))  # (N, obsDim)

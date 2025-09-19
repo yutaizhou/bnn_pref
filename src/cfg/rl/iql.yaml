@@ -4,7 +4,7 @@ name: iql
 reward: gt # gt, pref, or zero; next four fields only used if reward == "pref"
 run_dir: "/scr/yutaizho/projects/bnn_pref/_runs/pref/20250501_002234_rm_d4rl_18tasks" # for pref reward model loading
 task_name: "${task.name}" # set via CLI override or compose API
-pref_alg: ekf # ekf, sgd
+pref_alg: ekf # ekf, sgd, do
 pref_is_al: True # True, False
 # reward processing: below two are for learned reward relabeling only, not GT
 normalize_reward: True 
@@ -13,7 +13,7 @@ clip_reward: True # clip reward magnitude to [-10,10], applied post normalizatio
 # * training
 n_updates: 1_000_000
 eval_interval: 25_000 
-n_eval_workers: 10 # parallel eval envs
+n_eval_workers: 5 # parallel eval envs
 n_final_eval_episodes: 10
 
 # * optimization
