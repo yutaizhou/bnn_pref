@@ -27,7 +27,7 @@ def defaultdict2dict(dd):
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 tasks = [
     # # * D4RL
-    # "cheetahRandom",
+    "cheetahRandom",
     "cheetahMediumReplay",
     "cheetahMediumExpert",
     "hopperRandom",
@@ -37,16 +37,16 @@ tasks = [
     "walkerMediumReplay",
     "walkerMediumExpert",
     "penHuman",
-    "penExpert",
+    # "penExpert",
     # "penCloned",
     # "kitchenComplete",
     # "kitchenPartial",
     # "kitchenMixed",
-    "mazeUDense",
+    # "mazeUDense",
     "mazeMediumDense",
-    # "mazeLargeDense",
+    "mazeLargeDense",
 ]
-algs = ["ekf", "sgd"]
+algs = ["ekf", "sgd", "do"]
 is_als = [True, False]
 
 use_stderr = True  # otherwise use stderr
@@ -58,44 +58,63 @@ ref_dirp = (
     "/scr/yutaizho/projects/bnn_pref/_runs/offline_rl/20250501_002013_iql_ref_18tasks"
 )
 
-pref_dirp = (
-    "/scr/yutaizho/projects/bnn_pref/_runs/offline_rl/iql_pref_18tasks_nq60_5seed"
-)
+# pref_dirp = (
+#     "/scr/yutaizho/projects/bnn_pref/_runs/offline_rl/iql_pref_18tasks_nq60_5seed"
+# )
+
+pref_dirp = "/scr/yutaizho/projects/bnn_pref/results_sweep/offline_rl/iql_pref_12tasks_nitersUpdate=10_acq=infogain"
 # * == change this block ==
+
+
+def get_label(alg: str, is_al: bool) -> str:
+    if alg == "ekf":
+        return "PreferenceEKF (Active)" if is_al else "PreferenceEKF (Random)"
+    elif alg == "sgd":
+        return "DeepEnsemble (Active)" if is_al else "DeepEnsemble (Random)"
+    elif alg == "do":
+        return "Dropout (Active)" if is_al else "Dropout (Random)"
+    else:
+        raise ValueError(f"Invalid algorithm: {alg}")
+
+
+def get_style(alg: str, is_al: bool) -> dict:
+    if alg == "ekf":
+        color = rgb_values["orange"]
+    elif alg == "sgd":
+        color = rgb_values["blue"]
+    elif alg == "do":
+        color = rgb_values["green"]
+    else:
+        raise ValueError(f"Invalid algorithm: {alg}")
+    linestyle = "-" if is_al else "--"
+    return {"color": color, "linestyle": linestyle}
 
 
 def main():
     baseline_scores = get_baseline_score(ref_dirp, tasks)  # d[task]["zero", "gt"]
 
-    dir_name = pref_dirp.split("/")[-1]
-    aux_fname = dir_name.split("iql_pref_18tasks_")[-1]  # gets "_nq60_5seed"
+    dir_name = pref_dirp.split("/")[-1]  # "iql_pref_18tasks_nq60_5seed"
+    aux_fname = dir_name.split("iql_pref_12tasks_")[-1]  # gets "_nq60_5seed"
 
-    # d[task][ekf_False] # (n_evals+1, n_pref_dirps)
+    # pref_scores[task][ekf_False] # (n_evals+1, n_pref_dirps)
+    # agg_scores[ekf_False] # (n_evals+1, n_pref_dirps)
     pref_scores = combine_pref_scores(pref_dirp)
-    # d[ekf_False] # (n_evals+1, n_pref_dirps)
     agg_scores = aggregate_scores_task(pref_scores)
-
-    def get_label(alg: str, is_al: bool) -> str:
-        if alg == "ekf":
-            return "PreferenceEKF (Active)" if is_al else "PreferenceEKF (Random)"
-        else:
-            return "DeepEnsemble (Active)" if is_al else "DeepEnsemble (Random)"
-
-    def get_style(alg: str, is_al: bool) -> dict:
-        color = rgb_values["orange"] if alg == "ekf" else rgb_values["blue"]
-        linestyle = "-" if is_al else "--"
-        return {"color": color, "linestyle": linestyle}
 
     fig, axs = plt.subplots(3, 4, figsize=(12, 7.5), sharex=True)
     axs = axs.flatten()
     lines = []  # Store lines for the shared legend
     labels = []  # Store labels for the shared legend
 
+    # * plot scores per task
     for i, task in enumerate(tasks):
         ax = axs[i]
         invisible_topright_spines(ax)
+        max_score, min_score = 0, jnp.inf
+        zero_score = baseline_scores[task]["zero"]
+        gt_score = baseline_scores[task]["gt"]
         for alg, is_al in it.product(algs, is_als):
-            scores = pref_scores[task][f"{alg}_{is_al}"]  # (n_evals+1, n_workers)
+            scores = pref_scores[task][f"{alg}_{is_al}"]  # (n_evals+1, n_eval_workers)
             mean_E = scores.mean(1)
             std_E = (
                 scores.std(1)
@@ -117,21 +136,25 @@ def main():
                 alpha=0.2,
                 **style,
             )
-        zero_score = baseline_scores[task]["zero"]
-        gt_score = baseline_scores[task]["gt"]
+            # for better zooming in visualization
+            if task in ["cheetahRandom", "mazeMediumDense", "hopperMediumExpert"]:
+                max_score = max(scores[np.isfinite(scores)].max(), gt_score, max_score)
+                min_score = min(
+                    scores[np.isfinite(scores)].min(), zero_score, min_score
+                )
+            else:
+                max_score = max(mean_E[np.isfinite(mean_E)].max(), gt_score, max_score)
+                min_score = min(
+                    mean_E[np.isfinite(mean_E)].min(), zero_score, min_score
+                )
+
         zero_line = ax.axhline(
             zero_score, color=rgb_values["gray"], linestyle="--", linewidth=1.0
         )
         gt_line = ax.axhline(
             gt_score, color=rgb_values["gray"], linestyle="-", linewidth=1.0
         )
-        # for better zooming in visualization
-        if task in ["mazeMediumDense", "hopperMediumExpert"]:
-            max_score = max(scores[np.isfinite(scores)].max(), gt_score)
-            min_score = min(scores[np.isfinite(scores)].min(), zero_score)
-        else:
-            max_score = max(mean_E[np.isfinite(mean_E)].max(), gt_score)
-            min_score = min(mean_E[np.isfinite(mean_E)].min(), zero_score)
+
         ax.set_ylim(min_score - 2, max_score + 2)
         if i == 0:  # Only store baseline legend info from first subplot
             lines.extend([gt_line, zero_line])
@@ -156,7 +179,7 @@ def main():
         labels,
         loc="lower center",
         bbox_to_anchor=(0.5, -0.12),
-        ncol=3,
+        ncol=4,
         handlelength=2,
         **get_legend_kw(16),
     )
@@ -206,7 +229,10 @@ def main():
     ax.set_yticklabels([f"{y:.0f}" for y in yticks], **get_font_kw(16))
     ax.set_ylim(min_score - 3, max_score + 3)
 
-    ax.legend(**get_legend_kw(18), loc="lower right")
+    ax.legend(
+        **get_legend_kw(18), loc="upper center", bbox_to_anchor=(0.5, -0.12), ncol=3
+    )
+
     fp = f"{save_dir}/offlineRL_{timestamp}_{aux_fname}_agg.png"
     plt.savefig(fp, bbox_inches="tight", dpi=300)
     print(f"Saved to {fp}")
@@ -215,48 +241,49 @@ def main():
 def combine_pref_scores(parent_dir: str):
     """
     parent_dir: str
-        each subdir is a hydra_sweep run seed, containing the override directories
+        each subdir is a hydra sweep (treated one seed), containing the override directories
+        n_seeds := n_pref_dirps
 
-    Turn List of n_seeds d[task][ekf_False] # (n_evals+1, n_workers)
-    -> d[task][ekf_False] # (n_pref_dirps, n_evals+1, n_workers)
-    -> d[task][ekf_False] # (n_evals+1, n_pref_dirps) ; take mean over n_workers
+    Turn List[dict[task][ekf_False] # (n_evals+1, n_workers)] * n_seeds
+    -> d[task][ekf_False] # (n_seeds, n_evals+1, n_workers)
+    -> d[task][ekf_False] # (n_evals+1, n_seeds) ; take mean over n_workers per step
     """
     seed_dirs = [
         os.path.join(parent_dir, d)
         for d in os.listdir(parent_dir)
         if os.path.isdir(os.path.join(parent_dir, d))
     ]
-    combined_scores_dict = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
     scores_dicts = [get_pref_score(seed_dir, tasks) for seed_dir in seed_dirs]
+
+    combined_scores_dict = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
     for task in tasks:
         for alg, is_al in it.product(algs, is_als):
-            # (n_pref_dirps, n_evals+1, n_workers)
             combined_arr = np.stack(
                 [scores_dict[task][f"{alg}_{is_al}"] for scores_dict in scores_dicts],
                 axis=0,
-            )
-            # (n_evals+1, n_pref_dirps)
-            combined_arr = combined_arr.mean(2).swapaxes(0, 1)
+            )  # (n_seeds, n_evals+1, n_workers)
+            combined_arr = combined_arr.mean(2).swapaxes(0, 1)  # (n_evals+1, n_seeds)
             combined_scores_dict[task][f"{alg}_{is_al}"] = combined_arr
     return combined_scores_dict
 
 
 def aggregate_scores_task(combined_scores_dict: dict):
     """
-    d[task][ekf_False] # (n_evals+1, n_pref_dirps) ->
-    d[ekf_False] # (n_task, n_evals+1, n_pref_dirps) ->
-    d[ekf_False] # (n_evals+1, n_pref_dirps) ; take mean over n_task
+    Takes output from combine_pref_scores(), combine scores across tasks
+
+    dict[task][ekf_False] # (n_evals+1, n_seeds) ->
+    dict[ekf_False] # (n_task, n_evals+1, n_seeds) ->
+    dict[ekf_False] # (n_evals+1, n_seeds) ; take mean over n_task
     """
-    new_d = {}
+    out = {}
     for alg, is_al in it.product(algs, is_als):
         combined_arrs = np.stack(
             [combined_scores_dict[task][f"{alg}_{is_al}"] for task in tasks],
             axis=0,
         )  # (n_task, n_evals+1, n_pref_dirps)
-        new_d[f"{alg}_{is_al}"] = combined_arrs.mean(0)  # (n_evals+1, n_pref_dirps)
+        out[f"{alg}_{is_al}"] = combined_arrs.mean(0)  # (n_evals+1, n_pref_dirps)
 
-    # ipdb.set_trace()
-    return new_d  # d[ekf_False] # (n_evals+1, n_pref_dirps)
+    return out  # d[ekf_False] # (n_evals+1, n_pref_dirps)
 
 
 def get_pref_score(dir_path: str, tasks: List[str]):
@@ -279,23 +306,40 @@ def get_pref_score(dir_path: str, tasks: List[str]):
         scores_dict[task] = {}
         for alg, is_al in it.product(algs, is_als):
             # Construct folder path
-            folder_pattern = (
-                f"rl.pref_alg={alg}, rl.pref_is_al={is_al}, rl.reward=pref, task={task}"
-            )
-            folders = [f for f in os.listdir(dir_path) if folder_pattern in f]
+            subdir_pattern = f"prefAlg={alg}_prefIsAl={is_al}_task={task}"
+            folders = [f for f in os.listdir(dir_path) if subdir_pattern in f]
+
             folder = os.path.join(dir_path, folders[0])
 
             # Find the only npz file in the folder
             try:
                 data_NE = np.load(f"{folder}/stats.npz", allow_pickle=True)
                 scores = data_NE["scores"]  # (n_evals+1, n_workers)
-                # ipdb.set_trace()
+                if scores.ndim == 1:
+                    # for a cfg mistake where n_eval_workers != n_final_eval_episodes
+                    scores = fix_uneven_nworkers(scores)
                 scores_dict[task][f"{alg}_{is_al}"] = scores
-
-                # print(f"{task} {reward_type} {scores.mean():.2f}")
             except Exception as e:
                 print(f"Error loading npz from {folder}: {e}")
     return scores_dict
+
+
+def fix_uneven_nworkers(scores: np.ndarray):
+    """
+    scores: npz array with (n_evals+1) rows where
+    - first n_evals rows have n_workers columns
+    - last single row has n_workers_final columns > n_workers
+
+    ON that last row, drop columns until n_workers_final == n_workers
+
+    Returns:
+        scores: (n_evals+1, n_workers)
+    """
+    first = np.stack(scores[:-1])  # (n_evals, n_workers)
+    last = scores[-1]  # (n_workers_final,)
+    n_workers = first.shape[1]
+    last = last[:n_workers][np.newaxis, :]  # (1, n_workers)
+    return np.vstack([first, last])  # (n_evals+1, n_workers)
 
 
 def get_baseline_score(dir_path: str, tasks: List[str]):

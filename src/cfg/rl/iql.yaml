@@ -14,7 +14,7 @@ clip_reward: True # clip reward magnitude to [-10,10], applied post normalizatio
 n_updates: 1_000_000
 eval_interval: 25_000 
 n_eval_workers: 5 # parallel eval envs
-n_final_eval_episodes: 10
+n_final_eval_episodes: 5
 
 # * optimization
 lr: 3e-4

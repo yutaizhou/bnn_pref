@@ -11,12 +11,12 @@ TASKS=(
     "walkerMediumReplay"
     "walkerMediumExpert"
     "penHuman"
-    "penExpert"
-    "penCloned"
+    # "penExpert"
+    # "penCloned"
     # "kitchenComplete"
     # "kitchenPartial"
     # "kitchenMixed"
-    "mazeUDense"
+    # "mazeUDense"
     "mazeMediumDense"
     "mazeLargeDense"
 )
@@ -32,8 +32,8 @@ python bnn_pref/rl/iql.py \
     rl.pref_is_al=True,False \
     rl.normalize_reward=True \
     rl.clip_reward=True \
-    rl.run_dir='"/scr/yutaizho/projects/bnn_pref/_runs/pref/20250501_002234_rm_d4rl_18tasks"' \
-    wandb.tags=nq30 \
+    rl.run_dir='"/scr/yutaizho/projects/bnn_pref/_runs/pref/20250919_004004_nitersUpdate=10_lr=0.001_ekfM=100_iekf=5_ekfLr=0.003_ekfDn=0.0001_ekfPn=0.07_ekfOn=0.07_ekfAcq=infogain_acq=infogain"' \
+    wandb.tags=nitersUpdate10_infogain \
     rl.use_wandb=True \
     wandb.group=rl_pref_reward_norm_clip \
     hydra/launcher=slurm 
