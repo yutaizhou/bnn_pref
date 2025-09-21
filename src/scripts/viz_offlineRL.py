@@ -53,7 +53,6 @@ use_stderr = True  # otherwise use stderr
 use_smooth = True  # otherwise no smoothing on eval curves
 
 # * == change this block ==
-save_dir = "/scr/yutaizho/projects/bnn_pref/_viz/offlineRL"
 ref_dirp = (
     "/scr/yutaizho/projects/bnn_pref/_runs/offline_rl/20250501_002013_iql_ref_18tasks"
 )
@@ -63,6 +62,8 @@ ref_dirp = (
 # )
 
 pref_dirp = "/scr/yutaizho/projects/bnn_pref/results_sweep/offline_rl/iql_pref_12tasks_nitersUpdate=10_acq=infogain"
+# save_dir = "/scr/yutaizho/projects/bnn_pref/_viz/offlineRL"
+save_dir = pref_dirp
 # * == change this block ==
 
 
@@ -100,6 +101,7 @@ def main():
     # agg_scores[ekf_False] # (n_evals+1, n_pref_dirps)
     pref_scores = combine_pref_scores(pref_dirp)
     agg_scores = aggregate_scores_task(pref_scores)
+    n_seeds = agg_scores[f"{algs[0]}_{is_als[0]}"].shape[1]
 
     fig, axs = plt.subplots(3, 4, figsize=(12, 7.5), sharex=True)
     axs = axs.flatten()
@@ -185,7 +187,7 @@ def main():
     )
     plt.tight_layout(rect=[0, 0.03, 1, 1])
 
-    fp = f"{save_dir}/offlineRL_{timestamp}_{aux_fname}.png"
+    fp = f"{save_dir}/offlineRL_{timestamp}_{aux_fname}_{n_seeds}seeds.png"
     plt.savefig(fp, bbox_inches="tight", dpi=300)
     print(f"Saved to {fp}")
 
@@ -233,7 +235,7 @@ def main():
         **get_legend_kw(18), loc="upper center", bbox_to_anchor=(0.5, -0.12), ncol=3
     )
 
-    fp = f"{save_dir}/offlineRL_{timestamp}_{aux_fname}_agg.png"
+    fp = f"{save_dir}/offlineRL_{timestamp}_{aux_fname}_{n_seeds}seeds_agg.png"
     plt.savefig(fp, bbox_inches="tight", dpi=300)
     print(f"Saved to {fp}")
 
