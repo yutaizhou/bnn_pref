@@ -31,6 +31,7 @@ python scripts/run_rm.py \
     update_all=True \
     niters_update=10 \
     sgd.split_datastream=True \
+    sgd.M=5 \
     learning_rate=0.001 \
     bs=8 \
     ekf.learning_rate=0.003 \

@@ -17,7 +17,7 @@ qos: null
 comment: null
 constraint: null
 exclude: null
-gres: shard:12 # 50 shards per GPU
+gres: shard:12 # total of 50 shards per GPU
 cpus_per_gpu: null
 mem_per_cpu: null
 account: null

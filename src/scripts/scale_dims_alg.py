@@ -1,11 +1,11 @@
+import logging
 import os
+from datetime import datetime
 from functools import partial
 
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
 os.environ["DISABLE_CODESIGN_WARNING"] = "1"
-import logging
-from datetime import datetime
 
 import hydra
 import jax
@@ -30,9 +30,8 @@ def main(cfg):
     key = jr.key(seed)
     algs = ["ekf", "sgd", "do"]
 
-    stats = nested_defaultdict()
-
     task = cfg["task"]["name"]
+    task_cfg = cfg["task"]
     data_cfg = cfg["data"]
     ekf_cfg = cfg["ekf"]
     sgd_cfg = cfg["sgd"]
@@ -71,7 +70,7 @@ def main(cfg):
     total_duration = datetime.now()
     # * create dataset
     key, key_data = jr.split(key, 2)
-    data_dict = dataset_creators[cfg["task"]["ds_type"]](key_data, cfg)
+    data_dict = dataset_creators[task_cfg["ds_type"]](key_data, cfg)
 
     # * create env
     train_trajs, test_trajs = data_dict["train_trajs"], data_dict["test_trajs"]
@@ -91,12 +90,16 @@ def main(cfg):
         X=train_prefs.queries_Q2,
         Y=jax.nn.one_hot(train_prefs.responses_Q1.squeeze(), num_classes=2),
     )
-    # * run
+
+    # * run algorithm
     key, *key_seeds = jr.split(key, 1 + cfg["seeds"])
     seeds = jnp.array(key_seeds)
+    stats = nested_defaultdict()
     for alg in algs:
+        # run in vmap or lax version (parallel vs. sequential)
         run_fn = partial(run_alg, alg=alg, cfg=cfg, data_dict=data_dict, env=env)
         start = datetime.now()
+
         res_m = (
             jax.block_until_ready(jax.vmap(run_fn)(seeds))
             if cfg["seed_vmap"]

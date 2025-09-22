@@ -38,8 +38,6 @@ def main(cfg):
     """
     seed = get_random_seed(cfg["seed"])
     key = jr.key(seed)
-
-    stats = nested_defaultdict()
     algs = ["ekf", "sgd", "do"]
     is_als = [False, True]
 
@@ -48,7 +46,6 @@ def main(cfg):
     ekf_cfg = cfg["ekf"]
     sgd_cfg = cfg["sgd"]
     do_cfg = cfg["do"]
-
     nq_train, nq_test = data_cfg["nq_train"], data_cfg["nq_test"]
     nq_init, nsteps = data_cfg["nq_init"], data_cfg["nsteps"]
     n_eff_iterates = (ekf_cfg["niters_init"] - ekf_cfg["warm_burns"]) // ekf_cfg[
@@ -82,10 +79,6 @@ def main(cfg):
     ckpter = ocp.PyTreeCheckpointer()
     total_duration = datetime.now()
     task_choice = HydraConfig.get()["runtime"]["choices"]["task"]  # no hyphen
-
-    # * update cfg for a specific task
-    # new_cfg = hydra.compose("config", overrides=[f"task={task}"])
-    # cfg["task"].update(new_cfg["task"])
 
     # create dataset
     key, key_data = jr.split(key, 2)
@@ -124,12 +117,12 @@ def main(cfg):
     # * run algorithm
     key, *key_seeds = jr.split(key, 1 + cfg["seeds"])
     seeds = jnp.array(key_seeds)
+    stats = nested_defaultdict()
     for alg, is_al in it.product(algs, is_als):
         cfg[alg]["active"] = is_al
 
-        run_fn = partial(run_alg, alg=alg, cfg=cfg, data_dict=data_dict, env=env)
-
         # run in vmap or lax version (parallel vs. sequential)
+        run_fn = partial(run_alg, alg=alg, cfg=cfg, data_dict=data_dict, env=env)
         start = datetime.now()
 
         res_m = (
