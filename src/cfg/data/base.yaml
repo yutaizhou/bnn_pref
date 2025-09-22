@@ -21,12 +21,12 @@ bt_beta: 7 # beta for BT model. only used if noisy_label=True; BT logits are sen
 
 # * preference queries
 # take nq_train / nq_test from the already split train/test trajs
-nq_train: 50000
-nq_test: 1000
+nq_train: 150000
+nq_test: 3000
 
 
 # * Data partitioning for streaming algs: EKF, Ensemble, etc.
-nq_init: 5
+nq_init: 8
 nq_update: 60 # query budget; if -1, use all remaining queries after nq_init
 nsteps: ${get_nsteps:${.nq_train}, ${.nq_init}, ${.nq_update}} #! do not set manually; 
   # if nq_update = -1, then nsteps = nq_train - nq_init; else nsteps = nq_update

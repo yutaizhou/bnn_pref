@@ -1,7 +1,5 @@
-import itertools as it
 import os
 from functools import partial
-from typing import Tuple
 
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
@@ -13,10 +11,8 @@ import hydra
 import jax
 import jax.numpy as jnp
 import jax.random as jr
-import matplotlib.pyplot as plt
-from hydra.core.hydra_config import HydraConfig
 
-from bnn_pref.alg.trainer import run_alg  # , run_ekf, run_ensemble
+from bnn_pref.alg.trainer import run_alg
 from bnn_pref.data import dataset_creators
 from bnn_pref.data.data_env import PreferenceEnv
 from bnn_pref.utils.hydra_resolvers import *
@@ -40,9 +36,12 @@ def main(cfg):
     data_cfg = cfg["data"]
     ekf_cfg = cfg["ekf"]
     sgd_cfg = cfg["sgd"]
+    do_cfg = cfg["do"]
     nq_train, nq_test = data_cfg["nq_train"], data_cfg["nq_test"]
     nq_init, nsteps = data_cfg["nq_init"], data_cfg["nsteps"]
-    n_eff_iterates = (ekf_cfg["niters"] - ekf_cfg["warm_burns"]) // ekf_cfg["thinning"]
+    n_eff_iterates = (ekf_cfg["niters_init"] - ekf_cfg["warm_burns"]) // ekf_cfg[
+        "thinning"
+    ]
 
     print(
         f"Run:\n"
@@ -57,10 +56,15 @@ def main(cfg):
         f"EKF:\n"
         f"  M={ekf_cfg['M']}, use_vmap={ekf_cfg['use_vmap']}\n"
         f"  prior / dynamics / obs noise: {ekf_cfg['prior_noise']} / {ekf_cfg['dynamics_noise']} / {ekf_cfg['obs_noise']}\n"
-        f"  init: bs={ekf_cfg['bs']}, niters={ekf_cfg['niters']}[{ekf_cfg['warm_burns']}::{ekf_cfg['thinning']}] ({n_eff_iterates} eff), sub_dim={ekf_cfg['sub_dim']}, rnd_proj={ekf_cfg['rnd_proj']}\n"
+        f"  init: bs={ekf_cfg['bs']}, niters={ekf_cfg['niters_init']}[{ekf_cfg['warm_burns']}::{ekf_cfg['thinning']}] ({n_eff_iterates} eff), sub_dim={ekf_cfg['sub_dim']}, rnd_proj={ekf_cfg['rnd_proj']}\n"
         f"Ensemble:\n"
         f"  M={sgd_cfg['M']}, use_vmap={sgd_cfg['use_vmap']}\n"
-        f"  init: bs={sgd_cfg['bs']}, niters={sgd_cfg['niters']}\n"
+        f"  init: bs={sgd_cfg['bs']}, niters={sgd_cfg['niters_init']}\n"
+        f"  update: bs={sgd_cfg['bs']}, niters={sgd_cfg['niters_update']}\n"
+        f"Dropout:\n"
+        f"  M={do_cfg['M']}, use_vmap={do_cfg['use_vmap']}\n"
+        f"  init: bs={do_cfg['bs']}, niters={do_cfg['niters_init']}\n"
+        f"  update: bs={do_cfg['bs']}, niters={do_cfg['niters_update']}\n"
     )
     print(jax.devices())
 
@@ -92,7 +96,6 @@ def main(cfg):
     seeds = jnp.array(key_seeds)
     for alg in algs:
         run_fn = partial(run_alg, alg=alg, cfg=cfg, data_dict=data_dict, env=env)
-
         start = datetime.now()
         res_m = (
             jax.block_until_ready(jax.vmap(run_fn)(seeds))
