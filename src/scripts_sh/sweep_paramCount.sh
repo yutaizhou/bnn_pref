@@ -20,13 +20,17 @@ NET_LIST=$(IFS=,; echo "${NETS[*]}")
 #* sweep over network sizes
 # python script runs over {alg, is_al} in sequence, for one task
 # keep niters_update = ekf.iekf for fair compute comparison
+# python script is meant to be ran with 1 seed at a time. if multiple needed, pass in `seeds=1,1,1` as hydra syntax
 
-JAX_PLATFORMS=cpu JAX_DISABLE_JIT=1 python scripts/scale_dims_alg.py \
+# JAX_DISABLE_JIT=1
+JAX_PLATFORMS=cpu python scripts/scale_dims_alg.py \
     -m seed=-1 seeds=1,1,1 seed_vmap=False \
     task=walkerMediumExpert \
     active=True \
     network=${NET_LIST} \
     M=3 \
+    acq=infogain \
+    use_vmap=False \
     data.nq_train=50000 \
     data.nq_update=60 \
     update_all=True \
@@ -37,11 +41,7 @@ JAX_PLATFORMS=cpu JAX_DISABLE_JIT=1 python scripts/scale_dims_alg.py \
     ekf.learning_rate=0.003 \
     ekf.bs=1 \
     ekf.iekf=5 \
-    ekf.acq=infogain \
-    sgd.acq=infogain \
-    sgd.use_vmap=False \
-    ekf.use_vmap=False \
-    ekf.acq=infogain \
-    sgd.acq=infogain \
-    dir_extra=param_infogain_effi_epochs3_d4rl_cpu_partial \
-    hydra/launcher=slurm
+    dir_extra=param_infogain_d4rl_cpu \
+    hydra/launcher=slurm \
+    hydra.launcher.gres=null \
+    hydra.launcher.cpus_per_task=6

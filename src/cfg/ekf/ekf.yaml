@@ -6,8 +6,7 @@ M: ${..M}
 use_vmap: ${..use_vmap} # turned off for scalability experiments. whether to use vectorized NN prediction
 chunk_size: ${..chunk_size}
 acq: ${..acq}
-# acq: "infogain" # "infogain" or "disagreement"
-# acq: "disagreement" # "infogain" or "disagreement"
+
 
 # * NN model
 hidden_sizes: ${network.hidden_sizes}
