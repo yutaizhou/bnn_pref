@@ -23,7 +23,7 @@ M_LIST=$(IFS=,; echo "${Ms[*]}")
 # python script is meant to be ran with 1 seed at a time. if multiple needed, pass in `seeds=1,1,1` as hydra syntax
 
 # JAX_DISABLE_JIT=1 
-JAX_PLATFORMS=cpu python scripts/scale_dims_alg.py \
+JAX_PLATFORMS=cpu python scripts/run_scaling.py \
     -m seed=-1 seeds=1,1,1 seed_vmap=False \
     task=walkerMediumExpert \
     active=True \

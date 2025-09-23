@@ -31,7 +31,6 @@ run_alg -> alg_pipeline -> run_updates
 
 
 def run_alg(key, alg: str, cfg, data_dict, env):
-    # print(f"Running {alg}...")
     assert alg in ["ekf", "sgd", "do"]
     alg_cls_dict = {
         "ekf": EKFAgent,

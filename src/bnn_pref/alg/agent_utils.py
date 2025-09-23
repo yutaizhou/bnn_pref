@@ -193,7 +193,7 @@ def run_sgd(
         bs=batch_size,
         split_datastream=split_datastream,
     )
-    # * training: for ensemble models, can use either vmap or for loop
+    # * training with vmap over ts
     if use_vmap or n_models == 1:
         if n_models > 1 and split_datastream:
             # (niters, n_models, bs): vmap over both ts, batch
@@ -215,6 +215,7 @@ def run_sgd(
 
         if get_param_trace:
             metrics = jax.tree.map(lambda *xs: jnp.stack(xs), *metrics)
+    # * training with for loop over ts
     elif n_models > 1 and not use_vmap:
         train_step = jax.jit(train_step)
         batches = []

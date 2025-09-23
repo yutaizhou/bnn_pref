@@ -126,7 +126,8 @@ class EKFAgent(Agent):
         dummy_context = rearrange(jnp.ones_like(contexts[0]), "K T D  -> 1 K T D", K=2)
         initial_params = self.model.init(model_key, dummy_context)["params"]
         # print(nn.tabulate(self.model, model_key)(dummy_context))
-        # print(count_params(initial_params))
+        # initial_param_count = count_params(initial_params)
+        # print(f"Initial param count: {initial_param_count:,}")
 
         ts = TrainState.create(
             apply_fn=self.model.apply, params=initial_params, tx=self.opt

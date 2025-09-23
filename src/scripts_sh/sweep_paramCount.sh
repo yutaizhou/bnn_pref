@@ -17,13 +17,13 @@ NETS=(
 NET_LIST=$(IFS=,; echo "${NETS[*]}")
 
 
-#* sweep over network sizes
+#* sweep over network sizes (may need to run using serial launcher, not slurm)
 # python script runs over {alg, is_al} in sequence, for one task
 # keep niters_update = ekf.iekf for fair compute comparison
 # python script is meant to be ran with 1 seed at a time. if multiple needed, pass in `seeds=1,1,1` as hydra syntax
 
 # JAX_DISABLE_JIT=1
-JAX_PLATFORMS=cpu python scripts/scale_dims_alg.py \
+JAX_PLATFORMS=cpu python scripts/run_scaling.py \
     -m seed=-1 seeds=1,1,1 seed_vmap=False \
     task=walkerMediumExpert \
     active=True \
@@ -42,6 +42,8 @@ JAX_PLATFORMS=cpu python scripts/scale_dims_alg.py \
     ekf.bs=1 \
     ekf.iekf=5 \
     dir_extra=param_infogain_d4rl_cpu \
-    hydra/launcher=slurm \
-    hydra.launcher.gres=null \
-    hydra.launcher.cpus_per_task=6
+    # hydra/launcher=slurm \
+    # hydra.launcher.gres=null \
+    # hydra.launcher.cpus_per_task=10 \
+    # hydra.launcher.mem_gb=100 \
+    # # hydra.launcher.mem_per_cpu=10G
