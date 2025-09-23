@@ -3,7 +3,7 @@
 active: ${..active}
 M: ${..M}
 # M: 5
-use_vmap: True # turned off for scalability experiments. whether to use vectorized NN training & prediction
+use_vmap: ${..use_vmap} # turned off for scalability experiments. whether to use vectorized NN training & prediction
 chunk_size: ${..chunk_size}
 acq: ${..acq} # "infogain" or "disagreement"
 max_buffer_size: ${..max_buffer_size} # for SGD during update phase. keep it roughly around nq_updates

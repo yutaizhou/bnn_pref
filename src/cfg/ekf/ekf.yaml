@@ -3,9 +3,10 @@
 active: ${..active}
 M: ${..M}
 # M: 100
-use_vmap: True # turned off for scalability experiments. whether to use vectorized NN prediction
+use_vmap: ${..use_vmap} # turned off for scalability experiments. whether to use vectorized NN prediction
 chunk_size: ${..chunk_size}
-acq: "infogain" # "infogain" or "disagreement"
+acq: ${..acq}
+# acq: "infogain" # "infogain" or "disagreement"
 # acq: "disagreement" # "infogain" or "disagreement"
 
 # * NN model
