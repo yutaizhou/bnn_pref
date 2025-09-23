@@ -190,28 +190,54 @@ def run_sgd(
         bs=batch_size,
         split_datastream=split_datastream,
     )
-    if n_models > 1 and split_datastream:
-        # (niters, n_models, bs): vmap over both ts, batch
-        train_step = jax.vmap(train_step, in_axes=(0, 0))
-    elif n_models > 1 and not split_datastream:
-        # (niters, bs): vmap over ts
-        train_step = jax.vmap(train_step, in_axes=(0, None))
+    if use_vmap or n_models == 1:
+        if n_models > 1 and split_datastream:
+            # (niters, n_models, bs): vmap over both ts, batch
+            train_step = jax.vmap(train_step, in_axes=(0, 0))
+        elif n_models > 1 and not split_datastream:
+            # (niters, bs): vmap over ts
+            train_step = jax.vmap(train_step, in_axes=(0, None))
+        else:
+            # (niters, bs): no vmap needed
+            train_step = train_step
+
+        # * start training
+        metrics = []
+        train_step = jax.jit(train_step)
+        for _ in range(niters):
+            batch = next(batch_iterator)
+            ts, metric = train_step(ts, batch)
+            metrics.append(metric)
+
+        if get_param_trace:
+            metrics = jax.tree.map(lambda *xs: jnp.stack(xs), *metrics)
+    elif n_models > 1 and not use_vmap:
+        train_step = jax.jit(train_step)
+        batches = []
+        for _ in range(niters):
+            batches.append(next(batch_iterator))
+            # (niters, bs) or (niters, n_models, bs)
+
+        models, metrics = [], []
+        for m in range(n_models):
+            ts_single = get_nth_pytree(ts, m)
+            for i in range(niters):
+                batch = batches[i]
+                batch = get_nth_pytree(batch, m) if split_datastream else batch
+                ts_single, metric = train_step(ts_single, batch)
+                models.append(ts_single)
+                metrics.append(metric)
+        ts = jax.tree.map(lambda *xs: jnp.stack(xs), *models)
+        if get_param_trace:
+            metrics = jax.tree.map(lambda *xs: jnp.stack(xs), *metrics)
     else:
-        # (niters, bs): no vmap needed
-        train_step = train_step
-
-    # * start training
-    metrics = []
-    train_step = jax.jit(train_step)
-    for _ in range(niters):
-        batch = next(batch_iterator)
-        ts, metric = train_step(ts, batch)
-        metrics.append(metric)
-
-    if get_param_trace:
-        metrics = jax.tree.map(lambda *xs: jnp.stack(xs), *metrics)
+        raise ValueError("Invalid use_vmap or n_models")
 
     return ts, metrics
+
+
+def get_nth_pytree(ts, n: int):
+    return jax.tree.map(lambda x: x[n], ts)
 
 
 def get_batch_iter(

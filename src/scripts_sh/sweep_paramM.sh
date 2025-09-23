@@ -1,11 +1,11 @@
 #!/bin/bash
 
-Ms=(5 30 50)
-# Ms=(5 15 30 50 100 150)
+# Ms=(5 15 30)
+Ms=(5 15 30 50 75 100 150)
 M_LIST=$(IFS=,; echo "${Ms[*]}")
 
 # NETS=(
-#     "32x2"
+#     "64x2"
 #     "64x3"
 #     "128x3"
 #     "256x3"
@@ -17,16 +17,18 @@ M_LIST=$(IFS=,; echo "${Ms[*]}")
 # NET_LIST=$(IFS=,; echo "${NETS[*]}")
 
 
-#* sweep over M; always active, not random querying
+#* sweep over M;
 # python script runs over {alg, is_al} in sequence, for one task
 # keep niters_update = ekf.iekf for fair compute comparison
 
-JAX_PLATFORM_NAME=cpu python scripts/scale_dims_alg.py \
-    -m seed=-1 seeds=1 seed_vmap=False \
+JAX_PLATFORMS=cpu JAX_DISABLE_JIT=1 python scripts/scale_dims_alg.py \
+    -m seed=-1 seeds=1,1,1 seed_vmap=False \
     task=walkerMediumExpert \
     active=True \
     network=64x2 \
     M=${M_LIST} \
+    data.nq_train=50000 \
+    data.nq_update=60 \
     update_all=True \
     niters_update=5 \
     sgd.split_datastream=True \

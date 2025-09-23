@@ -146,6 +146,7 @@ class DropoutAgent(Agent):
             get_param_trace=False,
             n_models=1,
             use_dropout=True,
+            use_vmap=self.use_vmap,
         )
 
         bel = bel.replace(ts=warm_ts)

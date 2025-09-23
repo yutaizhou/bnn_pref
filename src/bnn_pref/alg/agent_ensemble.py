@@ -146,6 +146,7 @@ class EnsembleAgent(Agent):
             n_models=self.n_models,
             split_datastream=self.split_datastream,
             use_dropout=False,
+            use_vmap=self.use_vmap,
         )
 
         bel = bel.replace(ts=warm_ts)

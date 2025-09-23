@@ -146,6 +146,7 @@ class EKFAgent(Agent):
             n_models=1,
             split_datastream=False,
             use_dropout=False,
+            use_vmap=self.use_vmap,
         )
 
         # (niters_init, full_dim)

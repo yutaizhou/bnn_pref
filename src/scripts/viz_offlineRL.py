@@ -61,7 +61,7 @@ ref_dirp = (
 #     "/scr/yutaizho/projects/bnn_pref/_runs/offline_rl/iql_pref_18tasks_nq60_5seed"
 # )
 
-pref_dirp = "/scr/yutaizho/projects/bnn_pref/results_sweep/offline_rl/iql_pref_12tasks_nitersUpdate=10_acq=infogain"
+pref_dirp = "/scr/yutaizho/projects/bnn_pref/_runs/offline_rl/20250921_iql_pref_12tasks_nitersUpdate=10_acq=infogain"
 # save_dir = "/scr/yutaizho/projects/bnn_pref/_viz/offlineRL"
 save_dir = pref_dirp
 # * == change this block ==
@@ -69,11 +69,11 @@ save_dir = pref_dirp
 
 def get_label(alg: str, is_al: bool) -> str:
     if alg == "ekf":
-        return "PreferenceEKF (Active)" if is_al else "PreferenceEKF (Random)"
+        return "PreferenceEKF (A)" if is_al else "PreferenceEKF (R)"
     elif alg == "sgd":
-        return "DeepEnsemble (Active)" if is_al else "DeepEnsemble (Random)"
+        return "DeepEnsemble (A)" if is_al else "DeepEnsemble (R)"
     elif alg == "do":
-        return "Dropout (Active)" if is_al else "Dropout (Random)"
+        return "Dropout (A)" if is_al else "Dropout (R)"
     else:
         raise ValueError(f"Invalid algorithm: {alg}")
 

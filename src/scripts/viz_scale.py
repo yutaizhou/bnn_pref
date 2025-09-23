@@ -26,28 +26,32 @@ from bnn_pref.utils.plotting import (
     set_xlim_offset,
 )
 
-fixed_net = "64x3"
-fixed_M = 5
+# fixed_net = "64x3"
+# fixed_M = 5
+fixed_net = "64x2"
+fixed_M = 3
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 nets = [
-    "32x2",
+    "64x2",
     "64x3",
     "128x3",
     "256x3",
     "512x2",
-    "512x3",
-    "1024x2",
-    "1024x3",
+    # "512x3",
+    # "1024x2",
+    # "1024x3",
 ]
-Ms = [5, 15, 30, 50, 100, 150, 200]
+# Ms = [5, 15, 30, 50, 100, 150, 200]
+# Ms = [1, 5, 15, 30, 50, 100, 150]
+Ms = [5, 15, 30, 50, 100, 150]
 # task = "acrobot-swingup-v0"
-task = "halfcheetah-medium-expert-v2"
-algs = ["ekf", "sgd"]
+task = "walker2d-medium-expert-v2"
+algs = ["ekf", "sgd", "do"]
 
 # * == change this block ==
 save_dir = "/scr/yutaizho/projects/bnn_pref/_viz/scale"
-M_dirp = "/scr/yutaizho/projects/bnn_pref/results_sweep/scaling/20250513_000307_M_infogain_effi_epochs5_d4rl_3seeds"
-net_dirp = "/scr/yutaizho/projects/bnn_pref/results_sweep/scaling/20250513_000305_param_infogain_effi_epochs5_d4rl_3seeds"
+M_dirp = "/scr/yutaizho/projects/bnn_pref/results_sweep/scaling/20250922_211837_M_infogain_d4rl_cpu"
+net_dirp = "/scr/yutaizho/projects/bnn_pref/results_sweep/scaling/20250922_211902_param_infogain_d4rl_cpu"
 # * == change this block ==
 
 
@@ -156,12 +160,25 @@ net_res = get_stats(net_dirp, sweep_type="net", fixed_M=fixed_M)
 
 
 def get_label(alg: str) -> str:
-    alg_str = "PreferenceEKF" if alg == "ekf" else "DeepEnsemble"
-    return f"{alg_str}"
+    if alg == "ekf":
+        return "PreferenceEKF"
+    elif alg == "sgd":
+        return "DeepEnsemble"
+    elif alg == "do":
+        return "Dropout"
+    else:
+        raise ValueError(f"Unknown algorithm: {alg}")
 
 
 def get_style(alg: str) -> dict:
-    color = rgb_values["orange"] if alg == "ekf" else rgb_values["blue"]
+    if alg == "ekf":
+        color = rgb_values["orange"]
+    elif alg == "sgd":
+        color = rgb_values["blue"]
+    elif alg == "do":
+        color = rgb_values["green"]
+    else:
+        raise ValueError(f"Unknown algorithm: {alg}")
     return {"color": color, "linestyle": "-", "linewidth": 2}
 
 

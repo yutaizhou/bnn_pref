@@ -200,14 +200,13 @@ for alg, is_al in it.product(algs, is_als):
         stats_agg[metric][f"{alg}_{is_al}"] = mean(arr, axis=(0,), nan=handle_nan)
 
 
-# * plot logpdf for each task
 def get_label(alg: str, is_al: bool) -> str:
     if alg == "ekf":
-        return "PreferenceEKF (Active)" if is_al else "PreferenceEKF (Random)"
+        return "PreferenceEKF (A)" if is_al else "PreferenceEKF (R)"
     elif alg == "sgd":
-        return "DeepEnsemble (Active)" if is_al else "DeepEnsemble (Random)"
+        return "DeepEnsemble (A)" if is_al else "DeepEnsemble (R)"
     elif alg == "do":
-        return "Dropout (Active)" if is_al else "Dropout (Random)"
+        return "Dropout (A)" if is_al else "Dropout (R)"
     else:
         raise ValueError(f"Invalid algorithm: {alg}")
 
@@ -225,8 +224,9 @@ def get_style(alg: str, is_al: bool) -> dict:
     return {"color": color, "linestyle": linestyle}
 
 
-# fig, axs = plt.subplots(3, 4, figsize=(12, 7.5), sharex=True)
-fig, axs = plt.subplots(5, 4, figsize=(12, 15), sharex=True)
+# * plot logpdf for each task
+fig, axs = plt.subplots(3, 4, figsize=(12, 7.5), sharex=True)
+# fig, axs = plt.subplots(5, 4, figsize=(12, 15), sharex=True)
 axs = axs.flatten()
 
 for i, task in enumerate(tasks):
@@ -284,12 +284,12 @@ fig.legend(
     dummy_lines,
     [get_label(alg, is_al) for alg, is_al in it.product(algs, is_als)],
     loc="lower center",
-    bbox_to_anchor=(0.5, -0.08),
+    bbox_to_anchor=(0.5, -0.12),
     ncol=3,
     handlelength=2,
     **get_legend_kw(16),
 )
-plt.tight_layout(rect=[0, 0.03, 1, 1])
+plt.tight_layout(rect=[0, 0.05, 1, 1])
 save_path = f"{save_dir}/{timestamp}_logpdf_nTasks={n_tasks}.png"
 plt.savefig(save_path, bbox_inches="tight", dpi=300)
 plt.close()
@@ -318,44 +318,47 @@ for alg, is_al in it.product(algs, is_als):
         alpha=0.2,
         **style,
     )
-# --- Add "x% fewer samples" annotation between EKF (Active) and EKF (Random) ---
 
-# Get means for EKF (Active) and EKF (Random)
+# --- Add "x% fewer samples" annotation between EKF (Active) and EKF (Random) ---
+# only do so if EKF active outperforms EKF random
 ekf_active_mean_T = mean(stats_agg["logpdf"]["ekf_True"], axis=0, nan=handle_nan)
 ekf_random_mean_T = mean(stats_agg["logpdf"]["ekf_False"], axis=0, nan=handle_nan)
 
-# Find the y-value at the last step of EKF (Random)
-y_tgt = ekf_random_mean_T[-1]
-x_random = len(ekf_random_mean_T) - 1
+if ekf_active_mean_T[-1] > ekf_random_mean_T[-1]:
+    # Find the y-value at the last step of EKF (Random)
+    y_tgt = ekf_random_mean_T[-1]
+    x_random = len(ekf_random_mean_T) - 1
 
-# Find the first x in EKF (Active) that reaches or exceeds y_target
-x_active = np.argmax(ekf_active_mean_T >= y_tgt)
+    # Find the first x in EKF (Active) that reaches or exceeds y_target
+    x_active = np.argmax(ekf_active_mean_T >= y_tgt)
 
-frac = 1 - x_active / x_random
+    frac = 1 - x_active / x_random
 
-# Draw vertical dotted lines down to a lower y for annotation
-y_bottom = ax.get_ylim()[0] + 0.20  # adjust as needed for your plot
-ax.vlines([x_active, x_random], y_bottom, y_tgt, linestyles="dotted", colors="k")
-ax.plot([x_active, x_random], [y_tgt, y_tgt], "ko", markersize=4)  # mark the two points
+    # Draw vertical dotted lines down to a lower y for annotation
+    y_bottom = ax.get_ylim()[0] + 0.20  # adjust as needed for your plot
+    ax.vlines([x_active, x_random], y_bottom, y_tgt, linestyles="dotted", colors="k")
+    ax.plot(
+        [x_active, x_random], [y_tgt, y_tgt], "ko", markersize=4
+    )  # mark the two points
 
-# Draw double-headed arrow and annotate at the bottom
-ax.annotate(
-    "",
-    xy=(x_active, y_bottom),
-    xytext=(x_random, y_bottom),
-    arrowprops=dict(
-        arrowstyle="<->", color="black", linewidth=1.5, shrinkA=0, shrinkB=0
-    ),
-)
-ax.text(
-    (x_active + x_random) / 2,
-    y_bottom - 0.01,  # slightly below the arrow
-    f"~{frac:.0%} fewer samples",
-    ha="center",
-    va="top",
-    color="black",
-    **get_font_kw(18),
-)
+    # Draw double-headed arrow and annotate at the bottom
+    ax.annotate(
+        "",
+        xy=(x_active, y_bottom),
+        xytext=(x_random, y_bottom),
+        arrowprops=dict(
+            arrowstyle="<->", color="black", linewidth=1.5, shrinkA=0, shrinkB=0
+        ),
+    )
+    ax.text(
+        (x_active + x_random) / 2,
+        y_bottom - 0.01,  # slightly below the arrow
+        f"~{frac:.0%} fewer samples",
+        ha="center",
+        va="top",
+        color="black",
+        **get_font_kw(18),
+    )
 
 ax.set_xlabel("Number of Queries", **get_font_kw(18))
 xticks = ax.get_xticks()
@@ -414,6 +417,90 @@ fig.legend(
     **get_legend_kw(16),
 )
 save_path = f"{save_dir}/{timestamp}_metrics_nTasks={n_tasks}_agg.png"
+plt.savefig(save_path, bbox_inches="tight", dpi=300)
+plt.close()
+print(f"Plot saved as: {save_path}")
+
+# * plot ECE aggregated over tasks
+# fig, ax = plt.subplots(figsize=(10, 6))
+# invisible_topright_spines(ax)
+# for alg, is_al in it.product(algs, is_als):
+#     alg_isactive = f"{alg}_{is_al}"
+#     arr = stats_agg["ece"][alg_isactive]  # (seeds, steps)
+#     data_mean = mean(arr, axis=0, nan=handle_nan)
+#     data_std = (
+#         std(arr, axis=0, nan=handle_nan)
+#         if not use_stderr
+#         else sterr(arr, axis=0, nan=handle_nan)
+#     )
+#     label = get_label(alg, is_al)
+#     style = get_style(alg, is_al)
+#     ax.plot(data_mean, label=label, **style, linewidth=2)
+#     ax.fill_between(
+#         range(len(data_mean)),
+#         data_mean - data_std,
+#         data_mean + data_std,
+#         alpha=0.2,
+#         **style,
+#     )
+
+# ax.set_xlabel("Number of Queries", **get_font_kw(18))
+# xticks = ax.get_xticks()
+# ax.set_xticks(xticks)
+# ax.set_xticklabels([f"{int(x):d}" for x in xticks], **get_font_kw(16))
+# set_xlim_offset(ax)
+# ax.set_xlim(right=60.5)  # Cut off the graph at x=60
+
+# ax.set_ylabel("Test ECE", **get_font_kw(18))
+# yticks = ax.get_yticks()
+# ax.set_yticks(yticks)
+# ax.set_yticklabels([f"{y:.2f}" for y in yticks], **get_font_kw(16))
+
+# ax.legend(**get_legend_kw(18), loc="upper center", bbox_to_anchor=(0.5, -0.12), ncol=3)
+# save_path = f"{save_dir}/{timestamp}_ece_nTasks={n_tasks}_agg.png"
+# plt.savefig(save_path, bbox_inches="tight", dpi=300)
+# plt.close()
+
+# print(f"Plot saved as: {save_path}")
+
+# * plot just ECE and Brier aggregated over tasks
+fig, axes = plt.subplots(2, 1, figsize=(10, 8))
+axes = axes.flatten()
+
+for i, metric in enumerate(["ece", "brier"]):
+    ax = axes[i]
+    invisible_topright_spines(ax)
+    for alg, is_al in it.product(algs, is_als):
+        alg_isactive = f"{alg}_{is_al}"
+        arr = stats_agg[metric][alg_isactive]  # (seeds, steps)
+        data_mean = mean(arr, axis=0, nan=handle_nan)  # (steps, )
+        data_std = (
+            std(arr, axis=0, nan=handle_nan)
+            if not use_stderr
+            else sterr(arr, axis=0, nan=handle_nan)
+        )
+        label = get_label(alg, is_al)
+        style = get_style(alg, is_al)
+        ax.plot(data_mean, label=label, **style, linewidth=2)
+        ax.fill_between(
+            range(len(data_mean)),
+            data_mean - data_std,
+            data_mean + data_std,
+            alpha=0.2,
+            **style,
+        )
+    ax.set_ylabel(prettify_title(metric), **get_font_kw(18))
+fig.supxlabel("Number of Queries", **get_font_kw(16))
+fig.legend(
+    dummy_lines,
+    [get_label(alg, is_al) for alg, is_al in it.product(algs, is_als)],
+    loc="lower center",
+    bbox_to_anchor=(0.5, -0.1),
+    ncol=3,
+    handlelength=2,
+    **get_legend_kw(16),
+)
+save_path = f"{save_dir}/{timestamp}_ECEBrier_nTasks={n_tasks}_agg.png"
 plt.savefig(save_path, bbox_inches="tight", dpi=300)
 plt.close()
 print(f"Plot saved as: {save_path}")
