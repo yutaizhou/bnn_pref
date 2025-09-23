@@ -133,7 +133,7 @@ class EnsembleAgent(Agent):
         )
 
         key, key_sgd = jr.split(key, 2)
-        warm_ts, warm_metrics = run_sgd(
+        warm_ts, _ = run_sgd(
             key_sgd,
             bel.ts,
             dataset=warmup_data,
@@ -193,6 +193,7 @@ class EnsembleAgent(Agent):
             n_models=self.n_models,
             split_datastream=self.split_datastream,
             use_dropout=False,
+            use_vmap=self.use_vmap,
         )
         bel = bel.replace(ts=ts, t=bel.t + 1)
         return bel

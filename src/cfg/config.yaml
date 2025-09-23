@@ -48,6 +48,6 @@ acq: "disagreement" # "infogain" or "disagreement"
 bs: 1 # batch size for training
 niters_init: 420 # number of GD steps on init_belief()
 update_all: True # True: use all queries so far (sgd for `niters_update` steps); False: just the most recent for 1 step
-niters_update: -1 # number of GD steps on update_belief()
+niters_update: 10 # number of GD steps on update_belief()
 learning_rate: 0.0001
 l2_reg: 0.0

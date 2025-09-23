@@ -134,7 +134,7 @@ class DropoutAgent(Agent):
             else int(len(warmup_data) * jnp.abs(self.niters_init))
         )
         key, key_sgd = jr.split(key, 2)
-        warm_ts, warm_metrics = run_sgd(
+        warm_ts, _ = run_sgd(
             key_sgd,
             bel.ts,
             dataset=warmup_data,
@@ -192,6 +192,7 @@ class DropoutAgent(Agent):
             get_param_trace=False,
             n_models=1,
             use_dropout=True,
+            use_vmap=self.use_vmap,
         )
         bel = bel.replace(ts=ts, t=bel.t + 1)
         return bel

@@ -124,7 +124,10 @@ def run_sgd(
     use_vmap: bool = True,
 ) -> Tuple[TrainState, Dict]:
     """
-    Run SGD training for exactly niters steps, using for loop not scan
+    Run SGD training for exactly niters steps, using for loop
+    1. define the train_step function for either dropout or ensemble
+    2. define iterator over batches
+    3. if the trainstate is an ensemble, allow option for vmap or for loop over ensemble models
 
     supports:
     - single or batched trainstate for ensembles
@@ -178,7 +181,7 @@ def run_sgd(
             )
             return ts, {"loss": loss, "params": flat_params}
 
-    # * different model training cases:
+    # * data batch iterator for different model training cases:
     # (niters, bs) -> single model or multiple models with shared datastream
     # (niters, n_models, bs) -> multiple models with split datastream
     key, key_data = jr.split(key)
@@ -190,6 +193,7 @@ def run_sgd(
         bs=batch_size,
         split_datastream=split_datastream,
     )
+    # * training: for ensemble models, can use either vmap or for loop
     if use_vmap or n_models == 1:
         if n_models > 1 and split_datastream:
             # (niters, n_models, bs): vmap over both ts, batch
@@ -214,10 +218,11 @@ def run_sgd(
     elif n_models > 1 and not use_vmap:
         train_step = jax.jit(train_step)
         batches = []
+        # get all batches upfront: (niters, bs) or (niters, n_models, bs)
         for _ in range(niters):
             batches.append(next(batch_iterator))
-            # (niters, bs) or (niters, n_models, bs)
 
+        # train
         models, metrics = [], []
         for m in range(n_models):
             ts_single = get_nth_pytree(ts, m)
@@ -225,11 +230,12 @@ def run_sgd(
                 batch = batches[i]
                 batch = get_nth_pytree(batch, m) if split_datastream else batch
                 ts_single, metric = train_step(ts_single, batch)
-                models.append(ts_single)
-                metrics.append(metric)
+            models.append(ts_single)
+            # metrics.append(metric)
         ts = jax.tree.map(lambda *xs: jnp.stack(xs), *models)
         if get_param_trace:
-            metrics = jax.tree.map(lambda *xs: jnp.stack(xs), *metrics)
+            # metrics = jax.tree.map(lambda *xs: jnp.stack(xs), *metrics)
+            raise NotImplementedError("Not implemented")
     else:
         raise ValueError("Invalid use_vmap or n_models")
 
