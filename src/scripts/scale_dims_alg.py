@@ -92,23 +92,14 @@ def main(cfg):
     )
 
     # * run algorithm
-    key, *key_seeds = jr.split(key, 1 + cfg["seeds"])
-    seeds = jnp.array(key_seeds)
+    key, key_seed = jr.split(key)
     stats = nested_defaultdict()
     for alg in algs:
-        # run in vmap or lax version (parallel vs. sequential)
-        run_fn = partial(run_alg, alg=alg, cfg=cfg, data_dict=data_dict, env=env)
         start = datetime.now()
-
-        res_m = (
-            jax.block_until_ready(jax.vmap(run_fn)(seeds))
-            if cfg["seed_vmap"]
-            else jax.block_until_ready(jax.lax.map(run_fn, seeds))
-        )
-
+        res_m = run_alg(key_seed, alg=alg, cfg=cfg, data_dict=data_dict, env=env)
         duration = (datetime.now() - start).total_seconds()
 
-        # (n_seeds, 1 + nq_update)
+        # (1 + nq_update)
         res = {
             "task": task,
             "nq_train": nq_train,
@@ -116,10 +107,10 @@ def main(cfg):
             "duration": duration,
             # * logpdf
             "test_logpdf_all": res_m["test_logpdf"],
-            "test_logpdf_final": MeanStd(res_m["test_logpdf"][:, -1]),
+            "test_logpdf_final": res_m["test_logpdf"][-1],
             # * acc
             "test_acc_all": res_m["test_acc"],
-            "test_acc_final": MeanStd(res_m["test_acc"][:, -1]),
+            "test_acc_final": res_m["test_acc"][-1],
         }
 
         stats[task][alg] = res
@@ -129,8 +120,8 @@ def main(cfg):
 
         print(
             f"  {alg}, "
-            f"acc: {res['test_acc_final'].mean:.2%} ± {res['test_acc_final'].std:.2%}, "
-            f"logpdf: {res['test_logpdf_final'].mean:.2f} ± {res['test_logpdf_final'].std:.2f}; "
+            f"acc: {res['test_acc_final']:.2%} ± {res['test_acc_final']:.2%}, "
+            f"logpdf: {res['test_logpdf_final']:.2f} ± {res['test_logpdf_final']:.2f}; "
             f"{get_param_count_msg(cfg, alg, res_m)}, "
             f"({res['duration']:.1f}s)"
         )

@@ -7,7 +7,7 @@ paths:
 
 hydra:
   run:
-    dir: ${paths.results_dir}/${now:%Y%m%d_%H%M%S}_nqu=${data.nq_update}_nepochs=${sgd.n_epochs}
+    dir: ${paths.results_dir}/${now:%Y%m%d_%H%M%S}_M=${M}_net=${hydra.runtime.choices.network}
 
   sweep:
     dir: ${paths.sweep_dir}/${now:%Y%m%d_%H%M%S}_${dir_extra}
