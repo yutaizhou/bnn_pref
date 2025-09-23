@@ -16,7 +16,6 @@ from bnn_pref.alg.trainer import run_alg
 from bnn_pref.data import dataset_creators
 from bnn_pref.data.data_env import PreferenceEnv
 from bnn_pref.utils.hydra_resolvers import *
-from bnn_pref.utils.metrics import MeanStd
 from bnn_pref.utils.print_utils import get_param_count_msg
 from bnn_pref.utils.utils import get_random_seed, nested_defaultdict, slurm_auto_scancel
 

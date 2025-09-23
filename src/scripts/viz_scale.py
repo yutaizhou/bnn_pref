@@ -37,22 +37,21 @@ nets = [
     "128x3",
     "256x3",
     "512x2",
-    # "512x3",
-    # "1024x2",
-    # "1024x3",
+    "512x3",
+    "1024x2",
+    "1024x3",
 ]
-# Ms = [5, 15, 30, 50, 100, 150, 200]
-# Ms = [1, 5, 15, 30, 50, 100, 150]
-Ms = [5, 15, 30, 50, 100, 150]
+Ms = [5, 15, 30, 50, 75, 100, 150]
 # task = "acrobot-swingup-v0"
 task = "walker2d-medium-expert-v2"
 algs = ["ekf", "sgd", "do"]
 
 # * == change this block ==
 save_dir = "/scr/yutaizho/projects/bnn_pref/_viz/scale"
-M_dirp = "/scr/yutaizho/projects/bnn_pref/results_sweep/scaling/20250922_211837_M_infogain_d4rl_cpu"
-net_dirp = "/scr/yutaizho/projects/bnn_pref/results_sweep/scaling/20250922_211902_param_infogain_d4rl_cpu"
+M_dirp = "/scr/yutaizho/projects/bnn_pref/results_sweep/scaling/20250923_172529_M_infogain_d4rl_cpu"
+net_dirp = "/scr/yutaizho/projects/bnn_pref/results_sweep/scaling/20250923_172548_param_infogain_d4rl_cpu"
 # * == change this block ==
+os.makedirs(f"{save_dir}/{timestamp}", exist_ok=True)
 
 
 def get_stats(
@@ -106,7 +105,7 @@ def get_stats(
                 for alg in algs:
                     res = stats[task].item()[alg]
                     alg_durations[alg].append(res["duration"])
-                    alg_logpdfs[alg].append(res["test_logpdf_final"].mean)
+                    alg_logpdfs[alg].append(res["test_logpdf_final"])
 
             # Compute mean and std for each metric per algorithm
             for alg in algs:
@@ -218,7 +217,7 @@ set_xlim_offset(ax1)
 ax1.set_xlim(0, len(Ms) - 1)
 
 plt.tight_layout()
-plt.savefig(f"{save_dir}/scale_{timestamp}_a.png", bbox_inches="tight", dpi=300)
+plt.savefig(f"{save_dir}/{timestamp}/a_MDuration.png", bbox_inches="tight", dpi=300)
 plt.close(fig1)
 
 # * 2. plot network size vs. duration
@@ -250,14 +249,14 @@ ax2.set_yticks(yticks)
 ax2.set_yticklabels([f"{y:.0f}" for y in yticks], **axisTick_kw)
 
 plt.tight_layout()
-plt.savefig(f"{save_dir}/scale_{timestamp}_b.png", bbox_inches="tight", dpi=300)
+plt.savefig(f"{save_dir}/{timestamp}/b_ParamDuration.png", bbox_inches="tight", dpi=300)
 plt.close(fig2)
 
 # * 3. plot ensemble size vs. logpdf
 fig3, ax3 = plt.subplots(figsize=(6, 4))
 invisible_topright_spines(ax3)
 for alg in algs:
-    logpdfs = M_res[f"{alg}_logpdf"]
+    logpdfs = M_res[f"{alg}_logpdf"]  # (len(Ms), n_seeds)
     mean_logpdfs = np.mean(logpdfs, axis=1, where=np.isfinite(logpdfs))
     std_logpdfs = np.std(logpdfs, axis=1, where=np.isfinite(logpdfs))
     style = get_style(alg)
@@ -282,7 +281,7 @@ ax3.set_yticks(yticks)
 ax3.set_yticklabels([f"{y:.2f}" for y in yticks], **axisTick_kw)
 
 plt.tight_layout()
-plt.savefig(f"{save_dir}/scale_{timestamp}_c.png", bbox_inches="tight", dpi=300)
+plt.savefig(f"{save_dir}/{timestamp}/c_MLogpdf.png", bbox_inches="tight", dpi=300)
 plt.close(fig3)
 
 # * 4. plot network size vs. logpdf
@@ -315,7 +314,7 @@ ax4.set_yticks(yticks)
 ax4.set_yticklabels([f"{y:.2f}" for y in yticks], **axisTick_kw)
 
 plt.tight_layout()
-plt.savefig(f"{save_dir}/scale_{timestamp}_d.png", bbox_inches="tight", dpi=300)
+plt.savefig(f"{save_dir}/{timestamp}/d_ParamLogpdf.png", bbox_inches="tight", dpi=300)
 plt.close(fig4)
 
-print(f"Saved individual plots to {save_dir}")
+print(f"Saved individual plots to {save_dir}/{timestamp}")
