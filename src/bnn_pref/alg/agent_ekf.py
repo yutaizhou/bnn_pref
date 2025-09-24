@@ -85,7 +85,10 @@ class EKFAgent(Agent):
         self.use_vmap = use_vmap
         if not rnd_proj:
             n_eff_iterates = (niters_init - warm_burns) // thinning
-            assert n_eff_iterates >= sub_dim, f"{n_eff_iterates=} < {sub_dim=}"
+            # assert n_eff_iterates >= sub_dim, f"{n_eff_iterates=} < {sub_dim=}"
+            if n_eff_iterates < sub_dim:
+                #! only used for subdim sweep
+                self.niters_init = sub_dim * thinning + warm_burns
         assert acq in ["infogain", "disagreement"]
         self.acq = acq
 
