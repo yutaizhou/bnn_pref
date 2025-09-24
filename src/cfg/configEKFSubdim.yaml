@@ -1,0 +1,18 @@
+defaults:
+- config
+
+paths:
+  results_dir: ${paths.root_dir}/results/subdim
+  sweep_dir: ${paths.root_dir}/results_sweep/subdim
+
+hydra:
+  run:
+    dir: ${paths.results_dir}/${now:%Y%m%d_%H%M%S}_subdim=${ekf.sub_dim}_rnd_proj=${ekf.rnd_proj}
+
+  sweep:
+    dir: ${paths.sweep_dir}/${now:%Y%m%d_%H%M%S}_${dir_extra}
+    subdir: ${hydra.job.num}_subdim=${ekf.sub_dim}_rnd_proj=${ekf.rnd_proj}
+
+  # # slurm config
+  # launcher:
+  #   cpus_per_task: 6
