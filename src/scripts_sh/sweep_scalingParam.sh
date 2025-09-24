@@ -5,11 +5,11 @@
 # M_LIST=$(IFS=,; echo "${Ms[*]}")
 
 NETS=(
-    "64x2"
-    "64x3"
-    "128x3"
-    "256x3"
-    "512x2"
+    # "64x2"
+    # "64x3"
+    # "128x3"
+    # "256x3"
+    # "512x2"
     "512x3"
     "1024x2"
     "1024x3"
@@ -22,15 +22,15 @@ NET_LIST=$(IFS=,; echo "${NETS[*]}")
 # keep niters_update = ekf.iekf for fair compute comparison
 # python script is meant to be ran with 1 seed at a time. if multiple needed, pass in `seeds=1,1,1` as hydra syntax
 
-# JAX_DISABLE_JIT=1
-JAX_PLATFORMS=cpu python scripts/run_scaling.py \
+JAX_DISABLE_JIT=1 JAX_PLATFORMS=cpu python scripts/run_scaling.py \
     -m seed=-1 seeds=1,1,1 seed_vmap=False \
     task=walkerMediumExpert \
     active=True \
     network=${NET_LIST} \
-    M=3 \
+    M=5 \
     acq=infogain \
     use_vmap=False \
+    ekf.use_vmap=True \
     data.nq_train=50000 \
     data.nq_update=60 \
     update_all=True \

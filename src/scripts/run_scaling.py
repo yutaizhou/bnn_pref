@@ -110,6 +110,8 @@ def main(cfg):
             # * acc
             "test_acc_all": res_m["test_acc"],
             "test_acc_final": res_m["test_acc"][-1],
+            # duration
+            "train_duration": res_m["train_duration"],  # only use if run_alg not vmap
         }
 
         stats[task][alg] = res
@@ -119,10 +121,10 @@ def main(cfg):
 
         print(
             f"  {alg}, "
-            f"acc: {res['test_acc_final']:.2%} ± {res['test_acc_final']:.2%}, "
-            f"logpdf: {res['test_logpdf_final']:.2f} ± {res['test_logpdf_final']:.2f}; "
+            f"acc: {res['test_acc_final']:.2%}, "
+            f"logpdf: {res['test_logpdf_final']:.2f}; "
             f"{get_param_count_msg(cfg, alg, res_m)}, "
-            f"({res['duration']:.1f}s)"
+            f"({res['duration']:.1f}s, {res['train_duration']:.1f}s)"
         )
         if nans.any():
             print(f"nans: {nans.sum(1)}")

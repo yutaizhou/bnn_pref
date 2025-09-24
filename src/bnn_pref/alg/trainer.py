@@ -1,4 +1,5 @@
 import warnings
+from datetime import datetime
 from typing import Dict, Tuple, Union
 
 import jax
@@ -47,7 +48,9 @@ def run_alg(key, alg: str, cfg, data_dict, env):
 
     # * build + train
     key, key_train, key_eval = jr.split(key, 3)
+    start = datetime.now()
     bel_trace, bandit = alg_pipeline(key_train, alg_cls, env, alg_cfg, data_cfg)
+    train_duration = (datetime.now() - start).total_seconds()
 
     # * evaluation
     def eval_bel(_, bel: AgentState):
@@ -86,6 +89,7 @@ def run_alg(key, alg: str, cfg, data_dict, env):
     results = {
         **al_results,  # (n_seeds, 1 + nq_update)
         "param_count": bandit.param_count,
+        "train_duration": train_duration,  # only use if run_alg is not vmap'ed
         # "ensemble_param_count": bandit.ensemble_param_count,
         "model": model,
     }
