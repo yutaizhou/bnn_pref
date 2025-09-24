@@ -1,6 +1,6 @@
 #!/bin/bash
 
-subdims=(10 25 50 75 100 125 150 200 250 400)
+subdims=(10 25 50 75 100 125 150 200 250 400 500)
 subdim_list=$(IFS=,; echo "${subdims[*]}")
 
 
@@ -23,4 +23,5 @@ python scripts/run_ekf_subdim.py \
     ekf.bs=1 \
     ekf.iekf=5 \
     ekf.acq=infogain \
-    hydra/launcher=slurm
+    hydra/launcher=slurm \
+    hydra.launcher.cpus_per_task=3 \

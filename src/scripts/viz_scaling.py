@@ -46,8 +46,8 @@ algs = ["ekf", "sgd", "do"]
 
 # * == change this block ==
 save_dir = "/scr/yutaizho/projects/bnn_pref/_viz/scale"
-M_dirp = "/scr/yutaizho/projects/bnn_pref/results_sweep/scaling/20250924_050101_M_infogain_cpu_nitersUpdate=-3_iekf=5"
-net_dirp = "/scr/yutaizho/projects/bnn_pref/results_sweep/scaling/20250924_050125_nitersUpdate=-3_iekf=5_param_infogain_d4rl_cpu"
+M_dirp = "/scr/yutaizho/projects/bnn_pref/_runs/scaling/20250924_050101_M_infogain_cpu_nitersUpdate=-3_iekf=5"
+net_dirp = "/scr/yutaizho/projects/bnn_pref/_runs/scaling/20250924_050125_param_infogain_cpu_nitersUpdate=-3_iekf=5"
 # * == change this block ==
 os.makedirs(f"{save_dir}/{timestamp}", exist_ok=True)
 
@@ -181,7 +181,7 @@ def get_style(alg: str) -> dict:
 
 axisLabel_kw = get_font_kw(24)
 axisTick_kw = get_font_kw(20)
-legend_kw = get_legend_kw(24)
+legend_kw = get_legend_kw(20)
 
 
 # * 1. plot ensemble size vs. duration

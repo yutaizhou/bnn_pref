@@ -27,12 +27,13 @@ from bnn_pref.utils.plotting import (
 )
 
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-subdims = [10, 50, 100, 150, 200, 300, 400, 500]
+# subdims = [10, 50, 100, 150, 200, 300, 400, 500]
+subdims = [10, 25, 50, 75, 100, 125, 150, 200, 250, 400, 500]
 rnd_projs = [False, True]
 task = "walker2d-medium-expert-v2"
 
 # * == change this block ==
-dirp = "/scr/yutaizho/projects/bnn_pref/results_sweep/subdim/20250924_034307_None"
+dirp = "/scr/yutaizho/projects/bnn_pref/results_sweep/subdim/20250924_162929_None_nitersInit=420_lr=0.003"
 # save_dir = "/scr/yutaizho/projects/bnn_pref/_viz/subdim_ablation"
 save_dir = dirp
 # * == change this block ==
