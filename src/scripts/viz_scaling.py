@@ -155,7 +155,7 @@ def get_stats(
 
 
 M_res = get_stats(M_dirp, sweep_type="M", fixed_net=fixed_net)
-net_res = get_stats(net_dirp, sweep_type="net", fixed_M=fixed_M)
+# net_res = get_stats(net_dirp, sweep_type="net", fixed_M=fixed_M)
 
 
 def get_label(alg: str) -> str:
