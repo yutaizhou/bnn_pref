@@ -26,10 +26,8 @@ from bnn_pref.utils.plotting import (
     set_xlim_offset,
 )
 
-# fixed_net = "64x3"
-# fixed_M = 5
 fixed_net = "64x2"
-fixed_M = 3
+fixed_M = 5
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 nets = [
     "64x2",
@@ -48,8 +46,8 @@ algs = ["ekf", "sgd", "do"]
 
 # * == change this block ==
 save_dir = "/scr/yutaizho/projects/bnn_pref/_viz/scale"
-M_dirp = "/scr/yutaizho/projects/bnn_pref/results_sweep/scaling/20250923_172529_M_infogain_d4rl_cpu"
-net_dirp = "/scr/yutaizho/projects/bnn_pref/results_sweep/scaling/20250923_172548_param_infogain_d4rl_cpu"
+M_dirp = "/scr/yutaizho/projects/bnn_pref/results_sweep/scaling/20250924_050101_M_infogain_cpu_nitersUpdate=-3_iekf=5"
+net_dirp = "/scr/yutaizho/projects/bnn_pref/results_sweep/scaling/20250924_050125_nitersUpdate=-3_iekf=5_param_infogain_d4rl_cpu"
 # * == change this block ==
 os.makedirs(f"{save_dir}/{timestamp}", exist_ok=True)
 
@@ -140,7 +138,7 @@ def get_stats(
                 for alg in algs:
                     res = stats[task].item()[alg]
                     alg_durations[alg].append(res["duration"])
-                    alg_logpdfs[alg].append(res["test_logpdf_final"].mean)
+                    alg_logpdfs[alg].append(res["test_logpdf_final"])
 
             # Store results for each algorithm
             for alg in algs:
@@ -155,7 +153,7 @@ def get_stats(
 
 
 M_res = get_stats(M_dirp, sweep_type="M", fixed_net=fixed_net)
-# net_res = get_stats(net_dirp, sweep_type="net", fixed_M=fixed_M)
+net_res = get_stats(net_dirp, sweep_type="net", fixed_M=fixed_M)
 
 
 def get_label(alg: str) -> str:

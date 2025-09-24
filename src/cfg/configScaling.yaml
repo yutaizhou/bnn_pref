@@ -10,7 +10,7 @@ hydra:
     dir: ${paths.results_dir}/${now:%Y%m%d_%H%M%S}_M=${M}_net=${hydra.runtime.choices.network}
 
   sweep:
-    dir: ${paths.sweep_dir}/${now:%Y%m%d_%H%M%S}_${dir_extra}
+    dir: ${paths.sweep_dir}/${now:%Y%m%d_%H%M%S}_${dir_extra}_nitersUpdate=${niters_update}_iekf=${ekf.iekf}
     subdir: ${hydra.job.num}_M=${M}_net=${hydra.runtime.choices.network}
 
   # # slurm config
