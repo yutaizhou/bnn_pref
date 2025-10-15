@@ -24,7 +24,7 @@ from bnn_pref.alg.agent_dropout import init_model as init_model_dropout
 from bnn_pref.alg.agent_ekf import EKFBeliefState
 from bnn_pref.alg.agent_ensemble import init_model as init_model_ensemble
 from bnn_pref.alg.agent_utils import sub2full_params_flat
-from bnn_pref.utils.network import RewardNet, RewardNet2, count_params
+from bnn_pref.utils.network import RewardNet, count_params
 
 
 def find_ckpt_fp(
@@ -62,8 +62,6 @@ def load_reward_model(
     Assumes ckpts are named as follows, and exists in <run_dir>/ckpts/
         <run_dir>/ckpts/<task_name>_<alg>_al=<is_al>
 
-    loaded model states have shape: (n_seeds, ensemble_size, ...)
-        DEPRECATED: n_seeds axis is now removed, only best seed per run is saved
     """
 
     if sweeped_rm:
@@ -83,7 +81,7 @@ def load_reward_model(
 
     if alg == "sgd":
         sgd_cfg = cfg["sgd"]
-        model = RewardNet2(sgd_cfg["hidden_sizes"])
+        model = RewardNet(sgd_cfg["hidden_sizes"])
         key, key_init = jr.split(key)
         dummy_item = jax.vmap(init_model_ensemble, in_axes=(0, None, None, None))(
             jr.split(key_init, sgd_cfg["M"]),
@@ -102,7 +100,7 @@ def load_reward_model(
 
     elif alg == "do":
         do_cfg = cfg["do"]
-        model = RewardNet2(do_cfg["hidden_sizes"], dropout_prob=do_cfg["dropout_prob"])
+        model = RewardNet(do_cfg["hidden_sizes"], dropout_prob=do_cfg["dropout_prob"])
         key, key_init = jr.split(key)
         dummy_item = init_model_dropout(
             key_init,
@@ -138,7 +136,7 @@ def load_reward_model(
 
     elif alg == "ekf":
         ekf_cfg = cfg["ekf"]
-        model = RewardNet2(ekf_cfg["hidden_sizes"])
+        model = RewardNet(ekf_cfg["hidden_sizes"])
         key, key_init = jr.split(key)
         dummy_ts = init_model_ensemble(
             key_init,

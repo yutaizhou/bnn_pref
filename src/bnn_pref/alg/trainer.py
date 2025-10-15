@@ -20,7 +20,7 @@ from bnn_pref.utils.metrics import (
     compute_logpdf,
     compute_sharpness,
 )
-from bnn_pref.utils.network import RewardNet2, isfinite_param, isfinite_param_pytree
+from bnn_pref.utils.network import RewardNet, isfinite_param, isfinite_param_pytree
 
 warnings.filterwarnings("ignore")
 
@@ -115,8 +115,7 @@ def alg_pipeline(
         # print(f"WARNING: {nq_init=} < {bs=}, setting alg_cfg.bs = 1")
 
     traj_shape = env.get_traj_shape()
-    # model = RewardNet(alg_cfg["hidden_sizes"], alg_cfg["n_splits"])
-    model = RewardNet2(
+    model = RewardNet(
         alg_cfg["hidden_sizes"],
         alg_cfg["n_splits"],
         alg_cfg["dropout_prob"],
