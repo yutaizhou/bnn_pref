@@ -39,24 +39,22 @@ wandb:
 # Commands
 
 ## Reward learning experiments
-To train preference-based reward models over 18 chosen D4RL tasks, each task running 4 algs
-(SubspaceEKF (Random), DeepEnsemble (Random), SubspaceEKF (Active), DeepEnsemble (Active))
+To train preference-based reward models over chosen D4RL tasks, each task running 6 algs
+(`{SubspaceEKF, DeepEnsemble, Dropout} x {Random, Active)}`)
 for 5 seeds each:
 
-```python
-python scripts/sweep_tasks_alg.py \
-    seed=-1 seeds=5 seed_vmap=False \
-    data.nq_train=50000 \
-    data.nq_update=60 \
-    sgd.max_buffer_size=500 \
-    sgd.n_epochs=0 \
+```bash
+bash scripts_sh/sweep_rm.sh
 ```
 
-This will produce 18 tasks * 4 algs * 5 seeds = 360 model checkpoints, and will output a hydra directory in `PATH/TO/YOUR/bnn_pref/results/pref/{DUMMY}` with all the results, where `{DUMMY}` will be replaced by the hydra run name.
+This will produce `num_tasks * 6 * num_seeds` model checkpoints, and will output a hydra directory in `PATH/TO/YOUR/bnn_pref/results_sweep/pref/{DUMMY}` with all the results, where `{DUMMY}` will be replaced by the hydra run name. Each seperate sweep run will run over all tasks.
 
-A slurm version of the above command is included in the `scripts_sh/sweep_rm.sh` bash script, and will produce results in `PATH/TO/YOUR/bnn_pref/results_sweep/pref/{DUMMY}`. It's good for sweeping over config values, each seperate sweep run will run over all 18 tasks.
+For visualization, 
+```bash
+python bnn_pref/src/scripts/viz_logpdf_sweep.py {save_dir}
+```
 
-For visualization, run `python bnn_pref/src/scripts/viz_logpdf.py` with the `save_dir` variable set to the desired output directory. Set `dirp` variable to the desired reward learning hydra run directory, e.g. `PATH/TO/YOUR/bnn_pref/results/pref/{DUMMY}`. 
+With the `save_dir` variable set to the desired output directory, e.g. `PATH/TO/YOUR/bnn_pref/results_sweep/pref/{DUMMY}`.
 
 ## Offline RL experiments
 To train offline RL agent using the reward models trained above, on the `cheetahRandom` task, run the following command:
@@ -65,23 +63,33 @@ To train offline RL agent using the reward models trained above, on the `cheetah
 python bnn_pref/rl/iql.py \
     task=cheetahRandom \
     rl.reward=pref \
-    rl.pref_alg=ekf,sgd \
+    rl.pref_alg=ekf,sgd,do \
     rl.pref_is_al=True,False \
     rl.normalize_reward=True \
     rl.clip_reward=True \
     rl.n_updates=1000000 \
-    rl.eval_interval=25000 \
+    rl.eval_interval=50000 \
     rl.run_dir='"PATH/TO/YOUR/bnn_pref/results/pref/{DUMMY}"' \
 ```
 
-This will produce 4 runs (for the 4 reward model algs) in `PATH/TO/YOUR/bnn_pref/results/offline_rl/{DUMMY}`. The 4 models corresponding to cheetahRandom will be chosen automatically by the function `bnn_pref.rl.rm_util.load_reward_model()`. 
+This will produce 6 runs (for the 6 reward model algs) in `PATH/TO/YOUR/bnn_pref/results/offline_rl/{DUMMY}`. The 6 models corresponding to cheetahRandom will be chosen automatically by the function `bnn_pref.rl.rm_util.load_reward_model()`. 
 To train IQL policies using the environment or zeroed out rewards simply set `rl.reward=gt` or `rl.reward=zero` respectively.
 
-A slurm version of the above command is included in the `scripts_sh/sweep_iql_pref.sh` bash script, and will produce results in `PATH/TO/YOUR/bnn_pref/results_sweep/offline_rl/{DUMMY}`. It also runs over 18 tasks from D4RL, each for 1 seed.
+A slurm version of the above command is included in the `scripts_sh/sweep_iql_pref.sh` bash script, and will produce results in `PATH/TO/YOUR/bnn_pref/results_sweep/offline_rl/{DUMMY}`. It also runs over all tasks from D4RL, each for 1 seed.
 
 For visualization, run `python bnn_pref/src/scripts/viz_offlineRL.py` with the `save_dir` variable set to the desired output directory. Set `ref_dirp` variable to the desired hydra run directory from training the IQL agent on the GT and zeroed out rewards. Set `pref_dirp` variable to the desired hydra run directory from training the IQL agent on the learned reward models, e.g. `PATH/TO/YOUR/bnn_pref/results/offline_rl/{DUMMY}`.
 
 ## Scalability experiments
-To run the scalability experiments, use `scripts_sh/sweep_paramCount.sh` to sweep over network sizes with `M` fixed, and use `scripts_sh/sweep_paramM.sh` to sweep over `M` with network size fixed. Both are done only in the active querying setting. This is done over slurm with `jax.vmap` disabled for vectorized network training and prediction. 
+To run the scalability experiments, use `scripts_sh/sweep_scalingParam.sh` to sweep over network sizes with `M` fixed, and use `scripts_sh/sweep_scalingM.sh` to sweep over `M` with network size fixed. Both are done only in the active querying setting. This is done over slurm with `jax.vmap` disabled for vectorized network training and prediction. Results are saved in `PATH/TO/YOUR/bnn_pref/results_sweep/scaling/{DUMMY}`.
 
-For visualization, run `python bnn_pref/src/scripts/viz_scale.py` with the `save_dir` variable set to the desired output directory. Set `M_dirp` variable to the desired hydra run directory from running `sweep_paramCount.sh`. Set `net_dirp` variable to the desired hydra run directory from running `sweep_paramM.sh`.
+For visualization, run `python bnn_pref/src/scripts/viz_scaling.py` with the `save_dir` variable set to the desired output directory. Set `M_dirp` variable to the desired hydra run directory from running `sweep_paramCount.sh`. Set `net_dirp` variable to the desired hydra run directory from running `sweep_paramM.sh`.
+
+
+## Subdimension ablation experiments
+```bash
+ bash scripts_sh/sweep_ekf_subdim.sh
+```
+
+This runs over one task, `walkerMediumExpert`, with 3 seeds for each each combination of subdimension size and whether to use random projection (11 x 2 = 22 runs). Results are saved in `PATH/TO/YOUR/bnn_pref/results_sweep/subdim/{DUMMY}`.
+
+For visualization, run `python bnn_pref/src/scripts/viz_subdim_ablation.py` with the `save_dir` variable set to the desired output directory. Set `dirp` variable to the desired hydra run directory from running `sweep_ekf_subdim.sh`.
