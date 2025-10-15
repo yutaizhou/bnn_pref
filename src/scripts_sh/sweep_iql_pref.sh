@@ -26,14 +26,14 @@ TASK_LIST=$(IFS=,; echo "${TASKS[*]}")
 python bnn_pref/rl/iql.py \
     -m task=$TASK_LIST \
     rl.n_updates=1000000 \
-    rl.eval_interval=25000 \
+    rl.eval_interval=50000 \
     rl.reward=pref \
     rl.pref_alg=ekf,sgd,do \
     rl.pref_is_al=True,False \
     rl.normalize_reward=True \
     rl.clip_reward=True \
-    rl.run_dir='"/scr/yutaizho/projects/bnn_pref/_runs/pref/20250919_004004_nitersUpdate=10_lr=0.001_ekfM=100_iekf=5_ekfLr=0.003_ekfDn=0.0001_ekfPn=0.07_ekfOn=0.07_ekfAcq=infogain_acq=infogain"' \
-    wandb.tags=nitersUpdate10_infogain \
+    rl.run_dir='"/scr/yutaizho/projects/bnn_pref/_runs/pref/20250919_045313_nitersUpdate=-3_lr=0.001_ekfM=100_iekf=5_ekfLr=0.003_ekfDn=0.0001_ekfPn=0.07_ekfOn=0.07_ekfAcq=infogain_acq=infogain"' \
+    wandb.tags=nitersUpdate-3_infogain \
     rl.use_wandb=True \
     wandb.group=rl_pref_reward_norm_clip \
     hydra/launcher=slurm 

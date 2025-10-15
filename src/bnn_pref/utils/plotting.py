@@ -51,13 +51,15 @@ def set_xlim_offset(ax: plt.Axes, offsets: Tuple[float, float] = (-0.01, 0.01)):
     ax.set_xlim(offsets[0], xlim[1] + offsets[1])
 
 
-def prettify_title(s: str) -> str:
+def prettify_title(s: str, all_caps: bool = False) -> str:
     """
     Insert a space before each capital letter (except the first), then capitalize the first letter
     e.g. "cheetahMediumReplay" -> "Cheetah Medium Replay"
     """
     s_with_spaces = re.sub(r"([A-Z])", r" \1", s)
     s_pretty = s_with_spaces.strip().title()
+    if all_caps:
+        return s_pretty.upper()
     return s_pretty
 
 

@@ -50,18 +50,14 @@ algs = ["ekf", "sgd", "do"]
 is_als = [True, False]
 
 use_stderr = True  # otherwise use stderr
-use_smooth = True  # otherwise no smoothing on eval curves
+use_smooth = False  # otherwise no smoothing on eval curves
 
 # * == change this block ==
 ref_dirp = (
     "/scr/yutaizho/projects/bnn_pref/_runs/offline_rl/20250501_002013_iql_ref_18tasks"
 )
 
-# pref_dirp = (
-#     "/scr/yutaizho/projects/bnn_pref/_runs/offline_rl/iql_pref_18tasks_nq60_5seed"
-# )
-
-pref_dirp = "/scr/yutaizho/projects/bnn_pref/_runs/offline_rl/20250921_iql_pref_12tasks_nitersUpdate=10_acq=infogain"
+pref_dirp = "/scr/yutaizho/projects/bnn_pref/_runs/offline_rl/20250924_iql_pref_12tasks_nitersUpdate=-3_acq=infogain"
 # save_dir = "/scr/yutaizho/projects/bnn_pref/_viz/offlineRL"
 save_dir = pref_dirp
 # * == change this block ==

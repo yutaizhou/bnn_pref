@@ -421,47 +421,6 @@ plt.savefig(save_path, bbox_inches="tight", dpi=300)
 plt.close()
 print(f"Plot saved as: {save_path}")
 
-# * plot ECE aggregated over tasks
-# fig, ax = plt.subplots(figsize=(10, 6))
-# invisible_topright_spines(ax)
-# for alg, is_al in it.product(algs, is_als):
-#     alg_isactive = f"{alg}_{is_al}"
-#     arr = stats_agg["ece"][alg_isactive]  # (seeds, steps)
-#     data_mean = mean(arr, axis=0, nan=handle_nan)
-#     data_std = (
-#         std(arr, axis=0, nan=handle_nan)
-#         if not use_stderr
-#         else sterr(arr, axis=0, nan=handle_nan)
-#     )
-#     label = get_label(alg, is_al)
-#     style = get_style(alg, is_al)
-#     ax.plot(data_mean, label=label, **style, linewidth=2)
-#     ax.fill_between(
-#         range(len(data_mean)),
-#         data_mean - data_std,
-#         data_mean + data_std,
-#         alpha=0.2,
-#         **style,
-#     )
-
-# ax.set_xlabel("Number of Queries", **get_font_kw(18))
-# xticks = ax.get_xticks()
-# ax.set_xticks(xticks)
-# ax.set_xticklabels([f"{int(x):d}" for x in xticks], **get_font_kw(16))
-# set_xlim_offset(ax)
-# ax.set_xlim(right=60.5)  # Cut off the graph at x=60
-
-# ax.set_ylabel("Test ECE", **get_font_kw(18))
-# yticks = ax.get_yticks()
-# ax.set_yticks(yticks)
-# ax.set_yticklabels([f"{y:.2f}" for y in yticks], **get_font_kw(16))
-
-# ax.legend(**get_legend_kw(18), loc="upper center", bbox_to_anchor=(0.5, -0.12), ncol=3)
-# save_path = f"{save_dir}/{timestamp}_ece_nTasks={n_tasks}_agg.png"
-# plt.savefig(save_path, bbox_inches="tight", dpi=300)
-# plt.close()
-
-# print(f"Plot saved as: {save_path}")
 
 # * plot just ECE and Brier aggregated over tasks
 fig, axes = plt.subplots(2, 1, figsize=(10, 8))
@@ -489,7 +448,12 @@ for i, metric in enumerate(["ece", "brier"]):
             alpha=0.2,
             **style,
         )
-    ax.set_ylabel(prettify_title(metric), **get_font_kw(18))
+    ax.set_ylabel(
+        prettify_title(metric, all_caps=True)
+        if metric == "ece"
+        else prettify_title(metric),
+        **get_font_kw(18),
+    )
 fig.supxlabel("Number of Queries", **get_font_kw(16))
 fig.legend(
     dummy_lines,

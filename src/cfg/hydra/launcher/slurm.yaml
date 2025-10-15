@@ -4,7 +4,7 @@ defaults:
 # @package hydra.launcher
 submitit_folder: ${hydra.sweep.dir}/.submitit/%j
 timeout_min: 1440 # 24 hours
-cpus_per_task: 6 # 10 env rollout workers
+cpus_per_task: 6 # 5 env rollout workers
 gpus_per_node: null
 tasks_per_node: 1
 gpus_per_task: null

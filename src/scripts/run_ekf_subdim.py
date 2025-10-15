@@ -111,6 +111,21 @@ def main(cfg):
             # * logpdf
             "test_logpdf_all": res_m["test_logpdf"],
             "test_logpdf_final": MeanStd(res_m["test_logpdf"][:, -1]).get_stats(),
+            # * acc
+            "test_acc_all": res_m["test_acc"],
+            "test_acc_final": MeanStd(res_m["test_acc"][:, -1]).get_stats(),
+            # * ece
+            "test_ece_all": res_m["test_ece"],
+            "test_ece_final": MeanStd(res_m["test_ece"][:, -1]).get_stats(),
+            # * brier
+            "test_brier_all": res_m["test_brier"],
+            "test_brier_final": MeanStd(res_m["test_brier"][:, -1]).get_stats(),
+            # * coverage
+            "test_coverage_all": res_m["test_coverage"],
+            "test_coverage_final": MeanStd(res_m["test_coverage"][:, -1]).get_stats(),
+            # * sharpness
+            "test_sharpness_all": res_m["test_sharpness"],
+            "test_sharpness_final": MeanStd(res_m["test_sharpness"][:, -1]).get_stats(),
         }
 
         stats[task][alg] = res
