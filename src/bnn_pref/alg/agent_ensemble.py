@@ -91,23 +91,23 @@ class EnsembleAgent(Agent):
         self.pred_return = pred_return
 
     @staticmethod
-    def get_hydra_config(sgd_cfg):
+    def get_hydra_config(alg_cfg):
         # follow sgd.yaml config
         return {
-            "acq": sgd_cfg["acq"],
+            "acq": alg_cfg["acq"],
             # init
-            "niters_init": sgd_cfg["niters_init"],
-            "batch_size": sgd_cfg["bs"],
-            "l2_reg": sgd_cfg["l2_reg"],
+            "niters_init": alg_cfg["niters_init"],
+            "batch_size": alg_cfg["bs"],
+            "l2_reg": alg_cfg["l2_reg"],
             # update
-            "update_all": sgd_cfg["update_all"],
-            "niters_update": sgd_cfg["niters_update"],
+            "update_all": alg_cfg["update_all"],
+            "niters_update": alg_cfg["niters_update"],
             # ensembling
-            "n_models": sgd_cfg["M"],
-            "chunk_size": sgd_cfg["chunk_size"],
-            "use_vmap": sgd_cfg["use_vmap"],
-            "max_buffer_size": sgd_cfg["max_buffer_size"],
-            "split_datastream": sgd_cfg["split_datastream"],
+            "n_models": alg_cfg["M"],
+            "chunk_size": alg_cfg["chunk_size"],
+            "use_vmap": alg_cfg["use_vmap"],
+            "max_buffer_size": alg_cfg["max_buffer_size"],
+            "split_datastream": alg_cfg["split_datastream"],
         }
 
     # @partial(jax.jit, static_argnames=["self"])
@@ -150,7 +150,6 @@ class EnsembleAgent(Agent):
         )
 
         bel = bel.replace(ts=warm_ts)
-
         return bel
 
     def update_bel(

@@ -70,7 +70,7 @@ class PositionWiseMLP(nn.Module):
                 prob = dropout_probs[i]
                 if prob > 0:
                     x = nn.Dropout(prob)(x, deterministic=deterministic)
-            x = nn.Dense(1)(x)
+            x = nn.Dense(1, name="last_layer")(x)
             return x
 
         if self.n_splits == 1:
@@ -121,3 +121,26 @@ class RewardNet(nn.Module):
 
     def predict_traj_rewards(self, x: BTD, deterministic: bool = True) -> BT:
         return self.pw_mlp(x, deterministic=deterministic)
+
+    # * For last layer Bayesian methods: last layer must be named "last_layer"
+    @staticmethod
+    def recombine_params(last_param_flat, fixed_param_dict, last_unravel_fn):
+        last_layer_dict = last_unravel_fn(last_param_flat)
+        # Combine fixed params with reconstructed last layer
+        params = {
+            **fixed_param_dict["params"],
+            "last_layer": last_layer_dict["params"]["last_layer"],
+        }
+        return {"params": {"pw_mlp": params}}
+
+    @staticmethod
+    def get_fixed_params(params):
+        mlp_params = params["params"]["pw_mlp"]
+        params = {k: v for k, v in mlp_params.items() if k != "last_layer"}
+        return {"params": params}
+
+    @staticmethod
+    def get_last_layer_params(params):
+        mlp_params = params["params"]["pw_mlp"]
+        params = {"last_layer": mlp_params["last_layer"]}
+        return {"params": params}
