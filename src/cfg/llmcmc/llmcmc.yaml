@@ -10,7 +10,7 @@ max_buffer_size: ${..max_buffer_size} # for keeping observed queries for trainin
 # * NN model
 hidden_sizes: ${network.hidden_sizes}
 n_splits: ${network.n_splits}
-dropout_prob: 0.3
+dropout_prob: 0.0
 
 # * Init + Update
 bs: ${..bs}

@@ -324,3 +324,12 @@ def get_batch_iter(
             yield batch
 
     return iterate_over_batches()
+
+
+def get_sgd_niters(niters: int, n: int) -> int:
+    """
+    For getting the number of SGD steps to run.
+        if niters > 0: run for niters steps
+        if niters < 0: run for abs(niters) epochs
+    """
+    return niters if niters > 0 else int(n * jnp.abs(niters))

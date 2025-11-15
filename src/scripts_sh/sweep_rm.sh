@@ -28,16 +28,18 @@ TASK_LIST=$(IFS=,; echo "${TASKS[*]}")
 python scripts/run_rm.py \
     -m seed=-1 seeds=5 \
     task=$TASK_LIST \
+    data.nq_init=8 \
+    data.nq_update=60 \
+    acq=infogain \
+    bs=8 \
+    learning_rate=0.001 \
     update_all=True \
     niters_init=420 \
     niters_update=10 \
     sgd.split_datastream=True \
     sgd.M=5 \
-    learning_rate=0.001 \
-    bs=8 \
     ekf.learning_rate=0.003 \
     ekf.bs=1 \
     ekf.iekf=5 \
-    ekf.acq=infogain \
-    acq=infogain \
+    laplace.M=50 \
     hydra/launcher=slurm

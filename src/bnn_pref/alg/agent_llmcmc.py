@@ -18,6 +18,7 @@ from bnn_pref.alg.agent_utils import (
     bt_loss_fn,
     compute_disagreement,
     compute_info_gain,
+    get_sgd_niters,
     run_sgd,
 )
 from bnn_pref.alg.data_buffer import QueryBuffer
@@ -29,7 +30,7 @@ from bnn_pref.utils.type import QueryData, unpackable_dataclass
 @unpackable_dataclass
 class LMCMCBeliefState:
     ts: TrainState  # SGD initialized model params
-    mcmc_params: Array  # (ensemble_size, last_layer_dim)
+    particles: Array  # (ensemble_size, last_layer_dim)
     t: int
 
 
@@ -47,18 +48,18 @@ def init_model(
     return ts
 
 
-def mcmc(
+def mcmc_belief_update(
     key,
     model: RewardNet,
-    params: Dict,
+    params: Dict,  # {"params": actual_params}
     data: QueryData,
+    n_particles: int,
     # mcmc hyperparameters
     n_warmups: int,
     n_steps: int,
-    ensemble_size: int,
-) -> Array:
-    assert (n_steps - n_warmups) % ensemble_size == 0
-    every = (n_steps - n_warmups) // ensemble_size
+) -> Float[Array, "M last_layer_dim"]:
+    assert (n_steps - n_warmups) % n_particles == 0
+    every = (n_steps - n_warmups) // n_particles
     fixed_params = model.get_fixed_params(params)
     last_params = model.get_last_layer_params(params)
     last_params_flat, last_params_unraveler = ravel_pytree(last_params)
@@ -198,15 +199,11 @@ class LMCMCAgent(Agent):
         last_params = self.model.get_last_layer_params({"params": ts.params})
         _, self.last_params_unraveler = ravel_pytree(last_params)
         self.last_layer_param_count = count_params(last_params)
-        self.param_count = self.last_layer_param_count
+        self.param_count = count_params(ts.params)
 
         self.buffer = self.buffer.add_samples(warmup_data)
 
-        niters = (
-            self.niters_init
-            if self.niters_init > 0
-            else int(len(warmup_data) * jnp.abs(self.niters_init))
-        )
+        niters = get_sgd_niters(self.niters_init, len(warmup_data))
 
         key, key_sgd, key_mcmc = jr.split(key, 3)
         warm_ts, _ = run_sgd(
@@ -224,17 +221,17 @@ class LMCMCAgent(Agent):
             use_vmap=self.use_vmap,
         )
 
-        mcmc_params = mcmc(
+        particles = mcmc_belief_update(
             key=key_mcmc,
             model=self.model,
             params={"params": warm_ts.params},
             data=warmup_data,
+            n_particles=self.n_models,
             n_warmups=self.num_warmup,
             n_steps=self.num_steps,
-            ensemble_size=self.n_models,
-        )
+        )  # (M, last_layer_dim)
 
-        bel = LMCMCBeliefState(ts=warm_ts, mcmc_params=mcmc_params, t=0)
+        bel = LMCMCBeliefState(ts=warm_ts, particles=particles, t=0)
         return bel
 
     def update_bel(
@@ -244,17 +241,17 @@ class LMCMCAgent(Agent):
         key, key_mcmc = jr.split(key, 2)
         self.buffer = self.buffer.add_samples(batch)
 
-        mcmc_params = mcmc(
+        particles = mcmc_belief_update(
             key=key_mcmc,
             model=self.model,
             params={"params": bel.ts.params},
             data=self.buffer.get_all(),
+            n_particles=self.n_models,
             n_warmups=self.num_warmup,
             n_steps=self.num_steps,
-            ensemble_size=self.n_models,
         )
 
-        bel = bel.replace(mcmc_params=mcmc_params, t=bel.t + 1)
+        bel = bel.replace(particles=particles, t=bel.t + 1)
         return bel
 
     @partial(jax.jit, static_argnames=["self", "env"])
@@ -270,7 +267,7 @@ class LMCMCAgent(Agent):
         """
         M = self.n_models
 
-        mcmc_params = bel.mcmc_params  # (M, last_layer_dim)
+        particles = bel.particles  # (M, last_layer_dim)
 
         # * precompute logits for all items
         def scan_ts(_, llparam: Float[Array, "last_layer_dim"]):
@@ -282,7 +279,7 @@ class LMCMCAgent(Agent):
             return _, ret_N
 
         logits_NM = rearrange(
-            jax.lax.scan(scan_ts, init=None, xs=mcmc_params)[1],
+            jax.lax.scan(scan_ts, init=None, xs=particles)[1],
             "M N -> N M",
         )
 
@@ -313,7 +310,7 @@ class LMCMCAgent(Agent):
         compute predictive distribution for all items in query pool
         """
         M = self.n_models
-        mcmc_params = bel.mcmc_params  # (M, last_layer_dim)
+        particles = bel.particles  # (M, last_layer_dim)
 
         # * precompute logits for all items
         def scan_ts(_, llparam: Float[Array, "last_layer_dim"]):
@@ -325,7 +322,7 @@ class LMCMCAgent(Agent):
             return _, ret_N
 
         logits_NM = rearrange(
-            jax.lax.scan(scan_ts, init=None, xs=mcmc_params)[1],
+            jax.lax.scan(scan_ts, init=None, xs=particles)[1],
             "M N -> N M",
         )
 

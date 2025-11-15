@@ -15,6 +15,7 @@ from bnn_pref.alg.agent_utils import (
     bt_loss_fn,
     compute_disagreement,
     compute_info_gain,
+    get_sgd_niters,
     run_sgd,
 )
 from bnn_pref.alg.data_buffer import QueryBuffer
@@ -127,12 +128,7 @@ class DropoutAgent(Agent):
         self.param_count = self.ensemble_param_count
 
         self.buffer = self.buffer.add_samples(warmup_data)
-
-        niters = (
-            self.niters_init
-            if self.niters_init > 0
-            else int(len(warmup_data) * jnp.abs(self.niters_init))
-        )
+        niters = get_sgd_niters(self.niters_init, len(warmup_data))
 
         key, key_sgd = jr.split(key, 2)
         warm_ts, _ = run_sgd(
@@ -173,13 +169,9 @@ class DropoutAgent(Agent):
         self.buffer = self.buffer.add_samples(batch)
 
         ds = self.buffer.get_all()
-        niters = (
-            self.niters_update
-            if self.niters_update > 0
-            else int(len(ds) * jnp.abs(self.niters_update))
-        )
+        niters = get_sgd_niters(self.niters_update, len(ds))
         key, key_sgd = jr.split(key, 2)
-        ts, _ = run_sgd(
+        new_ts, _ = run_sgd(
             key_sgd,
             bel.ts,
             dataset=ds,
@@ -193,7 +185,7 @@ class DropoutAgent(Agent):
             use_dropout=True,
             use_vmap=self.use_vmap,
         )
-        bel = bel.replace(ts=ts, t=bel.t + 1)
+        bel = bel.replace(ts=new_ts, t=bel.t + 1)
         return bel
 
     # @partial(jax.jit, static_argnames=["self"])
@@ -226,9 +218,9 @@ class DropoutAgent(Agent):
             ts = ts.replace(dropout_key=key)
             return ts
 
-        ts = train_fn(bel.ts, ds)
+        new_ts = train_fn(bel.ts, ds)
 
-        bel = bel.replace(ts=ts, t=bel.t + 1)
+        bel = bel.replace(ts=new_ts, t=bel.t + 1)
         return bel
 
     @partial(jax.jit, static_argnames=["self", "env"])

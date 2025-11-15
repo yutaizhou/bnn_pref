@@ -15,6 +15,7 @@ from bnn_pref.alg.agent_utils import (
     bt_loss_fn,
     compute_disagreement,
     compute_info_gain,
+    get_sgd_niters,
     run_sgd,
 )
 from bnn_pref.alg.data_buffer import QueryBuffer
@@ -126,11 +127,7 @@ class EnsembleAgent(Agent):
 
         self.buffer = self.buffer.add_samples(warmup_data)
 
-        niters = (
-            self.niters_init
-            if self.niters_init > 0
-            else int(len(warmup_data) * jnp.abs(self.niters_init))
-        )
+        niters = get_sgd_niters(self.niters_init, len(warmup_data))
 
         key, key_sgd = jr.split(key, 2)
         warm_ts, _ = run_sgd(
@@ -172,13 +169,9 @@ class EnsembleAgent(Agent):
         self.buffer = self.buffer.add_samples(batch)
 
         ds = self.buffer.get_all()
-        niters = (
-            self.niters_update
-            if self.niters_update > 0
-            else int(len(ds) * jnp.abs(self.niters_update))
-        )
+        niters = get_sgd_niters(self.niters_update, len(ds))
         key, key_sgd = jr.split(key, 2)
-        ts, _ = run_sgd(
+        new_ts, _ = run_sgd(
             key_sgd,
             bel.ts,
             dataset=ds,
@@ -193,7 +186,7 @@ class EnsembleAgent(Agent):
             use_dropout=False,
             use_vmap=self.use_vmap,
         )
-        bel = bel.replace(ts=ts, t=bel.t + 1)
+        bel = bel.replace(ts=new_ts, t=bel.t + 1)
         return bel
 
     # @partial(jax.jit, static_argnames=["self"])
@@ -221,12 +214,12 @@ class EnsembleAgent(Agent):
 
         if self.use_vmap:
             grad_fn = jax.vmap(train_fn, in_axes=(0, None))  # vmap over ts
-            ts = grad_fn(bel.ts, ds)
+            new_ts = grad_fn(bel.ts, ds)
         else:
             grad_fn = partial(train_fn, batch=ds)
-            ts = jax.lax.map(grad_fn, bel.ts)
+            new_ts = jax.lax.map(grad_fn, bel.ts)
 
-        bel = bel.replace(ts=ts, t=bel.t + 1)
+        bel = bel.replace(ts=new_ts, t=bel.t + 1)
         return bel
 
     @partial(jax.jit, static_argnames=["self", "env"])

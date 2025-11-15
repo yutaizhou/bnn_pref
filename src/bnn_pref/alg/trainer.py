@@ -91,7 +91,8 @@ def run_alg(key, alg: str, cfg, data_dict, env):
     *_, al_results = jax.lax.scan(eval_bel, init=(), xs=bel_trace)
 
     # * aggregate eval results and model trace
-    model_trace = bel_trace if alg == "ekf" else bel_trace.ts
+    # dropout and sgd's belief only needs ts
+    model_trace = bel_trace if alg in ["ekf", "llmcmc", "laplace"] else bel_trace.ts
     model = jax.tree.map(lambda x: x[-1], model_trace)  # get only the final model
     if alg == "do":
         model = model.replace(dropout_key=jr.key_data(model.dropout_key))
@@ -103,10 +104,16 @@ def run_alg(key, alg: str, cfg, data_dict, env):
         # "ensemble_param_count": bandit.ensemble_param_count,
         "model": model,
     }
+
+    # * alg specific parameter counts
     if alg == "ekf":
         results["subspace_param_count"] = bandit.subspace_param_count
-    else:
+    elif alg == "llmcmc":
+        results["last_layer_param_count"] = bandit.last_layer_param_count
+    elif alg == "sgd":
         results["ensemble_param_count"] = bandit.ensemble_param_count
+    else:
+        pass
 
     return results
 

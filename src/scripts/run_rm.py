@@ -46,6 +46,8 @@ def main(cfg):
     ekf_cfg = cfg["ekf"]
     sgd_cfg = cfg["sgd"]
     do_cfg = cfg["do"]
+    llmcmc_cfg = cfg["llmcmc"]
+    laplace_cfg = cfg["laplace"]
     nq_train, nq_test = data_cfg["nq_train"], data_cfg["nq_test"]
     nq_init, nsteps = data_cfg["nq_init"], data_cfg["nsteps"]
     n_eff_iterates = (ekf_cfg["niters_init"] - ekf_cfg["warm_burns"]) // ekf_cfg[
@@ -74,6 +76,14 @@ def main(cfg):
         f"  M={do_cfg['M']}, use_vmap={do_cfg['use_vmap']}\n"
         f"  init: bs={do_cfg['bs']}, niters={do_cfg['niters_init']}\n"
         f"  update: bs={do_cfg['bs']}, niters={do_cfg['niters_update']}\n"
+        f"Last-Layer MCMC:\n"
+        f"  M={llmcmc_cfg['M']}, use_vmap={llmcmc_cfg['use_vmap']}\n"
+        f"  n_warmups={llmcmc_cfg['num_warmup']}, n_steps={llmcmc_cfg['num_steps']}\n"
+        f"Laplace:\n"
+        f"  M={laplace_cfg['M']}, use_vmap={laplace_cfg['use_vmap']}\n"
+        f"  init: bs={laplace_cfg['bs']}, niters={laplace_cfg['niters_init']}\n"
+        f"  update: bs={laplace_cfg['bs']}, niters={laplace_cfg['niters_update']}\n"
+        f"  prior_prec={laplace_cfg['prior_prec']}\n"
     )
 
     ckpter = ocp.PyTreeCheckpointer()
@@ -125,11 +135,19 @@ def main(cfg):
         run_fn = partial(run_alg, alg=alg, cfg=cfg, data_dict=data_dict, env=env)
         start = datetime.now()
 
-        res_m = (
-            jax.block_until_ready(jax.vmap(run_fn)(seeds))
-            if cfg["seed_vmap"]
-            else jax.block_until_ready(jax.lax.map(run_fn, seeds))
-        )
+        if alg != "laplace":
+            res_m = (
+                jax.block_until_ready(jax.vmap(run_fn)(seeds))
+                if cfg["seed_vmap"]
+                else jax.block_until_ready(jax.lax.map(run_fn, seeds))
+            )
+        else:
+            # laplax.laplace cannot be called with tracers.
+            res_m = []
+            for seed in seeds:
+                res = jax.block_until_ready(run_fn(seed))
+                res_m.append(res)
+            res_m = jax.tree_util.tree_map(lambda *xs: jnp.stack(xs), *res_m)
 
         duration = (datetime.now() - start).total_seconds()
 

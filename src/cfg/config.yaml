@@ -47,7 +47,7 @@ save_fig: False
 # for sgd & do
 # niters notation: >0 for num minibatches, -1 for 1 epoch, -2 for 2 epochs, etc
 max_buffer_size: 500 # for keeping observed queries for training. keep it roughly around `nq_updates`
-acq: "disagreement" # "infogain" or "disagreement"
+acq: "infogain" # "infogain" or "disagreement"
 bs: 1 # batch size for training
 niters_init: 420 # number of GD steps on init_belief()
 update_all: True # True: use all queries so far (sgd for `niters_update` steps); False: just the most recent for 1 step

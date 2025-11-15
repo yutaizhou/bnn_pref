@@ -1,8 +1,7 @@
+import sys
 from functools import partial
 from typing import Dict, Tuple
 
-import blackjax
-import distrax as dtx
 import jax
 import jax.numpy as jnp
 import jax.random as jr
@@ -10,14 +9,17 @@ import optax
 from einops import rearrange
 from flax import linen as nn
 from flax.training.train_state import TrainState
-from jax.flatten_util import ravel_pytree
 from jaxtyping import Array, Float, Int, Scalar
+from laplax import laplace
+from laplax.eval.pushforward import get_dist_state
+from loguru import logger
 
 from bnn_pref.alg.agent_utils import (
     Agent,
     bt_loss_fn,
     compute_disagreement,
     compute_info_gain,
+    get_sgd_niters,
     run_sgd,
 )
 from bnn_pref.alg.data_buffer import QueryBuffer
@@ -25,11 +27,14 @@ from bnn_pref.data.data_env import PreferenceEnv
 from bnn_pref.utils.network import RewardNet, count_params
 from bnn_pref.utils.type import QueryData, unpackable_dataclass
 
+logger.remove()
+logger.add(sys.stderr, level="INFO")
+
 
 @unpackable_dataclass
 class LaplaceBeliefState:
     ts: TrainState  # SGD initialized model params
-    mcmc_params: Array  # (ensemble_size, last_layer_dim)
+    particles: Array  # (ensemble_size, last_layer_dim)
     t: int
 
 
@@ -47,70 +52,58 @@ def init_model(
     return ts
 
 
-def mcmc(
+def laplace_belief_update(
     key,
-    model: RewardNet,
-    params: Dict,
+    model_def: RewardNet,
+    params: Dict,  # {"params": actual_params}
     data: QueryData,
-    # mcmc hyperparameters
-    n_warmups: int,
-    n_steps: int,
-    ensemble_size: int,
-) -> Array:
-    assert (n_steps - n_warmups) % ensemble_size == 0
-    every = (n_steps - n_warmups) // ensemble_size
-    fixed_params = model.get_fixed_params(params)
-    last_params = model.get_last_layer_params(params)
-    last_params_flat, last_params_unraveler = ravel_pytree(last_params)
+    n_particles: int,
+    # * laplace hyperparameter
+    prior_prec: float = 0.2,
+) -> Dict[str, Array]:
+    x, y = data.contexts, data.labels  # (B, 2, T, D), (B, 2)
+    batch = (x, y)
 
-    def bnn_logjoint_lastlayer(
-        last_params_flat,
-        fixed_params,
-        last_unraveler,
-        data: QueryData,
-        model: RewardNet,
-    ):
-        x, y = data  # (B, 2, T, D), (B, 2)
-        params = model.recombine_params(last_params_flat, fixed_params, last_unraveler)
-        logits = model.apply(params, x, deterministic=True)  # (B, 2)
-        logits_corr = logits[:, 1]
-        y_corr = y[:, 1]
+    def model_fn(input, params):
+        # input: (B, 2, T, D)
+        logits = model_def.apply(
+            params,
+            input,
+            deterministic=True,
+        )  # (B, 2)
+        probs = jnp.exp(jax.nn.log_softmax(logits, axis=1))
+        return probs  # (B, 2)
 
-        logprior = dtx.Normal(0.0, 1.0).log_prob(last_params_flat).sum()
-        loglikeli = dtx.Bernoulli(logits=logits_corr).log_prob(y_corr).sum()
-
-        log_joint = logprior + loglikeli
-        return log_joint
-
-    def inference_loop(rng_key, kernel, initial_state, num_samples):
-        def one_step(state, rng_key):
-            state, _ = kernel(rng_key, state)
-            return state, state
-
-        keys = jax.random.split(rng_key, num_samples)
-        _, states = jax.lax.scan(one_step, initial_state, keys)
-
-        return states
-
-    key, key_warmup, key_samples = jr.split(key, 3)
-
-    potential = partial(
-        bnn_logjoint_lastlayer,
-        fixed_params=fixed_params,
-        last_unraveler=last_params_unraveler,
-        data=data,
-        model=model,
+    posterior_fn, curv_estimate = laplace(
+        model_fn=model_fn,
+        params=params,
+        data=batch,
+        loss_fn="binary_cross_entropy",
+        curv_type="full",
+        num_curv_samples=1,
+        num_total_samples=1,
+        vmap_over_data=False,
     )
-    adapt = blackjax.window_adaptation(blackjax.nuts, potential)
-    (state, parameters), _ = adapt.run(key_warmup, last_params_flat, n_warmups)
+    prior_arguments = {"prior_prec": prior_prec}
 
-    kernel = blackjax.nuts(potential, **parameters).step
-    states = inference_loop(key_samples, kernel, state, n_steps)
-    sampled_params = states.position  # (n_steps, last_layer_dim)
-
-    ll_params = sampled_params[n_warmups::every]
-
-    return ll_params  # (ensemble_size, last_layer_dim)
+    key, key_particles = jr.split(key, 2)
+    dist_state = get_dist_state(
+        mean_params=params,
+        model_fn=model_fn,
+        posterior_state=posterior_fn(prior_arguments, loss_scaling_factor=1.0),
+        linearized=False,
+        num_samples=n_particles,
+        key=key_particles,
+    )
+    particles = []
+    for i in range(n_particles):
+        # list of dicts with arrays of shape (param)
+        particle = dist_state["get_weight_samples"](i)
+        particles.append(particle)
+    particles = jax.tree_util.tree_map(
+        lambda *x: jnp.stack(x, axis=0), *particles
+    )  # dict of arrays with leading axis (M, param)
+    return particles  # particles["params"]["pw_mlp"]["Dense_0"]
 
 
 class LaplaceAgent(Agent):
@@ -124,8 +117,7 @@ class LaplaceAgent(Agent):
         l2_reg: float = 0.0,
         niters_init: int = 1,
         niters_update: int = 1,
-        num_warmup: int = 100,
-        num_steps: int = 1000,
+        prior_prec: float = 0.2,
         batch_size: int = 32,
         chunk_size: int = 64,
         use_vmap: bool = True,  # for training update_bel in {init,update}_bel
@@ -139,8 +131,7 @@ class LaplaceAgent(Agent):
         self.l2_reg = l2_reg
         self.niters_init = niters_init
         self.niters_update = niters_update
-        self.num_warmup = num_warmup
-        self.num_steps = num_steps
+        self.prior_prec = prior_prec
         self.batch_size = batch_size
         self.chunk_size = chunk_size
         self.use_vmap = use_vmap
@@ -181,8 +172,7 @@ class LaplaceAgent(Agent):
             # update
             "update_all": alg_cfg["update_all"],
             "niters_update": alg_cfg["niters_update"],
-            "num_warmup": alg_cfg["num_warmup"],
-            "num_steps": alg_cfg["num_steps"],
+            "prior_prec": alg_cfg["prior_prec"],
             # ensembling
             "n_models": alg_cfg["M"],
             "chunk_size": alg_cfg["chunk_size"],
@@ -191,25 +181,15 @@ class LaplaceAgent(Agent):
         }
 
     # @partial(jax.jit, static_argnames=["self"])
-    def init_bel(self, key, warmup_data: QueryData) -> LMCMCBeliefState:
+    def init_bel(self, key, warmup_data: QueryData) -> LaplaceBeliefState:
         key, key_model = jr.split(key)
         ts = init_model(key_model, self.model, self.opt, self.traj_shape)
-        self.fixed_params = self.model.get_fixed_params({"params": ts.params})
-        last_params = self.model.get_last_layer_params({"params": ts.params})
-        _, self.last_params_unraveler = ravel_pytree(last_params)
-        self.last_layer_param_count = count_params(last_params)
-        self.param_count = self.last_layer_param_count
+        self.param_count = count_params(ts.params)
 
-        # buffer = QueryBuffer.create(self.max_buffer_size, self.traj_shape)
         self.buffer = self.buffer.add_samples(warmup_data)
+        niters = get_sgd_niters(self.niters_init, len(warmup_data))
 
-        niters = (
-            self.niters_init
-            if self.niters_init > 0
-            else int(len(warmup_data) * jnp.abs(self.niters_init))
-        )
-
-        key, key_sgd, key_mcmc = jr.split(key, 3)
+        key, key_sgd, key_laplace = jr.split(key, 3)
         warm_ts, _ = run_sgd(
             key_sgd,
             ts,
@@ -225,44 +205,57 @@ class LaplaceAgent(Agent):
             use_vmap=self.use_vmap,
         )
 
-        mcmc_params = mcmc(
-            key=key_mcmc,
-            model=self.model,
+        particles = laplace_belief_update(
+            key=key_laplace,
+            model_def=self.model,
             params={"params": warm_ts.params},
             data=warmup_data,
-            n_warmups=self.num_warmup,
-            n_steps=self.num_steps,
-            ensemble_size=self.n_models,
-        )
-
-        bel = LMCMCBeliefState(ts=warm_ts, mcmc_params=mcmc_params, t=0)
+            n_particles=self.n_models,
+            prior_prec=self.prior_prec,
+        )  # particles["params"]["pw_mlp"]["Dense_0"]
+        bel = LaplaceBeliefState(ts=warm_ts, particles=particles, t=0)
         return bel
 
     def update_bel(
-        self, key, bel: LMCMCBeliefState, batch: QueryData
-    ) -> LMCMCBeliefState:
+        self, key, bel: LaplaceBeliefState, batch: QueryData
+    ) -> LaplaceBeliefState:
         """Train on all queries in the buffer."""
-        key, key_mcmc = jr.split(key, 2)
+        key, key_sgd, key_laplace = jr.split(key, 3)
         self.buffer = self.buffer.add_samples(batch)
 
-        mcmc_params = mcmc(
-            key=key_mcmc,
-            model=self.model,
-            params={"params": bel.ts.params},
-            data=self.buffer.get_all(),
-            n_warmups=self.num_warmup,
-            n_steps=self.num_steps,
-            ensemble_size=self.n_models,
+        ds = self.buffer.get_all()
+        niters = get_sgd_niters(self.niters_update, len(ds))
+        ts, _ = run_sgd(
+            key_sgd,
+            bel.ts,
+            dataset=ds,
+            loss_fn=bt_loss_fn,
+            has_aux=True,
+            niters=niters,
+            batch_size=self.batch_size,
+            l2_reg=self.l2_reg,
+            get_param_trace=False,
+            n_models=1,
+            use_dropout=False,
+            use_vmap=self.use_vmap,
         )
 
-        bel = bel.replace(mcmc_params=mcmc_params, t=bel.t + 1)
+        particles = laplace_belief_update(
+            key_laplace,
+            self.model,
+            {"params": ts.params},
+            ds,
+            self.n_models,
+            prior_prec=self.prior_prec,
+        )  # particles["params"]["pw_mlp"]["Dense_0"]
+        bel = bel.replace(ts=ts, particles=particles, t=bel.t + 1)
         return bel
 
     @partial(jax.jit, static_argnames=["self", "env"])
     def compute_next_query(
         self,
         key,
-        bel: LMCMCBeliefState,
+        bel: LaplaceBeliefState,
         env: PreferenceEnv,
         pool_idxes_Q: Int[Array, "Q"],
     ) -> int:
@@ -271,19 +264,16 @@ class LaplaceAgent(Agent):
         """
         M = self.n_models
 
-        mcmc_params = bel.mcmc_params  # (M, last_layer_dim)
+        particles = bel.particles  # particles["params"]["pw_mlp"]["Dense_0"]
 
         # * precompute logits for all items
-        def scan_ts(_, llparam: Float[Array, "last_layer_dim"]):
-            param = self.model.recombine_params(
-                llparam, self.fixed_params, self.last_params_unraveler
-            )  # {"params": actual_params}
-            fn = partial(self.pred_return, param)
+        def scan_ts(_, particle: Dict):
+            fn = partial(self.pred_return, particle)
             ret_N = jax.lax.map(fn, env.items_NTD, batch_size=self.chunk_size)
             return _, ret_N
 
         logits_NM = rearrange(
-            jax.lax.scan(scan_ts, init=None, xs=mcmc_params)[1],
+            jax.lax.scan(scan_ts, init=None, xs=particles)[1],
             "M N -> N M",
         )
 
@@ -306,7 +296,7 @@ class LaplaceAgent(Agent):
     def compute_postpred(
         self,
         key,
-        bel: LMCMCBeliefState,
+        bel: LaplaceBeliefState,
         items_NTD: Float[Array, "N T D"],
         query_idxs_Q2: Int[Array, "Q 2"],
     ) -> Float[Array, "Q 2"]:
@@ -314,19 +304,16 @@ class LaplaceAgent(Agent):
         compute predictive distribution for all items in query pool
         """
         M = self.n_models
-        mcmc_params = bel.mcmc_params  # (M, last_layer_dim)
+        particles = bel.particles  # particles["params"]["pw_mlp"]["Dense_0"]
 
         # * precompute logits for all items
-        def scan_ts(_, llparam: Float[Array, "last_layer_dim"]):
-            param = self.model.recombine_params(
-                llparam, self.fixed_params, self.last_params_unraveler
-            )  # {"params": actual_params}
-            fn = partial(self.pred_return, param)
+        def scan_ts(_, particle: Dict):
+            fn = partial(self.pred_return, particle)
             ret_N = jax.lax.map(fn, items_NTD, batch_size=self.chunk_size)
             return _, ret_N
 
         logits_NM = rearrange(
-            jax.lax.scan(scan_ts, init=None, xs=mcmc_params)[1],
+            jax.lax.scan(scan_ts, init=None, xs=particles)[1],
             "M N -> N M",
         )
 
