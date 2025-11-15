@@ -8,6 +8,8 @@ defaults:
 - ekf: ekf
 - sgd: sgd
 - do: do
+- llmcmc: llmcmc
+- laplace: laplace
 - rl: iql
 - optional local: default # specifies project dir & wandb login
 # - optional run: debug

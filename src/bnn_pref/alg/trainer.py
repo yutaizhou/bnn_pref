@@ -10,6 +10,8 @@ import optax
 from bnn_pref.alg.agent_dropout import DropoutAgent, DropoutBeliefState
 from bnn_pref.alg.agent_ekf import EKFAgent, EKFBeliefState
 from bnn_pref.alg.agent_ensemble import EnsembleAgent, EnsembleBeliefState
+from bnn_pref.alg.agent_laplace import LaplaceAgent, LaplaceBeliefState
+from bnn_pref.alg.agent_llmcmc import LMCMCAgent, LMCMCBeliefState
 from bnn_pref.alg.agent_utils import Agent
 from bnn_pref.data.data_env import PreferenceEnv
 from bnn_pref.utils.metrics import (
@@ -24,7 +26,13 @@ from bnn_pref.utils.network import RewardNet, isfinite_param, isfinite_param_pyt
 
 warnings.filterwarnings("ignore")
 
-AgentState = Union[EKFBeliefState, EnsembleBeliefState, DropoutBeliefState]
+AgentState = Union[
+    EKFBeliefState,
+    EnsembleBeliefState,
+    DropoutBeliefState,
+    LMCMCBeliefState,
+    LaplaceBeliefState,
+]
 
 """
 run_alg -> alg_pipeline -> run_updates
@@ -32,11 +40,13 @@ run_alg -> alg_pipeline -> run_updates
 
 
 def run_alg(key, alg: str, cfg, data_dict, env):
-    assert alg in ["ekf", "sgd", "do"]
+    assert alg in ["ekf", "sgd", "do", "llmcmc", "laplace"]
     alg_cls_dict = {
         "ekf": EKFAgent,
         "sgd": EnsembleAgent,
         "do": DropoutAgent,
+        "llmcmc": LMCMCAgent,
+        "laplace": LaplaceAgent,
     }
     alg_cfg = cfg[alg]
     alg_cls = alg_cls_dict[alg]

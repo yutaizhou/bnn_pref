@@ -17,6 +17,13 @@ def get_param_count_msg(cfg, alg: str, res_m: dict) -> str:
     elif alg == "do":
         param_count = get_item(res_m["param_count"])
         return f"({param_count:,d})"
+    elif alg == "llmcmc":
+        param_count = get_item(res_m["param_count"])
+        last_layer_param_count = get_item(res_m["last_layer_param_count"])
+        return f"({param_count:,d} -> {last_layer_param_count:,d})"
+    elif alg == "laplace":
+        param_count = get_item(res_m["param_count"])
+        return f"({param_count:,d})"
     else:
         raise ValueError(f"Unknown algorithm: {alg}")
 

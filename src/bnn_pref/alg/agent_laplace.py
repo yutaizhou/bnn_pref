@@ -27,7 +27,7 @@ from bnn_pref.utils.type import QueryData, unpackable_dataclass
 
 
 @unpackable_dataclass
-class LMCMCBeliefState:
+class LaplaceBeliefState:
     ts: TrainState  # SGD initialized model params
     mcmc_params: Array  # (ensemble_size, last_layer_dim)
     t: int
@@ -113,7 +113,7 @@ def mcmc(
     return ll_params  # (ensemble_size, last_layer_dim)
 
 
-class LMCMCAgent(Agent):
+class LaplaceAgent(Agent):
     def __init__(
         self,
         model: nn.Module,

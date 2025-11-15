@@ -29,6 +29,7 @@ python scripts/run_rm.py \
     -m seed=-1 seeds=5 \
     task=$TASK_LIST \
     update_all=True \
+    niters_init=420 \
     niters_update=10 \
     sgd.split_datastream=True \
     sgd.M=5 \
