@@ -26,7 +26,6 @@ from bnn_pref.utils.type import QueryData, unpackable_dataclass
 @unpackable_dataclass
 class EnsembleBeliefState:
     ts: TrainState
-    buffer: QueryBuffer
     t: int
 
 
@@ -76,6 +75,9 @@ class EnsembleAgent(Agent):
         self.acq = acq
         self.update_all = update_all
         self.split_datastream = split_datastream
+        self.buffer: QueryBuffer = QueryBuffer.create(
+            self.max_buffer_size, self.traj_shape
+        )
 
         # * prepare ensemble predictors
         def pred_return(ts: TrainState, x: Float[Array, "T D"]) -> Float[Array, " "]:
@@ -122,9 +124,7 @@ class EnsembleAgent(Agent):
         self.ensemble_param_count = count_params(ts.params)
         self.param_count = self.ensemble_param_count // self.n_models
 
-        buffer = QueryBuffer.create(self.max_buffer_size, self.traj_shape)
-        buffer = buffer.add_samples(warmup_data)
-        bel = EnsembleBeliefState(ts=ts, buffer=buffer, t=0)
+        self.buffer = self.buffer.add_samples(warmup_data)
 
         niters = (
             self.niters_init
@@ -135,7 +135,7 @@ class EnsembleAgent(Agent):
         key, key_sgd = jr.split(key, 2)
         warm_ts, _ = run_sgd(
             key_sgd,
-            bel.ts,
+            ts,
             dataset=warmup_data,
             loss_fn=bt_loss_fn,
             has_aux=True,
@@ -149,7 +149,7 @@ class EnsembleAgent(Agent):
             use_vmap=self.use_vmap,
         )
 
-        bel = bel.replace(ts=warm_ts)
+        bel = EnsembleBeliefState(ts=warm_ts, t=0)
         return bel
 
     def update_bel(
@@ -169,10 +169,9 @@ class EnsembleAgent(Agent):
         batch: QueryData,
     ) -> EnsembleBeliefState:
         """Train on all queries in the buffer."""
-        new_buffer = bel.buffer.add_samples(batch)
-        bel = bel.replace(buffer=new_buffer)
+        self.buffer = self.buffer.add_samples(batch)
 
-        ds = bel.buffer.get_all()
+        ds = self.buffer.get_all()
         niters = (
             self.niters_update
             if self.niters_update > 0
@@ -205,9 +204,8 @@ class EnsembleAgent(Agent):
         batch: QueryData,
     ) -> EnsembleBeliefState:
         """Train on the most recent query."""
-        new_buffer = bel.buffer.add_samples(batch)
-        bel = bel.replace(buffer=new_buffer)
-        ds = bel.buffer.get_newest_n(n=1)
+        self.buffer = self.buffer.add_samples(batch)
+        ds = self.buffer.get_newest_n(n=1)
 
         def train_fn(ts, batch: QueryData):
             contexts_B2TD, labels_B2 = batch.contexts, batch.labels

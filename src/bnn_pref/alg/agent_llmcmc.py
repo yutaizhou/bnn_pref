@@ -200,7 +200,6 @@ class LMCMCAgent(Agent):
         self.last_layer_param_count = count_params(last_params)
         self.param_count = self.last_layer_param_count
 
-        # buffer = QueryBuffer.create(self.max_buffer_size, self.traj_shape)
         self.buffer = self.buffer.add_samples(warmup_data)
 
         niters = (

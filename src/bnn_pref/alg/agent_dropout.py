@@ -26,7 +26,6 @@ from bnn_pref.utils.type import QueryData, unpackable_dataclass
 @unpackable_dataclass
 class DropoutBeliefState:
     ts: DropoutTrainState
-    buffer: QueryBuffer
     t: int
 
 
@@ -77,6 +76,9 @@ class DropoutAgent(Agent):
         assert acq in ["disagreement", "infogain"]
         self.acq = acq
         self.update_all = update_all
+        self.buffer: QueryBuffer = QueryBuffer.create(
+            self.max_buffer_size, self.traj_shape
+        )
 
         # * prepare ensemble predictors
         def pred_return(
@@ -124,9 +126,7 @@ class DropoutAgent(Agent):
         self.ensemble_param_count = count_params(ts.params)
         self.param_count = self.ensemble_param_count
 
-        buffer = QueryBuffer.create(self.max_buffer_size, self.traj_shape)
-        buffer = buffer.add_samples(warmup_data)
-        bel = DropoutBeliefState(ts=ts, buffer=buffer, t=0)
+        self.buffer = self.buffer.add_samples(warmup_data)
 
         niters = (
             self.niters_init
@@ -137,7 +137,7 @@ class DropoutAgent(Agent):
         key, key_sgd = jr.split(key, 2)
         warm_ts, _ = run_sgd(
             key_sgd,
-            bel.ts,
+            ts,
             dataset=warmup_data,
             loss_fn=bt_loss_fn,
             has_aux=True,
@@ -150,7 +150,7 @@ class DropoutAgent(Agent):
             use_vmap=self.use_vmap,
         )
 
-        bel = bel.replace(ts=warm_ts)
+        bel = DropoutBeliefState(ts=warm_ts, t=0)
         return bel
 
     def update_bel(
@@ -170,10 +170,9 @@ class DropoutAgent(Agent):
         batch: QueryData,
     ) -> DropoutBeliefState:
         """Train on all queries in the buffer."""
-        new_buffer = bel.buffer.add_samples(batch)
-        bel = bel.replace(buffer=new_buffer)
+        self.buffer = self.buffer.add_samples(batch)
 
-        ds = bel.buffer.get_all()
+        ds = self.buffer.get_all()
         niters = (
             self.niters_update
             if self.niters_update > 0
@@ -205,9 +204,8 @@ class DropoutAgent(Agent):
         batch: QueryData,
     ) -> DropoutBeliefState:
         """Train on the most recent query."""
-        new_buffer = bel.buffer.add_samples(batch)
-        bel = bel.replace(buffer=new_buffer)
-        ds = bel.buffer.get_newest_n(n=1)
+        self.buffer = self.buffer.add_samples(batch)
+        ds = self.buffer.get_newest_n(n=1)
 
         def train_fn(ts, batch: QueryData):
             key, key_dropout = jr.split(ts.dropout_key)
