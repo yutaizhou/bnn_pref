@@ -16,7 +16,7 @@ dropout_prob: 0.0
 # * Subspace Init w/ SGD 
 bs: ${..bs} # -1 for full batch GD. Otherwise, mini-batch SGD
 niters_init: 420  # Total number of GD steps on warmup data
-learning_rate: 0.0001
+learning_rate: 0.003
 momentum: 0.9
 l2_reg: 0
 

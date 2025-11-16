@@ -28,6 +28,54 @@ def get_param_count_msg(cfg, alg: str, res_m: dict) -> str:
         raise ValueError(f"Unknown algorithm: {alg}")
 
 
+def get_run_cfg_msg(seed, cfg):
+    data_cfg = cfg["data"]
+    ekf_cfg = cfg["ekf"]
+    sgd_cfg = cfg["sgd"]
+    do_cfg = cfg["do"]
+    llmcmc_cfg = cfg["llmcmc"]
+    laplace_cfg = cfg["laplace"]
+
+    nq_train, nq_test = data_cfg["nq_train"], data_cfg["nq_test"]
+    nq_init, nsteps = data_cfg["nq_init"], data_cfg["nsteps"]
+
+    n_eff_iterates = (ekf_cfg["niters_init"] - ekf_cfg["warm_burns"]) // ekf_cfg[
+        "thinning"
+    ]
+
+    print(
+        f"Run:\n"
+        f"  Seed: {seed} x {cfg['seeds']} (seed_vmap={cfg['seed_vmap']})\n"
+        f"  Sanity: {cfg['sanity']} ({cfg['sanity_frac']} real frac)\n"
+        f"  Network: {cfg['network']['hidden_sizes']}\n"
+        f"Data:\n"
+        f"  prune: {data_cfg['n_bins']} bins, {data_cfg['max_count_per_bin']} max_count_per_bin, {data_cfg['tokeep']} tokeep\n"
+        f"  noisy_label: {data_cfg['noisy_label']} (beta={data_cfg['bt_beta']})\n"
+        f"  Train/Test: {nq_train}/{nq_test}\n"
+        f"  Init/Update: {nq_init}/{nsteps}\n"
+        f"EKF:\n"
+        f"  M={ekf_cfg['M']}, use_vmap={ekf_cfg['use_vmap']}\n"
+        f"  prior / dynamics / obs noise: {ekf_cfg['prior_noise']} / {ekf_cfg['dynamics_noise']} / {ekf_cfg['obs_noise']}\n"
+        f"  init: bs={ekf_cfg['bs']}, niters={ekf_cfg['niters_init']}[{ekf_cfg['warm_burns']}::{ekf_cfg['thinning']}] ({n_eff_iterates} eff), sub_dim={ekf_cfg['sub_dim']}, rnd_proj={ekf_cfg['rnd_proj']}\n"
+        f"Ensemble:\n"
+        f"  M={sgd_cfg['M']}, use_vmap={sgd_cfg['use_vmap']}\n"
+        f"  init: bs={sgd_cfg['bs']}, niters={sgd_cfg['niters_init']}\n"
+        f"  update: bs={sgd_cfg['bs']}, niters={sgd_cfg['niters_update']}\n"
+        f"Dropout:\n"
+        f"  M={do_cfg['M']}, use_vmap={do_cfg['use_vmap']}\n"
+        f"  init: bs={do_cfg['bs']}, niters={do_cfg['niters_init']}\n"
+        f"  update: bs={do_cfg['bs']}, niters={do_cfg['niters_update']}\n"
+        f"Last-Layer MCMC:\n"
+        f"  M={llmcmc_cfg['M']}, use_vmap={llmcmc_cfg['use_vmap']}\n"
+        f"  warmups={llmcmc_cfg['mcmc_warmups_init']} -> {llmcmc_cfg['mcmc_warmups_update']}, steps={llmcmc_cfg['mcmc_steps']}\n"
+        f"Laplace:\n"
+        f"  M={laplace_cfg['M']}, use_vmap={laplace_cfg['use_vmap']}\n"
+        f"  init: bs={laplace_cfg['bs']}, niters={laplace_cfg['niters_init']}\n"
+        f"  update: bs={laplace_cfg['bs']}, niters={laplace_cfg['niters_update']}\n"
+        f"  prior_prec={laplace_cfg['prior_prec']}\n"
+    )
+
+
 def print_ekf_cfg(seed, cfg, length=None, n_feats=None):
     data_cfg = cfg["data"]
     task_cfg = cfg["task"]  # only synthetic task has T and D in task_cfg

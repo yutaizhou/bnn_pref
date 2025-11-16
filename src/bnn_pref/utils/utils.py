@@ -117,17 +117,6 @@ class Timer:
         self.times[key] += time.time() - self.start_times[key]
         del self.start_times[key]
 
-    def context(self, key):
-        """
-        Use this like:
-
-        with timer.context("key"):
-            # do stuff
-
-        Then timer.tock("key") will be called automatically.
-        """
-        return _TimerContextManager(self, key)
-
     def get_average_times(self, reset=True):
         ret = {key: self.times[key] / self.counts[key] for key in self.counts}
         if reset:
@@ -139,3 +128,14 @@ class Timer:
         if reset:
             self.reset()
         return ret
+
+    def context(self, key):
+        """
+        Use this like:
+
+        with timer.context("key"):
+            # do stuff
+
+        Then timer.tock("key") will be called automatically.
+        """
+        return _TimerContextManager(self, key)

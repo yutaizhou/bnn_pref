@@ -211,7 +211,7 @@ class LaplaceAgent(Agent):
             use_vmap=self.use_vmap,
         )
 
-        particles = laplace_belief_update(
+        new_particles = laplace_belief_update(
             key=key_laplace,
             model_def=self.model,
             params={"params": warm_ts.params},
@@ -219,7 +219,7 @@ class LaplaceAgent(Agent):
             n_particles=self.n_models,
             prior_prec=self.prior_prec,
         )  # particles["params"]["pw_mlp"]["Dense_0"]
-        bel = LaplaceBeliefState(ts=warm_ts, particles=particles, t=0)
+        bel = LaplaceBeliefState(ts=warm_ts, particles=new_particles, t=0)
         return bel
 
     def update_bel(
@@ -231,7 +231,7 @@ class LaplaceAgent(Agent):
 
         ds = self.buffer.get_all()
         niters = get_sgd_niters(self.niters_update, len(ds))
-        ts, _ = run_sgd(
+        new_ts, _ = run_sgd(
             key_sgd,
             bel.ts,
             dataset=ds,
@@ -246,15 +246,15 @@ class LaplaceAgent(Agent):
             use_vmap=self.use_vmap,
         )
 
-        particles = laplace_belief_update(
+        new_particles = laplace_belief_update(
             key_laplace,
             self.model,
-            {"params": ts.params},
+            {"params": new_ts.params},
             ds,
             self.n_models,
             prior_prec=self.prior_prec,
         )  # particles["params"]["pw_mlp"]["Dense_0"]
-        bel = bel.replace(ts=ts, particles=particles, t=bel.t + 1)
+        bel = bel.replace(ts=new_ts, particles=new_particles, t=bel.t + 1)
         return bel
 
     @partial(jax.jit, static_argnames=["self", "env"])

@@ -34,10 +34,6 @@ AgentState = Union[
     LaplaceBeliefState,
 ]
 
-"""
-run_alg -> alg_pipeline -> run_updates
-"""
-
 
 def run_alg(key, alg_name: str, cfg, data_dict, env):
     assert alg_name in ["ekf", "sgd", "do", "llmcmc", "laplace"]

@@ -1,5 +1,4 @@
 # * model ensembling & active learning
-# ensembling used for training, computing predictive & acquisition function
 active: ${..active}
 M: ${..M}
 # M: 5
@@ -16,14 +15,8 @@ dropout_prob: 0.0
 # * Init + Update
 bs: ${..bs}
 l2_reg: ${..l2_reg}
-
-niters_init: ${..niters_init}  # Total number of GD steps on warmup data
-# update_all=True: updates for `niters_update` iterations on all queries seen so far in the buffer. 
-# update_all=False: updates one iteration on most recent query
-# make sure to adjust `learning_rate` according to update strategy
-# update_all: True 
-update_all: ${..update_all}
-niters_update: ${..niters_update}
-# learning_rate: 0.0001
 learning_rate: ${..learning_rate}
+niters_init: ${..niters_init}  # Total number of GD steps on warmup data
+niters_update: ${..niters_update}
+update_all: ${..update_all}
 split_datastream: True

@@ -36,10 +36,12 @@ python scripts/run_rm.py \
     update_all=True \
     niters_init=420 \
     niters_update=10 \
-    sgd.split_datastream=True \
-    sgd.M=5 \
     ekf.learning_rate=0.003 \
     ekf.bs=1 \
     ekf.iekf=5 \
-    laplace.M=50 \
+    sgd.split_datastream=True \
+    sgd.M=5 \
+    llmcmc.mcmc_warmups_init=500 \
+    llmcmc.mcmc_warmups_update=20 \
+    llmcmc.mcmc_steps=1000 \
     hydra/launcher=slurm

@@ -1,5 +1,5 @@
 from functools import partial
-from typing import Dict, Tuple
+from typing import Callable, Dict, Optional, Tuple
 
 import blackjax
 import distrax as dtx
@@ -30,7 +30,7 @@ from bnn_pref.utils.type import QueryData, unpackable_dataclass
 @unpackable_dataclass
 class LMCMCBeliefState:
     ts: TrainState  # SGD initialized model params
-    particles: Array  # (ensemble_size, last_layer_dim)
+    particles: Array  # (ensemble_size, llayer_dim)
     t: int
 
 
@@ -53,31 +53,36 @@ def mcmc_belief_update(
     model: RewardNet,
     params: Dict,  # {"params": actual_params}
     data: QueryData,
-    n_particles: int,
+    n_particles: int,  # ensemble size
     # mcmc hyperparameters
     n_warmups: int,
     n_steps: int,
-) -> Float[Array, "M last_layer_dim"]:
-    assert (n_steps - n_warmups) % n_particles == 0
-    every = (n_steps - n_warmups) // n_particles
+    # optionally starting mcmc from a given state
+    initial_particle: Optional[Float[Array, "llayer_dim"]] = None,
+) -> Float[Array, "M llayer_dim"]:
+    assert n_steps % n_particles == 0
+    thinning = n_steps // n_particles
     fixed_params = model.get_fixed_params(params)
-    last_params = model.get_last_layer_params(params)
-    last_params_flat, last_params_unraveler = ravel_pytree(last_params)
+    subsampled_llayer_flat = model.get_last_layer_params(params)
+    llayer_params_flat, llayer_unraveler = ravel_pytree(subsampled_llayer_flat)
+
+    if initial_particle is not None:
+        llayer_params_flat = initial_particle
 
     def bnn_logjoint_lastlayer(
-        last_params_flat,
-        fixed_params,
-        last_unraveler,
+        llayer_flat: Float[Array, "llayer_dim"],
+        fixed_params: Dict,
+        llayer_unraveler: Callable,
         data: QueryData,
         model: RewardNet,
     ):
         x, y = data  # (B, 2, T, D), (B, 2)
-        params = model.recombine_params(last_params_flat, fixed_params, last_unraveler)
+        params = model.recombine_params(llayer_flat, fixed_params, llayer_unraveler)
         logits = model.apply(params, x, deterministic=True)  # (B, 2)
         logits_corr = logits[:, 1]
         y_corr = y[:, 1]
 
-        logprior = dtx.Normal(0.0, 1.0).log_prob(last_params_flat).sum()
+        logprior = dtx.Normal(0.0, 1.0).log_prob(llayer_flat).sum()
         loglikeli = dtx.Bernoulli(logits=logits_corr).log_prob(y_corr).sum()
 
         log_joint = logprior + loglikeli
@@ -98,20 +103,20 @@ def mcmc_belief_update(
     potential = partial(
         bnn_logjoint_lastlayer,
         fixed_params=fixed_params,
-        last_unraveler=last_params_unraveler,
+        llayer_unraveler=llayer_unraveler,
         data=data,
         model=model,
     )
     adapt = blackjax.window_adaptation(blackjax.nuts, potential)
-    (state, parameters), _ = adapt.run(key_warmup, last_params_flat, n_warmups)
+    (state, parameters), _ = adapt.run(key_warmup, llayer_params_flat, n_warmups)
 
     kernel = blackjax.nuts(potential, **parameters).step
     states = inference_loop(key_samples, kernel, state, n_steps)
-    sampled_params = states.position  # (n_steps, last_layer_dim)
+    sampled_params = states.position  # (n_steps, llayer_dim)
 
-    ll_params = sampled_params[n_warmups::every]
+    subsampled_llayer_flat = sampled_params[::thinning]
 
-    return ll_params  # (ensemble_size, last_layer_dim)
+    return subsampled_llayer_flat  # (n_particles, llayer_dim)
 
 
 class LMCMCAgent(Agent):
@@ -122,12 +127,14 @@ class LMCMCAgent(Agent):
         learning_rate: float,
         n_models: int,
         max_buffer_size: int = 100,
+        batch_size: int = 32,
         l2_reg: float = 0.0,
         niters_init: int = 1,
         niters_update: int = 1,
-        num_warmup: int = 100,
-        num_steps: int = 1000,
-        batch_size: int = 32,
+        # mcmc hyperparameters
+        mcmc_warmups_init: int = 500,
+        mcmc_warmups_update: int = 20,
+        mcmc_steps: int = 1000,
         chunk_size: int = 64,
         use_vmap: bool = True,  # for training update_bel in {init,update}_bel
         acq: str = "disagreement",
@@ -137,12 +144,14 @@ class LMCMCAgent(Agent):
         self.n_models = n_models
         self.model: RewardNet = model
         self.opt = optax.adam(learning_rate)
+        self.batch_size = batch_size
         self.l2_reg = l2_reg
         self.niters_init = niters_init
         self.niters_update = niters_update
-        self.num_warmup = num_warmup
-        self.num_steps = num_steps
-        self.batch_size = batch_size
+        # mcmc hyperparameters
+        self.mcmc_warmups_init = mcmc_warmups_init
+        self.mcmc_warmups_update = mcmc_warmups_update
+        self.mcmc_steps = mcmc_steps
         self.chunk_size = chunk_size
         self.use_vmap = use_vmap
         self.max_buffer_size = max_buffer_size
@@ -183,8 +192,9 @@ class LMCMCAgent(Agent):
             # update
             "update_all": alg_cfg["update_all"],
             "niters_update": alg_cfg["niters_update"],
-            "num_warmup": alg_cfg["num_warmup"],
-            "num_steps": alg_cfg["num_steps"],
+            "mcmc_warmups_init": alg_cfg["mcmc_warmups_init"],
+            "mcmc_warmups_update": alg_cfg["mcmc_warmups_update"],
+            "mcmc_steps": alg_cfg["mcmc_steps"],
             # ensembling
             "n_models": alg_cfg["M"],
             "chunk_size": alg_cfg["chunk_size"],
@@ -228,17 +238,18 @@ class LMCMCAgent(Agent):
             use_vmap=self.use_vmap,
         )
 
-        particles = mcmc_belief_update(
+        new_particles = mcmc_belief_update(
             key=key_mcmc,
             model=self.model,
             params={"params": warm_ts.params},
             data=warmup_data,
             n_particles=self.n_models,
-            n_warmups=self.num_warmup,
-            n_steps=self.num_steps,
-        )  # (M, last_layer_dim)
+            n_warmups=self.mcmc_warmups_init,
+            n_steps=self.mcmc_steps,
+            initial_particle=None,
+        )  # (M, llayer_dim)
 
-        bel = LMCMCBeliefState(ts=warm_ts, particles=particles, t=0)
+        bel = LMCMCBeliefState(ts=warm_ts, particles=new_particles, t=0)
         return bel
 
     def update_bel(
@@ -248,17 +259,18 @@ class LMCMCAgent(Agent):
         key, key_mcmc = jr.split(key, 2)
         self.buffer = self.buffer.add_samples(batch)
 
-        particles = mcmc_belief_update(
+        new_particles = mcmc_belief_update(
             key=key_mcmc,
             model=self.model,
             params={"params": bel.ts.params},
             data=self.buffer.get_all(),
             n_particles=self.n_models,
-            n_warmups=self.num_warmup,
-            n_steps=self.num_steps,
+            n_warmups=self.mcmc_warmups_update,
+            n_steps=self.mcmc_steps,
+            initial_particle=bel.particles[-1],
         )
 
-        bel = bel.replace(particles=particles, t=bel.t + 1)
+        bel = bel.replace(particles=new_particles, t=bel.t + 1)
         return bel
 
     @partial(jax.jit, static_argnames=["self", "env"])
@@ -274,10 +286,10 @@ class LMCMCAgent(Agent):
         """
         M = self.n_models
 
-        particles = bel.particles  # (M, last_layer_dim)
+        particles = bel.particles  # (M, llayer_dim)
 
         # * precompute logits for all items
-        def scan_ts(_, llparam: Float[Array, "last_layer_dim"]):
+        def scan_ts(_, llparam: Float[Array, "llayer_dim"]):
             param = self.model.recombine_params(
                 llparam, self.fixed_params, self.last_params_unraveler
             )  # {"params": actual_params}
@@ -317,10 +329,10 @@ class LMCMCAgent(Agent):
         compute predictive distribution for all items in query pool
         """
         M = self.n_models
-        particles = bel.particles  # (M, last_layer_dim)
+        particles = bel.particles  # (M, llayer_dim)
 
         # * precompute logits for all items
-        def scan_ts(_, llparam: Float[Array, "last_layer_dim"]):
+        def scan_ts(_, llparam: Float[Array, "llayer_dim"]):
             param = self.model.recombine_params(
                 llparam, self.fixed_params, self.last_params_unraveler
             )  # {"params": actual_params}

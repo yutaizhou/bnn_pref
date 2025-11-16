@@ -23,7 +23,7 @@ from bnn_pref.data.data_env import PreferenceEnv
 from bnn_pref.data.pref_utils import modify_queries
 from bnn_pref.utils.hydra_resolvers import *
 from bnn_pref.utils.metrics import MeanStd
-from bnn_pref.utils.print_utils import get_param_count_msg
+from bnn_pref.utils.print_utils import get_param_count_msg, get_run_cfg_msg
 from bnn_pref.utils.utils import get_random_seed, nested_defaultdict, slurm_auto_scancel
 
 logging.getLogger("jax._src.xla_bridge").setLevel(logging.ERROR)
@@ -39,53 +39,16 @@ def main(cfg):
     seed = get_random_seed(cfg["seed"])
     key = jr.key(seed)
     algs = ["ekf", "sgd", "do", "llmcmc", "laplace"]
+    # algs = ["ekf", "sgd"]
     # algs = ["llmcmc", "laplace"]
     is_als = [False, True]
 
     task_cfg = cfg["task"]
     data_cfg = cfg["data"]
-    ekf_cfg = cfg["ekf"]
-    sgd_cfg = cfg["sgd"]
-    do_cfg = cfg["do"]
-    llmcmc_cfg = cfg["llmcmc"]
-    laplace_cfg = cfg["laplace"]
-    nq_train, nq_test = data_cfg["nq_train"], data_cfg["nq_test"]
-    nq_init, nsteps = data_cfg["nq_init"], data_cfg["nsteps"]
-    n_eff_iterates = (ekf_cfg["niters_init"] - ekf_cfg["warm_burns"]) // ekf_cfg[
-        "thinning"
-    ]
 
-    print(
-        f"Run:\n"
-        f"  Seed: {seed} x {cfg['seeds']} (seed_vmap={cfg['seed_vmap']})\n"
-        f"  Sanity: {cfg['sanity']} ({cfg['sanity_frac']} real frac)\n"
-        f"  Network: {cfg['network']['hidden_sizes']}\n"
-        f"Data:\n"
-        f"  prune: {data_cfg['n_bins']} bins, {data_cfg['max_count_per_bin']} max_count_per_bin, {data_cfg['tokeep']} tokeep\n"
-        f"  noisy_label: {data_cfg['noisy_label']} (beta={data_cfg['bt_beta']})\n"
-        f"  Train/Test: {nq_train}/{nq_test}\n"
-        f"  Init/Update: {nq_init}/{nsteps}\n"
-        f"EKF:\n"
-        f"  M={ekf_cfg['M']}, use_vmap={ekf_cfg['use_vmap']}\n"
-        f"  prior / dynamics / obs noise: {ekf_cfg['prior_noise']} / {ekf_cfg['dynamics_noise']} / {ekf_cfg['obs_noise']}\n"
-        f"  init: bs={ekf_cfg['bs']}, niters={ekf_cfg['niters_init']}[{ekf_cfg['warm_burns']}::{ekf_cfg['thinning']}] ({n_eff_iterates} eff), sub_dim={ekf_cfg['sub_dim']}, rnd_proj={ekf_cfg['rnd_proj']}\n"
-        f"Ensemble:\n"
-        f"  M={sgd_cfg['M']}, use_vmap={sgd_cfg['use_vmap']}\n"
-        f"  init: bs={sgd_cfg['bs']}, niters={sgd_cfg['niters_init']}\n"
-        f"  update: bs={sgd_cfg['bs']}, niters={sgd_cfg['niters_update']}\n"
-        f"Dropout:\n"
-        f"  M={do_cfg['M']}, use_vmap={do_cfg['use_vmap']}\n"
-        f"  init: bs={do_cfg['bs']}, niters={do_cfg['niters_init']}\n"
-        f"  update: bs={do_cfg['bs']}, niters={do_cfg['niters_update']}\n"
-        f"Last-Layer MCMC:\n"
-        f"  M={llmcmc_cfg['M']}, use_vmap={llmcmc_cfg['use_vmap']}\n"
-        f"  n_warmups={llmcmc_cfg['num_warmup']}, n_steps={llmcmc_cfg['num_steps']}\n"
-        f"Laplace:\n"
-        f"  M={laplace_cfg['M']}, use_vmap={laplace_cfg['use_vmap']}\n"
-        f"  init: bs={laplace_cfg['bs']}, niters={laplace_cfg['niters_init']}\n"
-        f"  update: bs={laplace_cfg['bs']}, niters={laplace_cfg['niters_update']}\n"
-        f"  prior_prec={laplace_cfg['prior_prec']}\n"
-    )
+    nq_train, nq_test = data_cfg["nq_train"], data_cfg["nq_test"]
+    nq_init = data_cfg["nq_init"]
+    get_run_cfg_msg(seed, cfg)
 
     ckpter = ocp.PyTreeCheckpointer()
     total_duration = datetime.now()
@@ -132,25 +95,15 @@ def main(cfg):
     for alg, is_al in it.product(algs, is_als):
         cfg[alg]["active"] = is_al
 
-        # run in vmap or lax version (parallel vs. sequential)
         run_fn = partial(run_alg, alg_name=alg, cfg=cfg, data_dict=data_dict, env=env)
-        # start = datetime.now()
-
-        # if alg != "laplace":
-        #     res_m = (
-        #         jax.block_until_ready(jax.vmap(run_fn)(seeds))
-        #         if cfg["seed_vmap"]
-        #         else jax.block_until_ready(jax.lax.map(run_fn, seeds))
-        #     )
-        # else:
-        # laplax.laplace cannot be called with tracers.
         res_m = []
+        bel_m = []
         for seed in seeds:
             res = jax.block_until_ready(run_fn(seed))
+            bel_final = res.pop("final_belief")  # tree stack can't handle ts.apply_fn
             res_m.append(res)
+            bel_m.append(bel_final)
         res_m = jax.tree_util.tree_map(lambda *xs: jnp.stack(xs), *res_m)
-
-        # duration = (datetime.now() - start).total_seconds()
 
         # (n_seeds, 1 + nq_update)
         res = {
@@ -161,6 +114,7 @@ def main(cfg):
             "nq_test": nq_test,
             # "duration": duration,
             "duration": res_m["train_duration"].mean(),
+            "eval_duration": res_m["eval_duration"].mean(),
             # * logpdf
             "test_logpdf_all": res_m["test_logpdf"],
             "test_logpdf_final": MeanStd(res_m["test_logpdf"][:, -1]).get_stats(),
@@ -181,14 +135,14 @@ def main(cfg):
             "test_sharpness_final": MeanStd(res_m["test_sharpness"][:, -1]).get_stats(),
         }
         best_seed = jnp.argmax(res_m["test_logpdf"][:, -1])
-        best_model = jax.tree.map(lambda x: x[best_seed], res_m["model"])
+        best_belief = bel_m[best_seed]
 
-        # * save best model
-        save_args = orbax_utils.save_args_from_target(best_model)
+        # * save best belief among seeds
+        save_args = orbax_utils.save_args_from_target(best_belief)
         ckpt_name = f"{task_cfg['name']}_{alg}_al={is_al}"
         ckpter.save(
             f"{cfg.paths.ckpts_dir}/{ckpt_name}",
-            best_model,
+            best_belief,
             save_args=save_args,
         )
 
@@ -204,14 +158,16 @@ def main(cfg):
             # f"coverage: {res['test_coverage_final']['mean']:.2%} ± {res['test_coverage_final']['std']:.2%}, "
             # f"sharpness: {res['test_sharpness_final']['mean']:.2f} ± {res['test_sharpness_final']['std']:.2f}, "
             f"{get_param_count_msg(cfg, alg, res_m)}, "
-            f"({res['duration']:.1f}s)"
+            f"({res['duration']:.1f}s / {res['eval_duration']:.1f}s)"
         )
         if nonfinites.any():
             print(f"nonfinites: {nonfinites.sum(1)}")
 
     total_duration = (datetime.now() - total_duration).total_seconds()
+    fp = f"{cfg.paths.output_dir}/stats.npz"
+    jnp.savez(fp, **stats)
     print(f"Total duration: {total_duration:.1f}s")
-    jnp.savez(f"{cfg.paths.output_dir}/stats.npz", **stats)
+    print(f"Saved stats to {fp}")
     slurm_auto_scancel()  # prevent completed jobs from hanging on slurm
 
 
