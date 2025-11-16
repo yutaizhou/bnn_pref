@@ -92,7 +92,7 @@ def main(cfg):
         # duration = (datetime.now() - start).total_seconds()
 
         # run in vmap or lax version (parallel vs. sequential)
-        run_fn = partial(run_alg, alg=alg, cfg=cfg, data_dict=data_dict, env=env)
+        run_fn = partial(run_alg, alg_name=alg, cfg=cfg, data_dict=data_dict, env=env)
         start = datetime.now()
 
         res_m = (

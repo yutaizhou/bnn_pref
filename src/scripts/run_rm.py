@@ -38,7 +38,8 @@ def main(cfg):
     """
     seed = get_random_seed(cfg["seed"])
     key = jr.key(seed)
-    algs = ["ekf", "sgd", "do"]
+    algs = ["ekf", "sgd", "do", "llmcmc", "laplace"]
+    # algs = ["llmcmc", "laplace"]
     is_als = [False, True]
 
     task_cfg = cfg["task"]
@@ -132,24 +133,24 @@ def main(cfg):
         cfg[alg]["active"] = is_al
 
         # run in vmap or lax version (parallel vs. sequential)
-        run_fn = partial(run_alg, alg=alg, cfg=cfg, data_dict=data_dict, env=env)
-        start = datetime.now()
+        run_fn = partial(run_alg, alg_name=alg, cfg=cfg, data_dict=data_dict, env=env)
+        # start = datetime.now()
 
-        if alg != "laplace":
-            res_m = (
-                jax.block_until_ready(jax.vmap(run_fn)(seeds))
-                if cfg["seed_vmap"]
-                else jax.block_until_ready(jax.lax.map(run_fn, seeds))
-            )
-        else:
-            # laplax.laplace cannot be called with tracers.
-            res_m = []
-            for seed in seeds:
-                res = jax.block_until_ready(run_fn(seed))
-                res_m.append(res)
-            res_m = jax.tree_util.tree_map(lambda *xs: jnp.stack(xs), *res_m)
+        # if alg != "laplace":
+        #     res_m = (
+        #         jax.block_until_ready(jax.vmap(run_fn)(seeds))
+        #         if cfg["seed_vmap"]
+        #         else jax.block_until_ready(jax.lax.map(run_fn, seeds))
+        #     )
+        # else:
+        # laplax.laplace cannot be called with tracers.
+        res_m = []
+        for seed in seeds:
+            res = jax.block_until_ready(run_fn(seed))
+            res_m.append(res)
+        res_m = jax.tree_util.tree_map(lambda *xs: jnp.stack(xs), *res_m)
 
-        duration = (datetime.now() - start).total_seconds()
+        # duration = (datetime.now() - start).total_seconds()
 
         # (n_seeds, 1 + nq_update)
         res = {
@@ -158,7 +159,8 @@ def main(cfg):
             "is_active": is_al,
             "nq_train": nq_train,
             "nq_test": nq_test,
-            "duration": duration,
+            # "duration": duration,
+            "duration": res_m["train_duration"].mean(),
             # * logpdf
             "test_logpdf_all": res_m["test_logpdf"],
             "test_logpdf_final": MeanStd(res_m["test_logpdf"][:, -1]).get_stats(),
@@ -194,13 +196,13 @@ def main(cfg):
         nonfinites = ~jnp.isfinite(res_m["test_logpdf"])  # (n_seeds, 1 + nq_update)
 
         print(
-            f"  {alg} active={str(is_al):5}, "
-            f"acc: {res['test_acc_final']['mean']:.2%} ± {res['test_acc_final']['std']:.2%}, "
+            f"\t{alg} active={str(is_al):5}, "
             f"logpdf: {res['test_logpdf_final']['mean']:.2f} ± {res['test_logpdf_final']['std']:.2f}; "
-            f"ece: {res['test_ece_final']['mean']:.2f} ± {res['test_ece_final']['std']:.2f}, "
-            f"brier: {res['test_brier_final']['mean']:.2f} ± {res['test_brier_final']['std']:.2f}, "
-            f"coverage: {res['test_coverage_final']['mean']:.2%} ± {res['test_coverage_final']['std']:.2%}, "
-            f"sharpness: {res['test_sharpness_final']['mean']:.2f} ± {res['test_sharpness_final']['std']:.2f}, "
+            # f"acc: {res['test_acc_final']['mean']:.2%} ± {res['test_acc_final']['std']:.2%}, "
+            # f"ece: {res['test_ece_final']['mean']:.2f} ± {res['test_ece_final']['std']:.2f}, "
+            # f"brier: {res['test_brier_final']['mean']:.2f} ± {res['test_brier_final']['std']:.2f}, "
+            # f"coverage: {res['test_coverage_final']['mean']:.2%} ± {res['test_coverage_final']['std']:.2%}, "
+            # f"sharpness: {res['test_sharpness_final']['mean']:.2f} ± {res['test_sharpness_final']['std']:.2f}, "
             f"{get_param_count_msg(cfg, alg, res_m)}, "
             f"({res['duration']:.1f}s)"
         )

@@ -95,7 +95,7 @@ def main(cfg):
     stats = nested_defaultdict()
     for alg in algs:
         start = datetime.now()
-        res_m = run_alg(key_seed, alg=alg, cfg=cfg, data_dict=data_dict, env=env)
+        res_m = run_alg(key_seed, alg_name=alg, cfg=cfg, data_dict=data_dict, env=env)
         duration = (datetime.now() - start).total_seconds()
 
         # (1 + nq_update)

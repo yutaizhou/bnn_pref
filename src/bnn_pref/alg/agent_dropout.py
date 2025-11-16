@@ -50,8 +50,8 @@ class DropoutAgent(Agent):
     def __init__(
         self,
         model: nn.Module,
-        opt: optax.GradientTransformation,
         traj_shape: Tuple[int, ...],
+        learning_rate: float,
         n_models: int,
         max_buffer_size: int = 100,
         l2_reg: float = 0.0,
@@ -66,7 +66,7 @@ class DropoutAgent(Agent):
         self.traj_shape = traj_shape
         self.n_models = n_models
         self.model = model
-        self.opt = opt
+        self.opt = optax.adam(learning_rate)
         self.l2_reg = l2_reg
         self.niters_init = niters_init
         self.niters_update = niters_update
@@ -106,6 +106,7 @@ class DropoutAgent(Agent):
         # follow sgd.yaml config
         return {
             "acq": alg_cfg["acq"],
+            "learning_rate": alg_cfg["learning_rate"],
             # init
             "niters_init": alg_cfg["niters_init"],
             "batch_size": alg_cfg["bs"],
@@ -118,6 +119,11 @@ class DropoutAgent(Agent):
             "chunk_size": alg_cfg["chunk_size"],
             "use_vmap": alg_cfg["use_vmap"],
             "max_buffer_size": alg_cfg["max_buffer_size"],
+        }
+
+    def get_alg_info(self):
+        return {
+            "param_count": self.param_count,
         }
 
     # @partial(jax.jit, static_argnames=["self"])

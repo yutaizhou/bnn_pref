@@ -47,9 +47,9 @@ class EnsembleAgent(Agent):
     def __init__(
         self,
         model: nn.Module,
-        opt: optax.GradientTransformation,
         traj_shape: Tuple[int, ...],
         n_models: int,
+        learning_rate: float,
         max_buffer_size: int = 100,
         l2_reg: float = 0.0,
         niters_init: int = 1,
@@ -64,7 +64,7 @@ class EnsembleAgent(Agent):
         self.traj_shape = traj_shape
         self.n_models = n_models
         self.model = model
-        self.opt = opt
+        self.opt = optax.adam(learning_rate)
         self.l2_reg = l2_reg
         self.niters_init = niters_init
         self.niters_update = niters_update
@@ -98,6 +98,7 @@ class EnsembleAgent(Agent):
         # follow sgd.yaml config
         return {
             "acq": alg_cfg["acq"],
+            "learning_rate": alg_cfg["learning_rate"],
             # init
             "niters_init": alg_cfg["niters_init"],
             "batch_size": alg_cfg["bs"],
@@ -111,6 +112,12 @@ class EnsembleAgent(Agent):
             "use_vmap": alg_cfg["use_vmap"],
             "max_buffer_size": alg_cfg["max_buffer_size"],
             "split_datastream": alg_cfg["split_datastream"],
+        }
+
+    def get_alg_info(self):
+        return {
+            "param_count": self.param_count,
+            "ensemble_param_count": self.ensemble_param_count,
         }
 
     # @partial(jax.jit, static_argnames=["self"])

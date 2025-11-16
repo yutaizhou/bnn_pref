@@ -162,7 +162,9 @@ def main(cfg):
         for alg, is_al in it.product(algs, is_als):
             cfg[alg]["active"] = is_al
 
-            run_fn = partial(run_alg, alg=alg, cfg=cfg, data_dict=data_dict, env=env)
+            run_fn = partial(
+                run_alg, alg_name=alg, cfg=cfg, data_dict=data_dict, env=env
+            )
 
             # run in vmap or lax version (parallel vs. sequential)
             start = datetime.now()
@@ -207,14 +209,14 @@ def main(cfg):
                 ).get_stats(),
             }
             best_seed = jnp.argmax(res_m["test_logpdf"][:, -1])
-            best_model = jax.tree.map(lambda x: x[best_seed], res_m["model"])
+            best_belief = jax.tree.map(lambda x: x[best_seed], res_m["final_belief"])
 
-            # * save best model
-            save_args = orbax_utils.save_args_from_target(best_model)
+            # * save best belief among seeds
+            save_args = orbax_utils.save_args_from_target(best_belief)
             ckpt_name = f"{cfg['task']['name']}_{alg}_al={is_al}"
             ckpter.save(
                 f"{cfg.paths.ckpts_dir}/{ckpt_name}",
-                best_model,
+                best_belief,
                 save_args=save_args,
             )
 

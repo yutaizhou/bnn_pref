@@ -48,8 +48,9 @@ class EKFAgent(Agent):
     def __init__(
         self,
         model: nn.Module,
-        opt: optax.GradientTransformation,
         traj_shape: Tuple[int, ...],  # kept for compat with Ensemble buffer
+        learning_rate: float,
+        momentum: float,
         l2_reg: float = 0.0,
         niters_init: int = 420,
         batch_size: int = 32,
@@ -67,7 +68,7 @@ class EKFAgent(Agent):
         use_vmap: bool = True,
     ):
         self.model = model
-        self.opt = opt
+        self.opt = optax.sgd(learning_rate, momentum)
         self.l2_reg = l2_reg
         self.niters_init = niters_init
         self.batch_size = batch_size
@@ -94,27 +95,35 @@ class EKFAgent(Agent):
         self.acq = acq
 
     @staticmethod
-    def get_hydra_config(ekf_cfg):
+    def get_hydra_config(alg_cfg):
         # follow ekf.yaml config
         return {
-            "acq": ekf_cfg["acq"],
+            "acq": alg_cfg["acq"],
+            "learning_rate": alg_cfg["learning_rate"],
+            "momentum": alg_cfg["momentum"],
             # subspace init
-            "niters_init": ekf_cfg["niters_init"],
-            "batch_size": ekf_cfg["bs"],
-            "l2_reg": ekf_cfg["l2_reg"],
-            "warm_burns": ekf_cfg["warm_burns"],
-            "thinning": ekf_cfg["thinning"],
-            "sub_dim": ekf_cfg["sub_dim"],
-            "rnd_proj": ekf_cfg["rnd_proj"],
+            "niters_init": alg_cfg["niters_init"],
+            "batch_size": alg_cfg["bs"],
+            "l2_reg": alg_cfg["l2_reg"],
+            "warm_burns": alg_cfg["warm_burns"],
+            "thinning": alg_cfg["thinning"],
+            "sub_dim": alg_cfg["sub_dim"],
+            "rnd_proj": alg_cfg["rnd_proj"],
             # subspace inference
-            "prior_noise": ekf_cfg["prior_noise"],
-            "dynamics_noise": ekf_cfg["dynamics_noise"],
-            "obs_noise": ekf_cfg["obs_noise"],
-            "iekf": ekf_cfg["iekf"],
+            "prior_noise": alg_cfg["prior_noise"],
+            "dynamics_noise": alg_cfg["dynamics_noise"],
+            "obs_noise": alg_cfg["obs_noise"],
+            "iekf": alg_cfg["iekf"],
             # ensembling
-            "n_models": ekf_cfg["M"],
-            "chunk_size": ekf_cfg["chunk_size"],
-            "use_vmap": ekf_cfg["use_vmap"],
+            "n_models": alg_cfg["M"],
+            "chunk_size": alg_cfg["chunk_size"],
+            "use_vmap": alg_cfg["use_vmap"],
+        }
+
+    def get_alg_info(self):
+        return {
+            "param_count": self.param_count,
+            "subspace_param_count": self.subspace_param_count,
         }
 
     # @partial(jax.jit, static_argnames=["self"])

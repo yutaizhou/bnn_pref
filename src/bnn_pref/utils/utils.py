@@ -133,3 +133,9 @@ class Timer:
         if reset:
             self.reset()
         return ret
+
+    def get_total_times(self, reset=True):
+        ret = {key: self.times[key] for key in self.times}
+        if reset:
+            self.reset()
+        return ret
