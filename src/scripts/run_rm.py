@@ -38,10 +38,12 @@ def main(cfg):
     """
     seed = get_random_seed(cfg["seed"])
     key = jr.key(seed)
-    algs = ["ekf", "sgd", "do", "llmcmc", "laplace"]
+
+    algs = ["ekf", "sgd", "do", "laplace", "llmcmc"]
     # algs = ["ekf", "sgd"]
-    # algs = ["llmcmc", "laplace"]
+
     is_als = [False, True]
+    # is_als = [True]
 
     task_cfg = cfg["task"]
     data_cfg = cfg["data"]
@@ -105,16 +107,15 @@ def main(cfg):
             bel_m.append(bel_final)
         res_m = jax.tree_util.tree_map(lambda *xs: jnp.stack(xs), *res_m)
 
-        # (n_seeds, 1 + nq_update)
         res = {
             "task": task_choice,
             "task_name": task_cfg["name"],
             "is_active": is_al,
             "nq_train": nq_train,
             "nq_test": nq_test,
-            # "duration": duration,
             "duration": res_m["train_duration"].mean(),
             "eval_duration": res_m["eval_duration"].mean(),
+            # * metrics below are of shape (n_seeds, 1 + nq_update)
             # * logpdf
             "test_logpdf_all": res_m["test_logpdf"],
             "test_logpdf_final": MeanStd(res_m["test_logpdf"][:, -1]).get_stats(),

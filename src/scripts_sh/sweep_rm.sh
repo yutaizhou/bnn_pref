@@ -41,6 +41,8 @@ python scripts/run_rm.py \
     ekf.iekf=5 \
     sgd.split_datastream=True \
     sgd.M=5 \
+    laplace.prior_prec=1000 \
+    laplace.niters_update=50 \
     llmcmc.mcmc_warmups_init=500 \
     llmcmc.mcmc_warmups_update=20 \
     llmcmc.mcmc_steps=1000 \

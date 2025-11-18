@@ -52,38 +52,81 @@ def init_model(
     return ts
 
 
+class BatchedLoader:
+    def __init__(
+        self,
+        x: Float[Array, "N 2 T D"],
+        y: Float[Array, "N 2"],
+        batch_size: int,
+    ):
+        N = len(x)
+        self.x = x
+        self.y = y
+        self.batch_idxes = []
+        for i in range(0, N, batch_size):
+            end_idx = min(i + batch_size, N)
+            self.batch_idxes.append((i, end_idx))
+
+    def __iter__(self):
+        for bgn, end in self.batch_idxes:
+            yield (self.x[bgn:end], self.y[bgn:end])
+
+
 def laplace_belief_update(
     key,
     model_def: RewardNet,
     params: Dict,  # {"params": actual_params}
-    data: QueryData,
+    data: QueryData,  # all queries seen so far
     n_particles: int,
     # * laplace hyperparameter
-    prior_prec: float = 0.2,
+    prior_prec: float = 1000.0,
+    laplace_bs: int = 32,
 ) -> Dict[str, Array]:
-    x, y = data.contexts, data.labels  # (B, 2, T, D), (B, 2)
-    batch = (x, y)
+    # x, y = data.contexts, data.labels  # (N, 2, T, D), (N, 2)
+    # N = len(x)
 
     def model_fn(input, params):
-        # input: (B, 2, T, D)
+        """
+        if laplace(vmap_over_data=True), then input should be (2, T, D), and output (2,)
+        otherwise, input should be (B, 2, T, D)
+        """
+        input = jnp.expand_dims(input, axis=0)  # (2,T,D) -> (1, 2, T, D)
         logits = model_def.apply(
             params,
             input,
             deterministic=True,
-        )  # (B, 2)
-        probs = jnp.exp(jax.nn.log_softmax(logits, axis=1))
-        return probs  # (B, 2)
+        )  # (1, 2)
+        logits = logits.squeeze(0)
+        return logits  # (2,)
 
-    posterior_fn, curv_estimate = laplace(
-        model_fn=model_fn,
-        params=params,
-        data=batch,
-        loss_fn="binary_cross_entropy",
-        curv_type="full",
-        num_curv_samples=1,
-        num_total_samples=1,
-        vmap_over_data=False,
-    )
+    def perform_laplace():
+        x, y = data.contexts, data.labels  # (N, 2, T, D), (N, 2)
+        N = len(x)
+        laplace_fn = partial(
+            laplace,
+            model_fn=model_fn,
+            params=params,
+            loss_fn="cross_entropy",
+            curv_type="full",
+            vmap_over_data=True,
+        )
+
+        if N <= laplace_bs:
+            posterior_fn, _ = laplace_fn(
+                data=(x, y),
+                num_curv_samples=N,
+                num_total_samples=N,
+            )
+        else:
+            posterior_fn, _ = laplace_fn(
+                data=BatchedLoader(x, y, laplace_bs),
+                num_curv_samples=laplace_bs,
+                num_total_samples=N,
+            )
+        return posterior_fn
+
+    posterior_fn = perform_laplace()
+
     prior_arguments = {"prior_prec": prior_prec}
 
     key, key_particles = jr.split(key, 2)
@@ -191,10 +234,9 @@ class LaplaceAgent(Agent):
         key, key_model = jr.split(key)
         ts = init_model(key_model, self.model, self.opt, self.traj_shape)
         self.param_count = count_params(ts.params)
-
         self.buffer = self.buffer.add_samples(warmup_data)
-        niters = get_sgd_niters(self.niters_init, len(warmup_data))
 
+        niters = get_sgd_niters(self.niters_init, len(warmup_data))
         key, key_sgd, key_laplace = jr.split(key, 3)
         warm_ts, _ = run_sgd(
             key_sgd,
@@ -247,11 +289,11 @@ class LaplaceAgent(Agent):
         )
 
         new_particles = laplace_belief_update(
-            key_laplace,
-            self.model,
-            {"params": new_ts.params},
-            ds,
-            self.n_models,
+            key=key_laplace,
+            model_def=self.model,
+            params={"params": new_ts.params},
+            data=ds,
+            n_particles=self.n_models,
             prior_prec=self.prior_prec,
         )  # particles["params"]["pw_mlp"]["Dense_0"]
         bel = bel.replace(ts=new_ts, particles=new_particles, t=bel.t + 1)
