@@ -8,7 +8,7 @@ cpus_per_task: 6 # 5 env rollout workers
 gpus_per_node: null
 tasks_per_node: 1
 gpus_per_task: null
-mem_gb: null
+mem_gb: 60
 nodes: 1
 name: ${hydra.job.name}
 _target_: hydra_plugins.hydra_submitit_launcher.submitit_launcher.SlurmLauncher

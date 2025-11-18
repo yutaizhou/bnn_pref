@@ -131,11 +131,9 @@ class EnsembleAgent(Agent):
         )
         self.ensemble_param_count = count_params(ts.params)
         self.param_count = self.ensemble_param_count // self.n_models
-
         self.buffer = self.buffer.add_samples(warmup_data)
 
         niters = get_sgd_niters(self.niters_init, len(warmup_data))
-
         key, key_sgd = jr.split(key, 2)
         warm_ts, _ = run_sgd(
             key_sgd,

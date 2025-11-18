@@ -30,6 +30,7 @@ rgb_values = {
     "orange": np.array([255, 167, 73]) / 255,  # our method
     "blue": np.array([90, 135, 196]) / 255,  # main baseline
     "green": np.array([172, 201, 104]) / 255,  # second competitive baselines
+    "purple": np.array([128, 100, 162]) / 255,  # third competitive baselines
     "gray": np.array([139, 139, 139]) / 255,  # basic baseline
 }
 

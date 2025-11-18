@@ -7,7 +7,7 @@ import jax.random as jr
 import optax
 from einops import rearrange
 from flax import linen as nn
-from jaxtyping import Array, Float, Int
+from jaxtyping import Array, Float, Int, Scalar
 
 from bnn_pref.alg.agent_utils import (
     Agent,
@@ -87,7 +87,7 @@ class DropoutAgent(Agent):
             ts: DropoutTrainState,
             x: Float[Array, "T D"],
             deterministic: bool,
-        ) -> Float[Array, " "]:
+        ) -> Scalar:
             x = rearrange(x, "T D -> 1 T D")
             params = {"params": ts.params}
             ret = self.model.apply(
@@ -255,7 +255,7 @@ class DropoutAgent(Agent):
         )
 
         # * compute info gain for each query
-        def map_step(idx: int) -> Float[Array, " "]:
+        def map_step(idx: int) -> Scalar:
             inds_2 = env.get_pref_indices(idx)
             logits_M2 = rearrange(logits_NM[inds_2], "K M -> M K", K=2)
             logprobs_M2 = jax.nn.log_softmax(logits_M2, axis=1)

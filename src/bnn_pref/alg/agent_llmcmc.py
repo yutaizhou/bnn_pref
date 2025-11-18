@@ -63,8 +63,8 @@ def mcmc_belief_update(
     assert n_steps % n_particles == 0
     thinning = n_steps // n_particles
     fixed_params = model.get_fixed_params(params)
-    subsampled_llayer_flat = model.get_last_layer_params(params)
-    llayer_params_flat, llayer_unraveler = ravel_pytree(subsampled_llayer_flat)
+    llayer_params = model.get_last_layer_params(params)
+    llayer_params_flat, llayer_unraveler = ravel_pytree(llayer_params)
 
     if initial_particle is not None:
         llayer_params_flat = initial_particle
@@ -76,14 +76,13 @@ def mcmc_belief_update(
         data: QueryData,
         model: RewardNet,
     ):
-        x, y = data  # (B, 2, T, D), (B, 2)
+        x, y = data.contexts, data.labels  # (B, 2, T, D), (B, 2)
         params = model.recombine_params(llayer_flat, fixed_params, llayer_unraveler)
         logits = model.apply(params, x, deterministic=True)  # (B, 2)
-        logits_corr = logits[:, 1]
-        y_corr = y[:, 1]
+        y = jnp.argmax(y, axis=1)  # (B,), y can't be 1-hot for distrax
 
         logprior = dtx.Normal(0.0, 1.0).log_prob(llayer_flat).sum()
-        loglikeli = dtx.Bernoulli(logits=logits_corr).log_prob(y_corr).sum()
+        loglikeli = dtx.Categorical(logits=logits).log_prob(y).sum()
 
         log_joint = logprior + loglikeli
         return log_joint
@@ -112,9 +111,8 @@ def mcmc_belief_update(
 
     kernel = blackjax.nuts(potential, **parameters).step
     states = inference_loop(key_samples, kernel, state, n_steps)
-    sampled_params = states.position  # (n_steps, llayer_dim)
-
-    subsampled_llayer_flat = sampled_params[::thinning]
+    sampled_params_flat = states.position  # (n_steps, llayer_dim)
+    subsampled_llayer_flat = sampled_params_flat[::thinning]
 
     return subsampled_llayer_flat  # (n_particles, llayer_dim)
 
@@ -212,17 +210,14 @@ class LMCMCAgent(Agent):
     def init_bel(self, key, warmup_data: QueryData) -> LMCMCBeliefState:
         key, key_model = jr.split(key)
         ts = init_model(key_model, self.model, self.opt, self.traj_shape)
-        self.fixed_params = self.model.get_fixed_params({"params": ts.params})
         last_params = self.model.get_last_layer_params({"params": ts.params})
         _, self.last_params_unraveler = ravel_pytree(last_params)
         self.last_layer_param_count = count_params(last_params)
         self.param_count = count_params(ts.params)
 
         self.buffer = self.buffer.add_samples(warmup_data)
-
         niters = get_sgd_niters(self.niters_init, len(warmup_data))
-
-        key, key_sgd, key_mcmc = jr.split(key, 3)
+        key, key_sgd = jr.split(key, 2)
         warm_ts, _ = run_sgd(
             key_sgd,
             ts,
@@ -237,7 +232,9 @@ class LMCMCAgent(Agent):
             use_dropout=False,
             use_vmap=self.use_vmap,
         )
+        self.fixed_params = self.model.get_fixed_params({"params": warm_ts.params})
 
+        key, key_mcmc = jr.split(key, 2)
         new_particles = mcmc_belief_update(
             key=key_mcmc,
             model=self.model,
@@ -256,9 +253,9 @@ class LMCMCAgent(Agent):
         self, key, bel: LMCMCBeliefState, batch: QueryData
     ) -> LMCMCBeliefState:
         """Train on all queries in the buffer."""
-        key, key_mcmc = jr.split(key, 2)
         self.buffer = self.buffer.add_samples(batch)
 
+        key, key_mcmc = jr.split(key, 2)
         new_particles = mcmc_belief_update(
             key=key_mcmc,
             model=self.model,

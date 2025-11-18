@@ -10,8 +10,6 @@ from collections import defaultdict
 from datetime import datetime
 
 import ipdb
-import jax
-import jax.numpy as jnp
 
 os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
 os.environ["DISABLE_CODESIGN_WARNING"] = "1"
@@ -207,6 +205,10 @@ def get_label(alg: str, is_al: bool) -> str:
         return "DeepEnsemble (A)" if is_al else "DeepEnsemble (R)"
     elif alg == "do":
         return "Dropout (A)" if is_al else "Dropout (R)"
+    elif alg == "llmcmc":
+        return "LLMCMC (A)" if is_al else "LLMCMC (R)"
+    elif alg == "laplace":
+        return "Laplace (A)" if is_al else "Laplace (R)"
     else:
         raise ValueError(f"Invalid algorithm: {alg}")
 
@@ -218,6 +220,10 @@ def get_style(alg: str, is_al: bool) -> dict:
         color = rgb_values["blue"]
     elif alg == "do":
         color = rgb_values["green"]
+    elif alg == "llmcmc":
+        color = rgb_values["purple"]
+    elif alg == "laplace":
+        color = rgb_values["gray"]
     else:
         raise ValueError(f"Invalid algorithm: {alg}")
     linestyle = "-" if is_al else "--"
@@ -285,7 +291,7 @@ fig.legend(
     [get_label(alg, is_al) for alg, is_al in it.product(algs, is_als)],
     loc="lower center",
     bbox_to_anchor=(0.5, -0.12),
-    ncol=3,
+    ncol=len(algs),
     handlelength=2,
     **get_legend_kw(16),
 )
@@ -321,44 +327,47 @@ for alg, is_al in it.product(algs, is_als):
 
 # --- Add "x% fewer samples" annotation between EKF (Active) and EKF (Random) ---
 # only do so if EKF active outperforms EKF random
-ekf_active_mean_T = mean(stats_agg["logpdf"]["ekf_True"], axis=0, nan=handle_nan)
-ekf_random_mean_T = mean(stats_agg["logpdf"]["ekf_False"], axis=0, nan=handle_nan)
+if "ekf" in algs:
+    ekf_active_mean_T = mean(stats_agg["logpdf"]["ekf_True"], axis=0, nan=handle_nan)
+    ekf_random_mean_T = mean(stats_agg["logpdf"]["ekf_False"], axis=0, nan=handle_nan)
 
-if ekf_active_mean_T[-1] > ekf_random_mean_T[-1]:
-    # Find the y-value at the last step of EKF (Random)
-    y_tgt = ekf_random_mean_T[-1]
-    x_random = len(ekf_random_mean_T) - 1
+    if ekf_active_mean_T[-1] > ekf_random_mean_T[-1]:
+        # Find the y-value at the last step of EKF (Random)
+        y_tgt = ekf_random_mean_T[-1]
+        x_random = len(ekf_random_mean_T) - 1
 
-    # Find the first x in EKF (Active) that reaches or exceeds y_target
-    x_active = np.argmax(ekf_active_mean_T >= y_tgt)
+        # Find the first x in EKF (Active) that reaches or exceeds y_target
+        x_active = np.argmax(ekf_active_mean_T >= y_tgt)
 
-    frac = 1 - x_active / x_random
+        frac = 1 - x_active / x_random
 
-    # Draw vertical dotted lines down to a lower y for annotation
-    y_bottom = ax.get_ylim()[0] + 0.20  # adjust as needed for your plot
-    ax.vlines([x_active, x_random], y_bottom, y_tgt, linestyles="dotted", colors="k")
-    ax.plot(
-        [x_active, x_random], [y_tgt, y_tgt], "ko", markersize=4
-    )  # mark the two points
+        # Draw vertical dotted lines down to a lower y for annotation
+        y_bottom = ax.get_ylim()[0] + 0.20  # adjust as needed for your plot
+        ax.vlines(
+            [x_active, x_random], y_bottom, y_tgt, linestyles="dotted", colors="k"
+        )
+        ax.plot(
+            [x_active, x_random], [y_tgt, y_tgt], "ko", markersize=4
+        )  # mark the two points
 
-    # Draw double-headed arrow and annotate at the bottom
-    ax.annotate(
-        "",
-        xy=(x_active, y_bottom),
-        xytext=(x_random, y_bottom),
-        arrowprops=dict(
-            arrowstyle="<->", color="black", linewidth=1.5, shrinkA=0, shrinkB=0
-        ),
-    )
-    ax.text(
-        (x_active + x_random) / 2,
-        y_bottom - 0.01,  # slightly below the arrow
-        f"~{frac:.0%} fewer samples",
-        ha="center",
-        va="top",
-        color="black",
-        **get_font_kw(18),
-    )
+        # Draw double-headed arrow and annotate at the bottom
+        ax.annotate(
+            "",
+            xy=(x_active, y_bottom),
+            xytext=(x_random, y_bottom),
+            arrowprops=dict(
+                arrowstyle="<->", color="black", linewidth=1.5, shrinkA=0, shrinkB=0
+            ),
+        )
+        ax.text(
+            (x_active + x_random) / 2,
+            y_bottom - 0.01,  # slightly below the arrow
+            f"~{frac:.0%} fewer samples",
+            ha="center",
+            va="top",
+            color="black",
+            **get_font_kw(18),
+        )
 
 ax.set_xlabel("Number of Queries", **get_font_kw(18))
 xticks = ax.get_xticks()
@@ -372,7 +381,9 @@ yticks = ax.get_yticks()
 ax.set_yticks(yticks)
 ax.set_yticklabels([f"{y:.2f}" for y in yticks], **get_font_kw(16))
 
-ax.legend(**get_legend_kw(18), loc="upper center", bbox_to_anchor=(0.5, -0.12), ncol=3)
+ax.legend(
+    **get_legend_kw(18), loc="upper center", bbox_to_anchor=(0.5, -0.12), ncol=len(algs)
+)
 save_path = f"{save_dir}/{timestamp}_logpdf_nTasks={n_tasks}_agg.png"
 plt.savefig(save_path, bbox_inches="tight", dpi=300)
 plt.close()
@@ -412,7 +423,7 @@ fig.legend(
     [get_label(alg, is_al) for alg, is_al in it.product(algs, is_als)],
     loc="lower center",
     bbox_to_anchor=(0.5, -0.08),
-    ncol=3,
+    ncol=len(algs),
     handlelength=2,
     **get_legend_kw(16),
 )
@@ -460,7 +471,7 @@ fig.legend(
     [get_label(alg, is_al) for alg, is_al in it.product(algs, is_als)],
     loc="lower center",
     bbox_to_anchor=(0.5, -0.1),
-    ncol=3,
+    ncol=len(algs),
     handlelength=2,
     **get_legend_kw(16),
 )
