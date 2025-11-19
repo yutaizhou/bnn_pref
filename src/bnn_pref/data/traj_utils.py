@@ -22,81 +22,86 @@ tasks_to_rebalance = [
     "walker-walk-v0",
 ]
 
+# ===============================
+# Trajectory processing utilities
+# ===============================
 
-def split_subsample_rank_ds(
+
+def rebalance_and_subsample(
     key,
+    task_name: str,
     ds: ArrayDict,
-    train_frac: float = 0.8,
-    n_segments_train: int = 1000,
-    n_segments_test: int = 300,
-) -> Tuple[ArrayDict, ArrayDict]:
+    n_bins: int,
+    max_count_per_bin: int,
+    tokeep: int,
+):
     """
-    take trajectory or segment ds, split into train/test, each sorted by return (ascending)
-
-    ds = {
-        "observations": (N, T, D),
-        "actions": (N, T, A),
-        "rewards": (N, T),
-        "returns": (N,),
-    }
+    For tasks with skewed return distributions, prune trajectories (by bins) to maintain
+    a more balanced distribution of returns. Then uniformly subsample to keep only `tokeep` trajectories.
     """
-    # split into train/test based on `train_frac`
-    key, key_split = jr.split(key, 2)
-    n = len(ds["returns"])
-    idxs = jr.permutation(key_split, n)
-    n_train = int(n * train_frac)
-    train_idxs, test_idxs = idxs[:n_train], idxs[n_train:]
-    train_ds = jax.tree.map(lambda x: x[train_idxs], ds)
-    test_ds = jax.tree.map(lambda x: x[test_idxs], ds)
+    # prune by bin for tasks with skewed returns
+    if task_name in tasks_to_rebalance:
+        return_bins = jnp.histogram_bin_edges(ds["returns"], bins=n_bins)
+        key, key_prune = jr.split(key, 2)
+        ds = _prune_bin(key_prune, ds, return_bins, max_count_per_bin)
 
-    # take a subset of trajectory segments via uniform sampling
-    key, key_train, key_test = jr.split(key, 3)
-
-    def subsample_fn(key, ds, n_segments):
-        idxs = jr.permutation(key, len(ds["returns"]))[:n_segments]
-        return jax.tree.map(lambda x: x[idxs], ds)
-
-    train_ds = subsample_fn(key_train, train_ds, n_segments_train)
-    test_ds = subsample_fn(key_test, test_ds, n_segments_test)
-
-    # sort by return (ascending)
-    train_sorted_idxes = jnp.argsort(train_ds["returns"])
-    test_sorted_idxes = jnp.argsort(test_ds["returns"])
-    train_ds = jax.tree.map(lambda x: x[train_sorted_idxes], train_ds)
-    test_ds = jax.tree.map(lambda x: x[test_sorted_idxes], test_ds)
-
-    return train_ds, test_ds
+    # uniformly subsample to keep only `tokeep` trajectories, sort by return
+    key, key_subsample = jr.split(key, 2)
+    ds = _subsample(key_subsample, ds, tokeep)
+    ds = _sort_by_return(ds)
+    return ds
 
 
-def normalize(
-    x: Float[Array, "... D"],
-    axis: Tuple[int, ...],
-) -> Float[Array, "... D"]:
+def _prune_bin(key, ds: ArrayDict, bins: jax.Array, max_count_per_bin: int):
     """
-    Designed to work with both trajectoy data (N, T, D) where axis=(0, 1)
-    and samples data (N, D) where axis=(0,)
+    Prune trajectories to maintain a more balanced distribution of returns.
+    For any histogram bin that exceeds max_count_per_bin, randomly select only max_count_per_bin trajectories.
+
+    Args:
+        key: JAX random key
+        task_name: Name of the task
+        ds: Dictionary containing trajectory data
+        max_count_per_bin: Maximum number of trajectories to keep in any histogram bin
     """
-    eps = 1e-8
-    mean = jnp.mean(x, axis=axis, keepdims=True)
-    std = jnp.std(x, axis=axis, keepdims=True)
-    std = jnp.maximum(std, eps)
-    return (x - mean) / std
+    # Get bin assignments for each trajectory
+    bin_indices = jnp.digitize(ds["returns"], bins) - 1
+
+    # Initialize mask for trajectories to keep
+    keep_mask = jnp.zeros_like(ds["returns"], dtype=bool)
+
+    # For each bin, randomly select trajectories if count exceeds max_count_per_bin
+    for i in range(len(bins) - 1):
+        bin_mask = bin_indices == i
+        bin_count = jnp.sum(bin_mask)
+
+        if bin_count <= max_count_per_bin:
+            # Keep all trajectories in this bin
+            keep_mask = keep_mask | bin_mask
+        else:
+            # Randomly select max_count_per_bin trajectories
+            bin_idxs = jnp.where(bin_mask)[0]
+            selected_idxs = jr.permutation(key, bin_idxs)[:max_count_per_bin]
+            keep_mask = keep_mask | jnp.isin(
+                jnp.arange(len(ds["returns"])), selected_idxs
+            )
+
+    # Apply mask to all elements in the dataset
+    pruned_ds = jax.tree.map(lambda x: x[keep_mask], ds)
+    return pruned_ds
 
 
-def process_rewards(
-    r: Float[Array, "N"],
-    norm: bool = True,
-    clip: bool = True,
-    clip_value: float = 10.0,
-) -> Float[Array, "N"]:
+def _subsample(key, ds: ArrayDict, tokeep=300):
     """
-    Normalize and clip rewards
+    Subsample ds to keep only `tokeep` trajectories.
     """
-    if norm:
-        r = normalize(r, axis=(0,))
-    if clip:
-        r = jnp.clip(r, -clip_value, clip_value)
-    return r
+    idxs = jr.permutation(key, len(ds["returns"]))[:tokeep]
+    return jax.tree.map(lambda x: x[idxs], ds)
+
+
+def _sort_by_return(ds: ArrayDict):
+    """Sort ds by return (ascending)"""
+    sorted_idxes = jnp.argsort(ds["returns"])
+    return jax.tree.map(lambda x: x[sorted_idxes], ds)
 
 
 def segment_traj(
@@ -125,7 +130,23 @@ def segment_traj(
     )
 
 
-def segment_traj_masked(
+def segment_arraydict_masked(trajs: ArrayDict, sz: int) -> ArrayDict:
+    """
+    segment each traj in traj dict into chunks of size sz
+    """
+    assert sz > 0, f"segment size {sz=} must be positive"
+    # print(f"  Whole trajs: {trajs['observations'].shape}")
+    seg_fn = lambda x: _segment_traj_masked(x, trajs["masks"], sz)
+    trajs["observations"] = seg_fn(trajs["observations"])
+    trajs["rewards"] = rearrange(seg_fn(trajs["rewards"]), "S sz 1-> S sz")
+    trajs["returns"] = trajs["rewards"].sum(1)
+    # print(
+    #     f"  Segments:    {trajs['observations'].shape} (avg whole traj length={trajs['masks'].sum(1).mean()})"
+    # )
+    return trajs
+
+
+def _segment_traj_masked(
     traj: Float[Array, "N T ..."],
     mask: Bool[Array, "N T"],
     segment_size: int = 50,
@@ -203,117 +224,84 @@ def segment_traj_masked(
     return valid_segments_STD
 
 
-# def compute_pad_size(T: int, segment_size: int) -> int:
-#     """
-#     calculate pad_width required to pad up to next divisor of segment_size. Good for jnp.split
-#     T % segment_size == 0. e.g. compute_pad_size(138, 50) -> 12
-#     """
-#     assert T > segment_size > 0, f"{segment_size=} must be <= {T=} and positive"
-#     return (T + segment_size - 1) // segment_size * segment_size - T
-
-
-# def segment_traj_masked(
-#     traj: Float[Array, "N T ..."],
-#     mask: Bool[Array, "N T"],
-#     segment_size: int = 50,
-# ):
-#     """
-#     segment traj into chunks of size segment_size, but only include chunks where mask is True
-
-#     traj: (N, T, ...) may already be padded
-#     mask: (N, T) indicates valid (unpadded) steps in traj
-#     """
-#     # * pad traj & mask to ensure T is divisible by segment_size
-#     N, T, *_ = traj.shape
-#     assert T > segment_size > 0, f"{segment_size=} must be <= {T=} and positive"
-#     pad_sz = compute_pad_size(T, segment_size)
-#     traj = jnp.pad(traj, ((0, 0), (0, pad_sz), *((0, 0) for _ in range(traj.ndim - 2))))
-#     mask = jnp.pad(mask, ((0, 0), (0, pad_sz)))
-#     assert traj.shape[1] % segment_size == 0, "T must be divisible by segment_size"
-
-#     # * split into chunks
-#     n_chunks = traj.shape[1] // segment_size
-#     splits = jnp.split(traj, n_chunks, axis=1)  # List[(N, chunk_size, ...)]
-#     return rearrange(
-#         splits,
-#         "n_chunks N seg ... -> (N n_chunks) seg ...",
-#         n_chunks=n_chunks,
-#         N=N,
-#     )
-
-
-def rebalance(
+def split_subsample_rank_ds(
     key,
-    task_name: str,
     ds: ArrayDict,
-    n_bins: int,
-    max_count_per_bin: int,
-    tokeep: int,
-):
+    train_frac: float = 0.8,
+    n_segments_train: int = 1000,
+    n_segments_test: int = 300,
+) -> Tuple[ArrayDict, ArrayDict]:
     """
-    For tasks with skewed return distributions, prune trajectories (by bins) to maintain
-    a more balanced distribution of returns. Then uniformly subsample to keep only `tokeep` trajectories.
+    take trajectory or segment ds, split into train/test, each sorted by return (ascending)
+
+    ds = {
+        "observations": (N, T, D),
+        "actions": (N, T, A),
+        "rewards": (N, T),
+        "returns": (N,),
+    }
     """
+    # split into train/test based on `train_frac`
+    key, key_split = jr.split(key, 2)
+    n = len(ds["returns"])
+    idxs = jr.permutation(key_split, n)
+    n_train = int(n * train_frac)
+    train_idxs, test_idxs = idxs[:n_train], idxs[n_train:]
+    train_ds = jax.tree.map(lambda x: x[train_idxs], ds)
+    test_ds = jax.tree.map(lambda x: x[test_idxs], ds)
+    del ds
 
-    return_bins = jnp.histogram_bin_edges(ds["returns"], bins=n_bins)
+    # take a subset of trajectory segments via uniform sampling
+    key, key_train, key_test = jr.split(key, 3)
+    train_ds = _subsample(key_train, train_ds, n_segments_train)
+    test_ds = _subsample(key_test, test_ds, n_segments_test)
 
-    # prune by bin for tasks with skewed returns
-    if task_name in tasks_to_rebalance:
-        key, key_prune = jr.split(key, 2)
-        ds = prune_bin(key_prune, ds, return_bins, max_count_per_bin)
+    # sort by return (ascending)
+    train_ds = _sort_by_return(train_ds)
+    test_ds = _sort_by_return(test_ds)
 
-    # uniformly subsample to keep only `tokeep` trajectories
-    key, key_subsample = jr.split(key, 2)
-    ds = subsample(key_subsample, ds, tokeep)
-
-    # sort (again) by return (ascending)
-    sorted_idxes = jnp.argsort(ds["returns"])
-    ds = jax.tree.map(lambda x: x[sorted_idxes], ds)
-    return ds
+    return train_ds, test_ds
 
 
-def prune_bin(key, ds: ArrayDict, bins: jax.Array, max_count_per_bin: int):
+# ===============================
+# Normalization / Clipping utilities
+# ===============================
+def normalize(
+    x: Float[Array, "... D"],
+    axis: Tuple[int, ...],
+) -> Float[Array, "... D"]:
     """
-    Prune trajectories to maintain a more balanced distribution of returns.
-    For any histogram bin that exceeds max_count_per_bin, randomly select only max_count_per_bin trajectories.
-
-    Args:
-        key: JAX random key
-        task_name: Name of the task
-        ds: Dictionary containing trajectory data
-        max_count_per_bin: Maximum number of trajectories to keep in any histogram bin
+    Designed to work with both trajectoy data (N, T, D) where axis=(0, 1)
+    and samples data (N, D) where axis=(0,)
     """
-    # Get bin assignments for each trajectory
-    bin_indices = jnp.digitize(ds["returns"], bins) - 1
-
-    # Initialize mask for trajectories to keep
-    keep_mask = jnp.zeros_like(ds["returns"], dtype=bool)
-
-    # For each bin, randomly select trajectories if count exceeds max_count_per_bin
-    for i in range(len(bins) - 1):
-        bin_mask = bin_indices == i
-        bin_count = jnp.sum(bin_mask)
-
-        if bin_count <= max_count_per_bin:
-            # Keep all trajectories in this bin
-            keep_mask = keep_mask | bin_mask
-        else:
-            # Randomly select max_count_per_bin trajectories
-            bin_idxs = jnp.where(bin_mask)[0]
-            selected_idxs = jr.permutation(key, bin_idxs)[:max_count_per_bin]
-            keep_mask = keep_mask | jnp.isin(
-                jnp.arange(len(ds["returns"])), selected_idxs
-            )
-
-    # Apply mask to all elements in the dataset
-    pruned_ds = jax.tree.map(lambda x: x[keep_mask], ds)
-
-    return pruned_ds
+    eps = 1e-8
+    mean = jnp.mean(x, axis=axis, keepdims=True)
+    std = jnp.std(x, axis=axis, keepdims=True)
+    std = jnp.maximum(std, eps)
+    return (x - mean) / std
 
 
-def subsample(key, ds: ArrayDict, tokeep=300):
+def scale_image(x):
     """
-    Subsample ds to keep only `tokeep` trajectories.
+    Scale image to [0, 1]
     """
-    idxs = jr.permutation(key, len(ds["returns"]))[:tokeep]
-    return jax.tree.map(lambda x: x[idxs], ds)
+    min_val = 0
+    max_val = 255
+    range = max_val - min_val
+    return (x - min_val) / range
+
+
+def process_rewards(
+    r: Float[Array, "N"],
+    norm: bool = True,
+    clip: bool = True,
+    clip_value: float = 10.0,
+) -> Float[Array, "N"]:
+    """
+    Normalize and clip rewards
+    """
+    if norm:
+        r = normalize(r, axis=(0,))
+    if clip:
+        r = jnp.clip(r, -clip_value, clip_value)
+    return r

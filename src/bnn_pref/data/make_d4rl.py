@@ -22,28 +22,14 @@ from jaxtyping import Array, Float
 
 from bnn_pref.data.pref_utils import QueryIndexAndResponses, create_pref_data
 from bnn_pref.data.traj_utils import (
+    _sort_by_return,
+    _subsample,
     normalize,
-    rebalance,
-    segment_traj_masked,
+    scale_image,
+    segment_arraydict_masked,
     split_subsample_rank_ds,
 )
 from bnn_pref.utils.type import ArrayDict
-
-
-def segment_arraydict_masked(trajs: ArrayDict, sz: int) -> ArrayDict:
-    """
-    segment each traj in traj dict into chunks of size sz
-    """
-    assert sz > 0, f"segment size {sz=} must be positive"
-    # print(f"  Whole trajs: {trajs['observations'].shape}")
-    seg_fn = lambda x: segment_traj_masked(x, trajs["masks"], sz)
-    trajs["observations"] = seg_fn(trajs["observations"])
-    trajs["rewards"] = rearrange(seg_fn(trajs["rewards"]), "S sz 1-> S sz")
-    trajs["returns"] = trajs["rewards"].sum(1)
-    # print(
-    #     f"  Segments:    {trajs['observations'].shape} (avg whole traj length={trajs['masks'].sum(1).mean()})"
-    # )
-    return trajs
 
 
 def make_d4rl_data(key, cfg) -> ArrayDict:
@@ -84,22 +70,12 @@ def make_d4rl_data(key, cfg) -> ArrayDict:
     else:
         raise ValueError(f"Unknown dataset type: {ds_type}")
 
-    # * optionally normalize observations
-    if ds_type == "d4rl":
-        trajs.update({"observations": normalize(trajs["observations"], axis=(0, 1))})
+    # * prune trajectories based on return distribution
+    key, key_subsample = jr.split(key, 2)
+    trajs = _subsample(key_subsample, trajs, data_cfg["tokeep"])
+    trajs = _sort_by_return(trajs)
 
-    # * optional pruning
-    key, key_rebalance = jr.split(key, 2)
-    trajs = rebalance(
-        key_rebalance,
-        task_cfg["name"],
-        ds=trajs,
-        n_bins=data_cfg["n_bins"],
-        max_count_per_bin=data_cfg["max_count_per_bin"],
-        tokeep=data_cfg["tokeep"],
-    )
-
-    # * optionally segment trajectories: (N, T, ...) -> (N * n_chunks, sz, ...)
+    # * segment trajectories: (N, T, ...) -> (N * n_chunks, sz, ...)
     # * can be done before or after splitting into train/test
     if sz != -1:
         trajs = segment_arraydict_masked(trajs, sz)
@@ -110,9 +86,17 @@ def make_d4rl_data(key, cfg) -> ArrayDict:
         key_split, trajs, demo_train_frac, ns_train, ns_test
     )
 
-    # if sz != -1:
-    #     train_trajs = segment_arraydict_masked(train_trajs, sz)
-    #     test_trajs = segment_arraydict_masked(test_trajs, sz)
+    # * normalize observations
+    if ds_type == "d4rl":
+        train_trajs.update(
+            {"observations": normalize(train_trajs["observations"], axis=(0, 1))}
+        )
+        test_trajs.update(
+            {"observations": normalize(test_trajs["observations"], axis=(0, 1))}
+        )
+    elif ds_type == "vd4rl":
+        train_trajs.update({"observations": scale_image(train_trajs["observations"])})
+        test_trajs.update({"observations": scale_image(test_trajs["observations"])})
 
     del train_trajs["masks"]
     del test_trajs["masks"]
@@ -180,10 +164,14 @@ def process_d4rl_data(
     # * create valid mask
     valid_mask_NT = jnp.array(
         [
-            jnp.pad(jnp.ones(traj_len), (0, max_traj_len - traj_len))
+            jnp.pad(
+                array=jnp.ones(traj_len, dtype=jnp.bool_),
+                pad_width=(0, max_traj_len - traj_len),
+            )
             for traj_len in length_N
-        ]
-    ).astype(jnp.bool)
+        ],
+        dtype=jnp.bool_,
+    )
 
     # * transitions -> trajs and pad to max traj length
     def pad_fn(
@@ -214,13 +202,19 @@ def process_d4rl_data(
 def process_vd4rl_data(offline_dir: Path, min_traj_len: int = 50):
     def converter(ds: Dict):
         """Convert vd4rl dictionary to d4rl dictionary."""
-        return {
-            "observations": rearrange(ds["observation"], "S C H W-> S H W C"),  # jax
+
+        # vd4rl only uses terminals. jax CNN uses (H, W, C)
+        obs = rearrange(ds["observation"], "S C H W-> S H W C")
+        timeouts = jnp.zeros_like(ds["step_type"], dtype=jnp.bool_)
+
+        out = {
+            "observations": obs,
             "actions": ds["action"],
             "rewards": ds["reward"],
             "terminals": ds["step_type"] == 2,
-            "timeouts": np.zeros_like(ds["step_type"]),  # no timeouts, only terminals
+            "timeouts": timeouts,
         }
+        return out
 
     filenames = sorted(offline_dir.glob("*.hdf5"))
     num_steps = 0
@@ -232,7 +226,7 @@ def process_vd4rl_data(offline_dir: Path, min_traj_len: int = 50):
     ):
         try:
             episodes = h5py.File(filename, "r")
-            episodes = {k: episodes[k][:] for k in episodes.keys()}
+            episodes = {k: jnp.array(episodes[k][:]) for k in episodes.keys()}
             trajs = process_d4rl_data(converter(episodes), min_traj_len=min_traj_len)
             traj_list.append(trajs)
             length = episodes["reward"].shape[0]

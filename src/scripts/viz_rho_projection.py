@@ -23,7 +23,7 @@ from hydra.core.hydra_config import HydraConfig
 from jaxtyping import Array, Float
 
 from bnn_pref.data import dataset_creators
-from bnn_pref.data.traj_utils import normalize, subsample
+from bnn_pref.data.traj_utils import _subsample, normalize
 from bnn_pref.rl.rm_util import load_reward_model, relabel_rewards
 from bnn_pref.utils.hydra_resolvers import *
 from bnn_pref.utils.utils import get_random_seed, nested_defaultdict
@@ -113,7 +113,7 @@ def main(cfg):
         key, key_data = jr.split(key, 2)
         data_dict = dataset_creators[cfg["task"]["ds_type"]](key_data, cfg)
         train_trajs, test_trajs = data_dict["train_trajs"], data_dict["test_trajs"]
-        test_trajs = subsample(key, test_trajs, tokeep=nt_test_tokeep)
+        test_trajs = _subsample(key, test_trajs, tokeep=nt_test_tokeep)
         nt_test, T, D = test_trajs["observations"].shape
 
         print(f"{task:13} ({T=}, {D=}): test nt=({nt_test})")

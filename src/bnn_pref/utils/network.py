@@ -1,10 +1,11 @@
-import itertools as it
-from typing import List, Union
+from typing import List, Optional, Union
 
 import flax.linen as nn
 import jax
 import jax.numpy as jnp
 from einops import rearrange
+
+# from flaxmodels import ResNet18 as FMResNet18
 from jaxtyping import Array, Float
 
 B2D = Float[Array, "batch 2 dim"]
@@ -41,13 +42,40 @@ def isfinite_param(param):
 default_init = nn.initializers.xavier_uniform
 
 
+def setup_resnet_encoder():
+    from flaxmodels import ResNet18  # actual training run
+
+    # from flaxmodels.flaxmodels import ResNet18  # run network.py
+
+    return ResNet18(
+        output="embeddings",
+        pretrained="imagenet",
+        use_classifier_head=False,
+    )
+
+
+def setup_identity_encoder():
+    class IdentityEncoder(nn.Module):
+        def __call__(self, x):
+            return x
+
+    return IdentityEncoder()
+
+
+ENCODERS = {
+    "resnet": setup_resnet_encoder(),
+    "identity": setup_identity_encoder(),
+}
+
+
 class PositionWiseMLP(nn.Module):
     hidden_sizes: List[int]
     n_splits: int = 1
     dropout_prob: Union[float, List[float]] = 0.0
+    encoder: nn.Module = ENCODERS["identity"]
 
     @nn.compact
-    def __call__(self, x: BTD, deterministic: bool) -> BT:
+    def __call__(self, x: BTD, deterministic: bool = True) -> BT:
         """
         BTD -> BT
         Applies position-wise MLP to get per-timestep rewards, with optional dropout.
@@ -64,6 +92,17 @@ class PositionWiseMLP(nn.Module):
                 if isinstance(self.dropout_prob, float)
                 else self.dropout_prob
             )
+
+            # * encode input: (B,T,state_dim) or (B,T,H,W,C) -> (B,T,encoder_dim)
+            if x.ndim == 3:  # (B, T, D)
+                x = self.encoder(x)
+            elif x.ndim == 5:  # (B, T, H, W, C)
+                B, T, H, W, C = x.shape
+                x = rearrange(x, "B T H W C -> (B T) H W C", B=B, T=T)
+                x = self.encoder(x, train=not deterministic)
+                x = rearrange(x, "(B T) D -> B T D", B=B, T=T)
+
+            # * forward pass: (B,T,encoder_dim) -> (B,T,1)
             for i in range(n_hidden):
                 x = nn.Dense(self.hidden_sizes[i], kernel_init=default_init())(x)
                 x = nn.leaky_relu(x)
@@ -91,14 +130,17 @@ class RewardNet(nn.Module):
     hidden_sizes: List[int]
     n_splits: int = 1
     dropout_prob: Union[float, List[float]] = 0.0
+    encoder_type: str = "identity"
 
     def setup(self):
         assert self.n_splits > 0, f"{self.n_splits=} must be positive"
         assert 0 <= self.dropout_prob <= 1
-        self.pw_mlp = PositionWiseMLP(
+        encoder = ENCODERS[self.encoder_type]
+        self.pw_encoder = PositionWiseMLP(
             hidden_sizes=self.hidden_sizes,
             n_splits=self.n_splits,
             dropout_prob=self.dropout_prob,
+            encoder=encoder,
         )
 
     def __call__(self, x: B2TD, deterministic: bool = True) -> B2:
@@ -111,7 +153,7 @@ class RewardNet(nn.Module):
         return logits
 
     def predict_traj_return(self, x: BTD, deterministic: bool = True) -> B:
-        B, T, D = x.shape
+        B, T, *D = x.shape
         rewards = self.predict_traj_rewards(
             x, deterministic=deterministic
         )  # (B,T,D) -> (B,T)
@@ -120,7 +162,7 @@ class RewardNet(nn.Module):
         return returns
 
     def predict_traj_rewards(self, x: BTD, deterministic: bool = True) -> BT:
-        return self.pw_mlp(x, deterministic=deterministic)
+        return self.pw_encoder(x, deterministic=deterministic)
 
     # * For last layer Bayesian methods: last layer must be named "last_layer"
     @staticmethod
@@ -131,16 +173,41 @@ class RewardNet(nn.Module):
             **fixed_param_dict["params"],
             "last_layer": last_layer_dict["params"]["last_layer"],
         }
-        return {"params": {"pw_mlp": params}}
+        return {"params": {"pw_encoder": params}}
 
     @staticmethod
     def get_fixed_params(params):
-        mlp_params = params["params"]["pw_mlp"]
+        mlp_params = params["params"]["pw_encoder"]
         params = {k: v for k, v in mlp_params.items() if k != "last_layer"}
         return {"params": params}
 
     @staticmethod
     def get_last_layer_params(params):
-        mlp_params = params["params"]["pw_mlp"]
+        mlp_params = params["params"]["pw_encoder"]
         params = {"last_layer": mlp_params["last_layer"]}
         return {"params": params}
+
+
+if __name__ == "__main__":
+    key = jax.random.PRNGKey(42)
+    model_def = RewardNet(
+        hidden_sizes=[128, 128],
+        n_splits=1,
+        dropout_prob=0.0,
+        encoder_type="identity",
+    )
+    T, D = 50, 3
+    state_input = jnp.ones((1, 2, T, D))
+    params = model_def.init(key, state_input)["params"]
+    print(model_def.tabulate(key, state_input))
+
+    model_def = RewardNet(
+        hidden_sizes=[128, 128],
+        n_splits=1,
+        dropout_prob=0.0,
+        encoder_type="resnet",
+    )
+    H, W, C = 84, 84, 3
+    state_input = jnp.ones((1, 2, T, H, W, C))
+    params = model_def.init(key, state_input)["params"]
+    print(model_def.tabulate(key, state_input))

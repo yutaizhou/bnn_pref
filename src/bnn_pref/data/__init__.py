@@ -16,4 +16,5 @@ dataset_creators = {
     "prefcc": make_prefcc_data,
     "synthetic": make_synthetic_data,
     "d4rl": make_d4rl_data,
+    "vd4rl": make_d4rl_data,
 }

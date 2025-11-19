@@ -8,7 +8,7 @@ from tensordict import TensorDict
 from bnn_pref.data.pref_utils import QueryIndexAndResponses, create_pref_data
 from bnn_pref.data.traj_utils import (
     normalize,
-    rebalance,
+    rebalance_and_subsample,
     segment_traj,
     split_subsample_rank_ds,
 )
@@ -54,7 +54,7 @@ def make_prefcc_data(key, cfg) -> ArrayDict:
 
     # * optional pruning
     key, key_rebalance = jr.split(key, 2)
-    trajs = rebalance(
+    trajs = rebalance_and_subsample(
         key_rebalance,
         task_cfg["name"],
         ds=trajs,

@@ -43,7 +43,7 @@ class PreferenceEnv:
         """
         Get the shape of a single trajectory, no leading batch dimension.
         """
-        return self.items_NTD.shape[1:]  # (T, D)
+        return self.items_NTD.shape[1:]  # (T, D) or (T, H, W, C)
 
     def get_context(self, t) -> Float[Array, "2 T D"]:
         return self.items_NTD[self.queries_Q2[t]]

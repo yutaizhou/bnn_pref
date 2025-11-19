@@ -94,7 +94,7 @@ def alg_pipeline(
     pool_idxs = jnp.arange(nq_init, len(env))
 
     # * build reward model, agent, env
-    traj_shape = env.get_traj_shape()
+    traj_shape = env.get_traj_shape()  # (T, D) or (T, H, W, C)
     model = RewardNet(
         hidden_sizes=alg_cfg["hidden_sizes"],
         n_splits=alg_cfg["n_splits"],
