@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 
 import ipdb
+import jax.random as jr
 
 os.environ["MUJOCO_GL"] = "egl"
 
@@ -9,6 +10,7 @@ os.environ["MUJOCO_GL"] = "egl"
 import numpy as np
 from dm_env import specs
 
+from bnn_pref.data.make_d4rl import make_d4rl_data
 from bnn_pref.data.vd4rl_utils import (
     EfficientReplayBuffer,
     load_offline_dataset_into_buffer,
@@ -59,15 +61,30 @@ if __name__ == "__main__":
         sarsa=cfg["sarsa"],
     )
 
-    load_offline_dataset_into_buffer(
-        offline_dir=fdir,
-        replay_buffer=replay_buffer,
-        frame_stack=cfg["frame_stack"],
-        replay_buffer_size=cfg["buffer_size"],
-    )
-    print(f"Loaded {fdir} into replay buffer")
-    print(f"Replay buffer size: {len(replay_buffer)}")
+    # trajs = make_vd4rl_data(
+    #     offline_dir=fdir,
+    # )
+    # print(f"Loaded {fdir} into replay buffer")
+    # print(f"Replay buffer size: {len(replay_buffer)}")
 
-    batch = next(replay_buffer)
-    for k, v in batch.items():
-        print(k, v.shape)
+    # batch = next(replay_buffer)
+    # for k, v in batch.items():
+    #     print(k, v.shape)
+
+    from hydra import compose, initialize
+
+    from bnn_pref.utils.utils import get_random_seed
+
+    with initialize(
+        version_base=None, config_path="/scr/yutaizho/code/p-prefEKF/bnn_pref/src/cfg"
+    ):
+        cfg = compose(config_name="config", overrides=["task=vcheetahMediumReplay"])
+
+    key = jr.key(get_random_seed())
+    data = make_d4rl_data(key, cfg)
+    train_trajs, test_trajs = data["train_trajs"], data["test_trajs"]
+    train_prefs, test_prefs = data["train_prefs"], data["test_prefs"]
+    print(f"{train_trajs['observations'].shape=}")
+    print(f"{test_trajs['observations'].shape=}")
+    print(f"{train_prefs.queries_Q2.shape=}")
+    print(f"{test_prefs.queries_Q2.shape=}")

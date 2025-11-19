@@ -1,0 +1,5 @@
+ds_type: vd4rl
+task_name: cheetah_run
+dataset_name: medium_replay
+dataset_dir: ${paths.vd4rl_dir}/main/${.task_name}/${.dataset_name}/84px
+name: vcheetah_run_medium_replay

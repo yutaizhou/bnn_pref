@@ -38,6 +38,7 @@ paths:
 
   prefcc:
     data_dir: ${paths.prefcc_dir}
+  vd4rl_dir: /scr/shared/datasets/vd4rl
 
 
 seed: -1 # for jr.key() - initial random seeding

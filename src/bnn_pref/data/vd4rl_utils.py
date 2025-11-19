@@ -5,9 +5,12 @@ Shoutout ReBrac: https://github.com/DT6A/ReBRAC/blob/7f4df8ad83afb0857e276691fc9
 import abc
 import os
 from collections import deque
-from typing import Any, NamedTuple
+from typing import Any, Dict, NamedTuple
 
 import ipdb
+import jax
+import jax.numpy as jnp
+from jaxtyping import Array, Float
 from tqdm import tqdm
 
 os.environ["MUJOCO_GL"] = "egl"
@@ -19,6 +22,8 @@ import numpy as np
 from dm_control import manipulation, suite
 from dm_control.suite.wrappers import action_scale, pixels
 from dm_env import StepType, specs
+
+from bnn_pref.data.make_d4rl import process_d4rl_data
 
 step_type_lookup = {0: StepType.FIRST, 1: StepType.MID, 2: StepType.LAST}
 
@@ -476,7 +481,6 @@ def load_offline_dataset_into_buffer(
             episodes = h5py.File(filename, "r")
             episodes = {k: episodes[k][:] for k in episodes.keys()}
             add_offline_data_to_buffer(episodes, replay_buffer, framestack=frame_stack)
-            ipdb.set_trace()
             length = episodes["reward"].shape[0]
             num_steps += length
         except Exception as e:
@@ -487,3 +491,69 @@ def load_offline_dataset_into_buffer(
         # print("early break!")
         # break
     print(f"Finished, loaded {num_steps} offline timesteps.")
+
+
+def old_process_vd4rl_data(ds: Dict, rank: bool = False, min_traj_len: int = 50):
+    end_N = jnp.where(ds["step_type"] == 2)[0]
+    bgn_N = jnp.concatenate([jnp.array([-1]), end_N[:-1]])
+    length_N = end_N - bgn_N
+    max_traj_len = jnp.max(length_N)
+
+    # * optionally filter out trajectories shorter than required length
+    if min_traj_len > 0:
+        length_mask_N = length_N > min_traj_len
+        bgn_N = bgn_N[length_mask_N]
+        end_N = end_N[length_mask_N]
+        length_N = length_N[length_mask_N]
+
+    # create valid mask
+    valid_mask_NT = jnp.array(
+        [
+            jnp.pad(array=jnp.ones(traj_len), pad_width=(0, max_traj_len - traj_len))
+            for traj_len in length_N
+        ]
+    ).astype(jnp.bool)
+
+    # * transitions -> trajs and pad to max traj length
+    def pad_fn(
+        x: Float[Array, "S ..."],
+    ) -> Float[Array, "N T ..."]:
+        def pad_traj(x, bgn: int, end: int):
+            traj = x[bgn + 1 : end + 1]
+            traj_len = traj.shape[0]
+            pad_size = max_traj_len - traj_len
+            pad_width = [(0, pad_size)] + [(0, 0)] * (traj.ndim - 1)
+            return jnp.pad(traj, pad_width)
+
+        return jnp.array([pad_traj(x, bgn, end) for bgn, end in zip(bgn_N, end_N)])
+
+    output = {
+        "observations": pad_fn(ds["observation"]),
+        "rewards": pad_fn(ds["reward"]),
+        "masks": valid_mask_NT,
+    }
+    output["returns"] = output["rewards"].sum(axis=1)
+    if rank:
+        sorted_idxes = jnp.argsort(output["returns"])
+        output = jax.tree.map(lambda x: x[sorted_idxes], output)
+
+    return output
+
+
+# def make_vd4rl_data(offline_dir, cfg=None):
+#     """
+#     h5 file structure:
+#         observation: (S, O); where O =(C, H, W)
+#         action: (S, A)
+#         discount: (S,)
+#         reward: (S,)
+#         step_type: (S,); where 0 = FIRST, 1 = MID, 2 = LAST
+
+#     output:
+#         observations: (N, T, O)
+#         rewards: (N, T)
+#         masks: (N, T)
+#         returns: (N,)
+#     """
+
+#     trajs = process_vd4rl_data(offline_dir, min_traj_len=50)

@@ -1,5 +1,12 @@
 import os
 import warnings
+from pathlib import Path
+from typing import Dict
+
+import h5py
+import ipdb
+import numpy as np
+from tqdm import tqdm
 
 os.environ["D4RL_SUPPRESS_IMPORT_ERROR"] = "1"
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -42,7 +49,7 @@ def segment_arraydict_masked(trajs: ArrayDict, sz: int) -> ArrayDict:
 def make_d4rl_data(key, cfg) -> ArrayDict:
     """
     d4rl returns dict with keys, where S = num_transitions
-        observations: (S, O)
+        observations: (S, O) or (S, H, W, C)
         actions: (S, A)
         next_observations: (S, O)
         rewards: (S,)
@@ -50,7 +57,7 @@ def make_d4rl_data(key, cfg) -> ArrayDict:
         timeouts: (S,)
 
     output:
-        observations: (N, T, D)
+        observations: (N, T, D) or (N, T, H, W, C)
         rewards: (N, T)
         masks: (N, T)
         returns: (N,)
@@ -61,13 +68,25 @@ def make_d4rl_data(key, cfg) -> ArrayDict:
     nq_train, nq_test = data_cfg["nq_train"], data_cfg["nq_test"]
     sz = data_cfg["segment_size"]
     ns_train, ns_test = (data_cfg["n_segments_train"], data_cfg["n_segments_test"])
+    ds_type = task_cfg["ds_type"]
+
+    # todo: come on this is so hacky and you know it
+    if ds_type == "vd4rl":
+        data_cfg["segment_size"] = 25
 
     # * d4rl transitions -> trajs, pad to max length w/ masks, filter out short traj length
-    ds = gym.make(task_cfg["name"]).get_dataset()
-    trajs = process_d4rl_data(ds, min_traj_len=data_cfg["min_traj_len"])
+    if ds_type == "d4rl":
+        ds = gym.make(task_cfg["name"]).get_dataset()
+        trajs = process_d4rl_data(ds, min_traj_len=data_cfg["min_traj_len"])
+    elif ds_type == "vd4rl":
+        ds_dir = task_cfg["dataset_dir"]
+        trajs = process_vd4rl_data(Path(ds_dir))
+    else:
+        raise ValueError(f"Unknown dataset type: {ds_type}")
 
     # * optionally normalize observations
-    trajs.update({"observations": normalize(trajs["observations"], axis=(0, 1))})
+    if ds_type == "d4rl":
+        trajs.update({"observations": normalize(trajs["observations"], axis=(0, 1))})
 
     # * optional pruning
     key, key_rebalance = jr.split(key, 2)
@@ -94,6 +113,9 @@ def make_d4rl_data(key, cfg) -> ArrayDict:
     # if sz != -1:
     #     train_trajs = segment_arraydict_masked(train_trajs, sz)
     #     test_trajs = segment_arraydict_masked(test_trajs, sz)
+
+    del train_trajs["masks"]
+    del test_trajs["masks"]
 
     # * turn train/test trajs into preference data
     key, key_train, key_test = jr.split(key, 3)
@@ -189,6 +211,45 @@ def process_d4rl_data(
     return output
 
 
+def process_vd4rl_data(offline_dir: Path, min_traj_len: int = 50):
+    def converter(ds: Dict):
+        """Convert vd4rl dictionary to d4rl dictionary."""
+        return {
+            "observations": rearrange(ds["observation"], "S C H W-> S H W C"),  # jax
+            "actions": ds["action"],
+            "rewards": ds["reward"],
+            "terminals": ds["step_type"] == 2,
+            "timeouts": np.zeros_like(ds["step_type"]),  # no timeouts, only terminals
+        }
+
+    filenames = sorted(offline_dir.glob("*.hdf5"))
+    num_steps = 0
+    traj_list = []
+    for i, filename in tqdm(
+        enumerate(filenames),
+        desc="Loading offline dataset into replay buffer",
+        unit="file",
+    ):
+        try:
+            episodes = h5py.File(filename, "r")
+            episodes = {k: episodes[k][:] for k in episodes.keys()}
+            trajs = process_d4rl_data(converter(episodes), min_traj_len=min_traj_len)
+            traj_list.append(trajs)
+            length = episodes["reward"].shape[0]
+            num_steps += length
+        except Exception as e:
+            print(f"Could not load episode {str(filename)}: {e}")
+            continue
+        # if num_steps >= replay_buffer_size:
+        #     break
+        # if i == 2:
+        #     print("early break!")
+        #     break
+    print(f"Finished, loaded {num_steps} offline timesteps.")
+    trajs = jax.tree.map(lambda *xs: jnp.concatenate(xs, axis=0), *traj_list)
+    return trajs
+
+
 if __name__ == "__main__":
     from hydra import compose, initialize
 
@@ -196,6 +257,17 @@ if __name__ == "__main__":
 
     with initialize(version_base=None, config_path="../../cfg"):
         cfg = compose(config_name="config", overrides=["task=cheetahMediumReplay"])
+    key = jr.key(get_random_seed())
+    data = make_d4rl_data(key, cfg)
+    train_trajs, test_trajs = data["train_trajs"], data["test_trajs"]
+    train_prefs, test_prefs = data["train_prefs"], data["test_prefs"]
+    print(f"{train_trajs['observations'].shape=}")
+    print(f"{test_trajs['observations'].shape=}")
+    print(f"{train_prefs.queries_Q2.shape=}")
+    print(f"{test_prefs.queries_Q2.shape=}")
+
+    with initialize(version_base=None, config_path="../../cfg"):
+        cfg = compose(config_name="config", overrides=["task=vcheetahMediumExpert"])
 
     key = jr.key(get_random_seed())
     data = make_d4rl_data(key, cfg)
