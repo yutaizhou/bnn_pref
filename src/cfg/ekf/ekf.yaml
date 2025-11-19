@@ -12,6 +12,7 @@ acq: ${..acq}
 hidden_sizes: ${network.hidden_sizes}
 n_splits: ${network.n_splits}
 dropout_prob: 0.0
+encoder: ${network.encoder}
 
 # * Subspace Init w/ SGD 
 bs: ${..bs} # -1 for full batch GD. Otherwise, mini-batch SGD

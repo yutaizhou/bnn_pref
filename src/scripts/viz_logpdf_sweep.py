@@ -109,7 +109,7 @@ tasks = [
 # ]
 
 n_tasks = len(tasks)
-algs = ["ekf", "sgd", "do"]
+algs = ["ekf", "sgd", "do", "laplace", "llmcmc"]
 is_als = [True, False]
 
 
@@ -205,10 +205,10 @@ def get_label(alg: str, is_al: bool) -> str:
         return "DeepEnsemble (A)" if is_al else "DeepEnsemble (R)"
     elif alg == "do":
         return "Dropout (A)" if is_al else "Dropout (R)"
-    elif alg == "llmcmc":
-        return "LLMCMC (A)" if is_al else "LLMCMC (R)"
     elif alg == "laplace":
         return "Laplace (A)" if is_al else "Laplace (R)"
+    elif alg == "llmcmc":
+        return "LLMCMC (A)" if is_al else "LLMCMC (R)"
     else:
         raise ValueError(f"Invalid algorithm: {alg}")
 
@@ -220,9 +220,9 @@ def get_style(alg: str, is_al: bool) -> dict:
         color = rgb_values["blue"]
     elif alg == "do":
         color = rgb_values["green"]
-    elif alg == "llmcmc":
-        color = rgb_values["purple"]
     elif alg == "laplace":
+        color = rgb_values["purple"]
+    elif alg == "llmcmc":
         color = rgb_values["gray"]
     else:
         raise ValueError(f"Invalid algorithm: {alg}")

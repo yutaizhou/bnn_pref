@@ -11,6 +11,7 @@ max_buffer_size: ${..max_buffer_size} # for keeping observed queries for trainin
 hidden_sizes: ${network.hidden_sizes}
 n_splits: ${network.n_splits}
 dropout_prob: 0.0
+encoder: ${network.encoder}
 
 # * Init + Update
 bs: ${..bs}

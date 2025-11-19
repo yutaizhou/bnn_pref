@@ -1,6 +1,5 @@
 hidden_sizes:
   - 256
-  - 256
-  - 256
+  - 128
 n_splits: 1
-encoder: identity
+encoder: resnet

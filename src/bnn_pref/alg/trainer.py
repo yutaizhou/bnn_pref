@@ -96,9 +96,10 @@ def alg_pipeline(
     # * build reward model, agent, env
     traj_shape = env.get_traj_shape()
     model = RewardNet(
-        alg_cfg["hidden_sizes"],
-        alg_cfg["n_splits"],
-        alg_cfg["dropout_prob"],
+        hidden_sizes=alg_cfg["hidden_sizes"],
+        n_splits=alg_cfg["n_splits"],
+        dropout_prob=alg_cfg["dropout_prob"],
+        encoder_type=alg_cfg["encoder"],
     )
     bandit = alg_cls(model, traj_shape=traj_shape, **alg_cls.get_hydra_config(alg_cfg))
 

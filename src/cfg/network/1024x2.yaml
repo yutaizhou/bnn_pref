@@ -2,3 +2,4 @@ hidden_sizes:
   - 1024
   - 1024
 n_splits: 1
+encoder: identity
