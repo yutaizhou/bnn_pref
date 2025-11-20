@@ -17,7 +17,7 @@ from bnn_pref.alg.mcmc import build_hmc, build_mh, plot_samples, plot_trace, run
 from bnn_pref.data import dataset_creators
 from bnn_pref.data.pref_utils import BradleyTerry
 from bnn_pref.utils.hydra_resolvers import *
-from bnn_pref.utils.metrics import alignment_metric, compute_accuracy2_mcmc
+from bnn_pref.utils.metrics import compute_accuracy2_mcmc, compute_alignment
 from bnn_pref.utils.plotting import plot_logpdf, plot_reward_heatmap
 from bnn_pref.utils.print_utils import print_mcmc_cfg
 from bnn_pref.utils.test_functions import test_functions_dict
@@ -67,7 +67,7 @@ def main(cfg):
     test_logpdf = dist.logpdf(sample_D, test_prefs, learned_reward_fn).mean()
     if task_cfg["ds_type"] == "synthetic":
         true_param_D, true_reward_fn = output["true_param"], output["true_reward_fn"]
-        align = alignment_metric(true_param_D, samples_SD)
+        align = compute_alignment(true_param_D, samples_SD)
     else:
         align = None
     print(f"Train acc: {train_acc:.2%}")

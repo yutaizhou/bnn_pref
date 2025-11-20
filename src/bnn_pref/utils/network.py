@@ -56,7 +56,7 @@ def setup_resnet_encoder():
 
 def setup_identity_encoder():
     class IdentityEncoder(nn.Module):
-        def __call__(self, x):
+        def __call__(self, x, train: bool = False):
             return x
 
     return IdentityEncoder()
@@ -75,7 +75,7 @@ class PositionWiseMLP(nn.Module):
     encoder: nn.Module = ENCODERS["identity"]
 
     @nn.compact
-    def __call__(self, x: BTD, deterministic: bool = True) -> BT:
+    def __call__(self, x: BTD, train: bool = False) -> BT:
         """
         BTD -> BT
         Applies position-wise MLP to get per-timestep rewards, with optional dropout.
@@ -85,7 +85,7 @@ class PositionWiseMLP(nn.Module):
         S: segment length (if n_splits > 1)
         """
 
-        def forward_block(x: BTD, deterministic: bool) -> Float[Array, "B T 1"]:
+        def forward_block(x: BTD, train: bool) -> Float[Array, "B T 1"]:
             n_hidden = len(self.hidden_sizes)
             dropout_probs = (
                 [self.dropout_prob] * n_hidden
@@ -99,7 +99,7 @@ class PositionWiseMLP(nn.Module):
             elif x.ndim == 5:  # (B, T, H, W, C)
                 B, T, H, W, C = x.shape
                 x = rearrange(x, "B T H W C -> (B T) H W C", B=B, T=T)
-                x = self.encoder(x, train=not deterministic)
+                x = self.encoder(x, train=train)
                 x = rearrange(x, "(B T) D -> B T D", B=B, T=T)
 
             # * forward pass: (B,T,encoder_dim) -> (B,T,1)
@@ -108,20 +108,17 @@ class PositionWiseMLP(nn.Module):
                 x = nn.leaky_relu(x)
                 prob = dropout_probs[i]
                 if prob > 0:
-                    x = nn.Dropout(prob)(x, deterministic=deterministic)
+                    x = nn.Dropout(prob)(x, deterministic=not train)
             x = nn.Dense(1, name="last_layer")(x)
             return x
 
         if self.n_splits == 1:
-            x = forward_block(x, deterministic=deterministic)
+            x = forward_block(x, train=train)
         else:
             T = x.shape[1]
             split_size = T // self.n_splits
             x_chunks = jnp.split(x, self.n_splits, axis=1)  # List[(B,S,D) * n_splits]
-            out = [
-                forward_block(x_chunk, deterministic=deterministic)
-                for x_chunk in x_chunks
-            ]
+            out = [forward_block(x_chunk, train=train) for x_chunk in x_chunks]
             x = rearrange(out, "k B S 1 -> B (k S) 1", k=self.n_splits, S=split_size)
         return jnp.squeeze(x, axis=-1)  # works also for batch-less TD -> T
 
@@ -143,26 +140,24 @@ class RewardNet(nn.Module):
             encoder=encoder,
         )
 
-    def __call__(self, x: B2TD, deterministic: bool = True) -> B2:
+    def __call__(self, x: B2TD, train: bool = False) -> B2:
         """
         Take batches of trajectory pairs, outputs returns for both trajectories
         """
-        r1 = self.predict_traj_return(x[:, 0], deterministic=deterministic)  # BTD -> B
-        r2 = self.predict_traj_return(x[:, 1], deterministic=deterministic)  # BTD -> B
+        r1 = self.predict_traj_return(x[:, 0], train=train)  # BTD -> B
+        r2 = self.predict_traj_return(x[:, 1], train=train)  # BTD -> B
         logits = rearrange([r1, r2], "K B -> B K", K=2)  # B 2
         return logits
 
-    def predict_traj_return(self, x: BTD, deterministic: bool = True) -> B:
+    def predict_traj_return(self, x: BTD, train: bool = False) -> B:
         B, T, *D = x.shape
-        rewards = self.predict_traj_rewards(
-            x, deterministic=deterministic
-        )  # (B,T,D) -> (B,T)
+        rewards = self.predict_traj_rewards(x, train=train)  # (B,T,D) -> (B,T)
         returns = rewards.sum(axis=1)  # (B,)
         returns /= T
         return returns
 
-    def predict_traj_rewards(self, x: BTD, deterministic: bool = True) -> BT:
-        return self.pw_encoder(x, deterministic=deterministic)
+    def predict_traj_rewards(self, x: BTD, train: bool = False) -> BT:
+        return self.pw_encoder(x, train=train)
 
     # * For last layer Bayesian methods: last layer must be named "last_layer"
     @staticmethod

@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from functools import partial
 from typing import Callable, Dict, Tuple
 
 import jax
@@ -7,9 +6,7 @@ import jax.numpy as jnp
 import jax.random as jr
 import optax
 from flax.training.train_state import TrainState
-from jax import jit, value_and_grad
 from jax.flatten_util import ravel_pytree
-from jax.lax import scan
 from jaxtyping import Array, Float, Int
 
 from bnn_pref.data.data_env import BatchIndexManager, PreferenceEnv, retrieve
@@ -51,23 +48,8 @@ class DropoutTrainState(TrainState):
     dropout_key: jax.Array
 
 
-def sub2full_params_flat(
-    params_subspace: Float[Array, "sub_dim"],
-    proj_matrix: Float[Array, "sub_dim full_dim"],
-    params_full: Float[Array, "full_dim"],
-) -> Float[Array, "full_dim"]:
-    params = params_subspace @ proj_matrix + params_full
-    return params
-
-
-def generate_random_basis(key, d: int, D: int):
-    """
-    return projection matrix P: fixed but random Gaussian matrix
-    with columns normalized to 1,
-    """
-    P = jr.normal(key, shape=(d, D))
-    P = P / jnp.linalg.norm(P, axis=-1, keepdims=True)
-    return P
+class BatchNormTrainState(TrainState):
+    batch_stats: jax.Array
 
 
 def bt_loss_fn(params, logits_B2, labels_B2, l2_reg: float = 0.0):
@@ -113,7 +95,6 @@ def run_sgd(
     dataset: QueryData,
     *,
     loss_fn: Callable,
-    has_aux: bool,
     niters: int,
     batch_size: int = -1,
     l2_reg: float = 0.0,
@@ -121,6 +102,7 @@ def run_sgd(
     n_models: int = 1,
     split_datastream: bool = False,
     use_dropout: bool = False,
+    use_batch_norm: bool = False,
     use_vmap: bool = True,
 ) -> Tuple[TrainState, Dict]:
     """
@@ -134,6 +116,7 @@ def run_sgd(
     - same datastream for all models or different datastreams for each model
 
     """
+    # todo: currently, only none-dropout models support batch norm
     if not use_dropout:
 
         def train_step(ts: TrainState, batch: QueryData) -> Tuple[TrainState, Dict]:
@@ -141,13 +124,24 @@ def run_sgd(
             contexts_B2TD, labels_B2 = batch.contexts, batch.labels
 
             def parameterized_loss(params):
-                logits_B2 = ts.apply_fn({"params": params}, contexts_B2TD)
-                return loss_fn(params, logits_B2, labels_B2, l2_reg)
+                if use_batch_norm:
+                    logits_B2, updates = ts.apply_fn(
+                        {"params": params, "batch_stats": ts.batch_stats},
+                        contexts_B2TD,
+                        train=True,
+                        mutable=["batch_stats"],
+                    )
+                else:
+                    logits_B2 = ts.apply_fn({"params": params}, contexts_B2TD)
+                    updates = None
+                loss, _ = loss_fn(params, logits_B2, labels_B2, l2_reg)
+                return loss, updates
 
-            grad_fn = jax.value_and_grad(parameterized_loss, has_aux=has_aux)
-            val, grads = grad_fn(ts.params)
-            loss = val[0] if has_aux else val
+            grad_fn = jax.value_and_grad(parameterized_loss, has_aux=True)
+            (loss, updates), grads = grad_fn(ts.params)
             ts = ts.apply_gradients(grads=grads)
+            if use_batch_norm:
+                ts = ts.replace(batch_stats=updates["batch_stats"])
             flat_params, _ = (
                 ravel_pytree(ts.params) if get_param_trace else (None, None)
             )
@@ -166,14 +160,15 @@ def run_sgd(
                 logits_B2 = ts.apply_fn(
                     {"params": params},
                     contexts_B2TD,
-                    deterministic=False,
+                    train=True,
                     rngs={"dropout": key_dropout},
                 )
-                return loss_fn(params, logits_B2, labels_B2, l2_reg)
 
-            grad_fn = jax.value_and_grad(parameterized_loss, has_aux=has_aux)
-            val, grads = grad_fn(ts.params)
-            loss = val[0] if has_aux else val
+                loss, _ = loss_fn(params, logits_B2, labels_B2, l2_reg)
+                return loss, None
+
+            grad_fn = jax.value_and_grad(parameterized_loss, has_aux=True)
+            (loss, _), grads = grad_fn(ts.params)
             ts = ts.apply_gradients(grads=grads)
             ts = ts.replace(dropout_key=key)
             flat_params, _ = (

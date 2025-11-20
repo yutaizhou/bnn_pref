@@ -81,13 +81,18 @@ class EnsembleAgent(Agent):
         )
 
         # * prepare ensemble predictors
-        def pred_return(ts: TrainState, x: Float[Array, "T D"]) -> Float[Array, " "]:
-            x = rearrange(x, "T D -> 1 T D")
+        def pred_return(
+            ts: TrainState,
+            x: Float[Array, "T D"],
+            train: bool = False,
+        ) -> Float[Array, " "]:
+            x = jnp.expand_dims(x, axis=0)
             params = {"params": ts.params}
             ret = self.model.apply(
                 params,
                 x,
                 method=self.model.predict_traj_return,
+                train=train,
             ).squeeze(0)
             return ret
 
@@ -140,7 +145,6 @@ class EnsembleAgent(Agent):
             ts,
             dataset=warmup_data,
             loss_fn=bt_loss_fn,
-            has_aux=True,
             niters=niters,
             batch_size=self.batch_size,
             l2_reg=self.l2_reg,
@@ -181,7 +185,6 @@ class EnsembleAgent(Agent):
             bel.ts,
             dataset=ds,
             loss_fn=bt_loss_fn,
-            has_aux=True,
             niters=niters,
             batch_size=self.batch_size,
             l2_reg=self.l2_reg,
@@ -242,7 +245,7 @@ class EnsembleAgent(Agent):
 
         # * precompute logits for all items
         def scan_ts(_, ts_single):
-            fn = partial(self.pred_return, ts_single)
+            fn = partial(self.pred_return, ts_single, train=False)
             ret_N = jax.lax.map(fn, env.items_NTD, batch_size=self.chunk_size)
             return _, ret_N
 
@@ -281,7 +284,7 @@ class EnsembleAgent(Agent):
 
         # * precompute logits for all items, assume ts lead dimension is M
         def scan_ts(_, ts_single):
-            fn = partial(self.pred_return, ts_single)
+            fn = partial(self.pred_return, ts_single, train=False)
             ret_N = jax.lax.map(fn, items_NTD, batch_size=self.chunk_size)
             return _, ret_N
 

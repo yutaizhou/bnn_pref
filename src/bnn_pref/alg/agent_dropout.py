@@ -39,7 +39,7 @@ def init_model(
     """create trainstate for a single model"""
     dummy_input = jnp.ones((1, 2, *traj_shape))
     key, param_key, dropout_key = jr.split(key, 3)
-    params = model.init(param_key, dummy_input, deterministic=True)["params"]
+    params = model.init(param_key, dummy_input, train=False)["params"]
     ts = DropoutTrainState.create(
         apply_fn=model.apply, params=params, tx=tx, dropout_key=dropout_key
     )
@@ -86,7 +86,7 @@ class DropoutAgent(Agent):
             key,
             ts: DropoutTrainState,
             x: Float[Array, "T D"],
-            deterministic: bool,
+            train: bool = False,
         ) -> Scalar:
             x = rearrange(x, "T D -> 1 T D")
             params = {"params": ts.params}
@@ -94,7 +94,7 @@ class DropoutAgent(Agent):
                 params,
                 x,
                 method=self.model.predict_traj_return,
-                deterministic=deterministic,
+                train=train,
                 rngs={"dropout": key},
             ).squeeze(0)
             return ret
@@ -142,7 +142,6 @@ class DropoutAgent(Agent):
             ts,
             dataset=warmup_data,
             loss_fn=bt_loss_fn,
-            has_aux=True,
             niters=niters,
             batch_size=self.batch_size,
             l2_reg=self.l2_reg,
@@ -182,7 +181,6 @@ class DropoutAgent(Agent):
             bel.ts,
             dataset=ds,
             loss_fn=bt_loss_fn,
-            has_aux=True,
             niters=niters,
             batch_size=self.batch_size,
             l2_reg=self.l2_reg,
@@ -213,7 +211,7 @@ class DropoutAgent(Agent):
                 logits_B2 = ts.apply_fn(
                     {"params": params},
                     contexts_B2TD,
-                    deterministic=False,
+                    train=True,
                     rngs={"dropout": key_dropout},
                 )
                 return bt_loss_fn(params, logits_B2, labels_B2, self.l2_reg)
@@ -245,7 +243,7 @@ class DropoutAgent(Agent):
 
         # * precompute logits for all items
         def scan_ts(_, key):
-            fn = partial(self.pred_return, key, bel.ts, deterministic=False)
+            fn = partial(self.pred_return, key, bel.ts, train=True)
             ret_N = jax.lax.map(fn, env.items_NTD, batch_size=self.chunk_size)
             return _, ret_N
 
@@ -285,7 +283,7 @@ class DropoutAgent(Agent):
 
         # * precompute logits for all items, assume ts lead dimension is M
         def scan_ts(_, key):
-            fn = partial(self.pred_return, key, bel.ts, deterministic=False)
+            fn = partial(self.pred_return, key, bel.ts, train=True)
             ret_N = jax.lax.map(fn, items_NTD, batch_size=self.chunk_size)
             return _, ret_N
 

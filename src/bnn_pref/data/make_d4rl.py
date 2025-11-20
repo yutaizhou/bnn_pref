@@ -50,15 +50,17 @@ def make_d4rl_data(key, cfg) -> ArrayDict:
     """
     task_cfg = cfg["task"]
     data_cfg = cfg["data"]
+
+    ds_type = task_cfg["ds_type"]
     demo_train_frac = data_cfg["demo_train_frac"]
     nq_train, nq_test = data_cfg["nq_train"], data_cfg["nq_test"]
-    sz = data_cfg["segment_size"]
-    ns_train, ns_test = (data_cfg["n_segments_train"], data_cfg["n_segments_test"])
-    ds_type = task_cfg["ds_type"]
 
     # todo: come on this is so hacky and you know it
     if ds_type == "vd4rl":
-        data_cfg["segment_size"] = 25
+        data_cfg["segment_size"] = 5
+
+    sz = data_cfg["segment_size"]
+    ns_train, ns_test = data_cfg["n_segments_train"], data_cfg["n_segments_test"]
 
     # * d4rl transitions -> trajs, pad to max length w/ masks, filter out short traj length
     if ds_type == "d4rl":
@@ -66,7 +68,7 @@ def make_d4rl_data(key, cfg) -> ArrayDict:
         trajs = process_d4rl_data(ds, min_traj_len=data_cfg["min_traj_len"])
     elif ds_type == "vd4rl":
         ds_dir = task_cfg["dataset_dir"]
-        trajs = process_vd4rl_data(Path(ds_dir))
+        trajs = process_vd4rl_data(Path(ds_dir), min_traj_len=data_cfg["min_traj_len"])
     else:
         raise ValueError(f"Unknown dataset type: {ds_type}")
 

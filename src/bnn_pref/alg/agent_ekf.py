@@ -15,14 +15,14 @@ from jaxtyping import Array, Float, Int
 
 from bnn_pref.alg.agent_utils import (
     Agent,
+    BatchNormTrainState,
     bt_loss_fn,
     compute_disagreement,
     compute_info_gain,
-    generate_random_basis,
     run_sgd,
-    sub2full_params_flat,
 )
 from bnn_pref.alg.pca_jax import JaxPCA
+from bnn_pref.alg.projection_matrix import generate_random_basis, sub2full_params_flat
 from bnn_pref.data.data_env import PreferenceEnv
 from bnn_pref.utils.network import count_params
 from bnn_pref.utils.type import QueryData, unpackable_dataclass
@@ -41,7 +41,7 @@ class EKFBeliefState:
     cov: Float[Array, "system_dim system_dim"]
     t: int
     proj_matrix: Float[Array, "sub_dim full_dim"]
-    offset_ts: TrainState
+    offset_ts: Union[TrainState, BatchNormTrainState]
 
 
 class EKFAgent(Agent):
@@ -58,6 +58,8 @@ class EKFAgent(Agent):
         thinning: int = 2,
         sub_dim: Union[float, int] = 200,
         rnd_proj: bool = False,
+        proj_type: str = "dense",
+        sparsity: float = 0.001,
         prior_noise: float = 0.0001,
         dynamics_noise: float = 0.0,
         obs_noise: float = 1.0,
@@ -68,6 +70,8 @@ class EKFAgent(Agent):
         use_vmap: bool = True,
     ):
         self.model = model
+        self.traj_shape = traj_shape  # (T, D) or (T, H, W, C)
+        self.is_pixel = True if len(traj_shape) == 4 else False
         self.opt = optax.sgd(learning_rate, momentum)
         self.l2_reg = l2_reg
         self.niters_init = niters_init
@@ -76,12 +80,14 @@ class EKFAgent(Agent):
         self.thinning = thinning
         self.sub_dim = sub_dim
         self.rnd_proj = rnd_proj
+        self.proj_type = proj_type
+        self.sparsity = sparsity
         self.prior_noise = prior_noise
         self.dynamics_noise = dynamics_noise
         self.obs_noise = obs_noise
         self.iekf = iekf
         self.n_models = n_models
-        self.n_feats = None
+        # self.n_feats = None
         self.chunk_size = chunk_size
         self.use_vmap = use_vmap
 
@@ -109,6 +115,8 @@ class EKFAgent(Agent):
             "thinning": alg_cfg["thinning"],
             "sub_dim": alg_cfg["sub_dim"],
             "rnd_proj": alg_cfg["rnd_proj"],
+            "proj_type": alg_cfg["proj_type"],
+            "sparsity": alg_cfg["sparsity"],
             # subspace inference
             "prior_noise": alg_cfg["prior_noise"],
             "dynamics_noise": alg_cfg["dynamics_noise"],
@@ -133,47 +141,61 @@ class EKFAgent(Agent):
         contexts: Q2TD
         labels: Q2 (onehot)
         """
-        contexts = warmup_data.contexts  # (Q,2,T,D)
-        self.n_feats = contexts.shape[-1]  # D
+        self.subspace_param_count = self.sub_dim
         key, model_key = jr.split(key, 2)
-        dummy_context = rearrange(jnp.ones_like(contexts[0]), "K T D  -> 1 K T D", K=2)
-        initial_params = self.model.init(model_key, dummy_context)["params"]
-        # print(nn.tabulate(self.model, model_key)(dummy_context))
-        # initial_param_count = count_params(initial_params)
-        # print(f"Initial param count: {initial_param_count:,}")
+        dummy_input = jnp.ones((1, 2, *self.traj_shape))
+        if not self.is_pixel:
+            params = self.model.init(model_key, dummy_input)["params"]
+            ts = TrainState.create(
+                apply_fn=self.model.apply,
+                params=params,
+                tx=self.opt,
+            )
+        else:
+            variables = self.model.init(
+                model_key,
+                dummy_input,
+            )
+            params = variables["params"]
+            batch_stats = variables["batch_stats"]
 
-        ts = TrainState.create(
-            apply_fn=self.model.apply, params=initial_params, tx=self.opt
-        )
+            ts = BatchNormTrainState.create(
+                apply_fn=self.model.apply,
+                params=params,
+                tx=self.opt,
+                batch_stats=batch_stats,
+            )
 
+        self.param_count = count_params(params)
         key, key_sgd = jr.split(key, 2)
         warm_ts, warm_metrics = run_sgd(
             key_sgd,
             ts,
             dataset=warmup_data,
             loss_fn=bt_loss_fn,
-            has_aux=True,
             niters=self.niters_init,
             batch_size=self.batch_size,
             l2_reg=self.l2_reg,
-            get_param_trace=True,
+            get_param_trace=not self.rnd_proj,
             n_models=1,
             split_datastream=False,
             use_dropout=False,
+            use_batch_norm=self.is_pixel,  # only image experiments using BN
             use_vmap=self.use_vmap,
         )
-
-        # (niters_init, full_dim)
-        params_trace = warm_metrics["params"][self.warm_burns :: self.thinning]
+        self.batch_stats = warm_ts.batch_stats if self.is_pixel else None
 
         if self.rnd_proj:
             assert isinstance(self.sub_dim, int)
-            full_dim = params_trace.shape[-1]
+            full_dim = self.param_count
             sub_dim = self.sub_dim
             key, proj_key = jr.split(key, 2)
-            proj_matrix = generate_random_basis(proj_key, sub_dim, full_dim)
+            proj_matrix = generate_random_basis(
+                proj_key, sub_dim, full_dim, self.proj_type, self.sparsity
+            )
         else:
-            # pca = PCA(n_components=self.sub_dim)
+            # (niters_init, full_dim)
+            params_trace = warm_metrics["params"][self.warm_burns :: self.thinning]
             pca = JaxPCA(n_components=self.sub_dim)
             pca.fit(params_trace)
             sub_dim = pca.n_components_
@@ -182,10 +204,7 @@ class EKFAgent(Agent):
             self.sub_dim = pca.n_components_
             proj_matrix = pca.components_  # (sub_dim, full_dim)
 
-        self.param_count = count_params(initial_params)
-        self.subspace_param_count = sub_dim
-
-        params_offset, params_unravel_fn = ravel_pytree(warm_ts.params)
+        params_offset, params_unraveler = ravel_pytree(warm_ts.params)
         self.warmed_params = warm_ts.params
 
         # these two are used for projection matrix "efficient" version
@@ -194,42 +213,51 @@ class EKFAgent(Agent):
             ss_param_flat: flattened vector of subspace params (sub_dim,)
             returns: unflatten pytree of fullspace params
             """
-            param_flat = sub2full_params_flat(ss_param_flat, proj_matrix, params_offset)
-            return params_unravel_fn(param_flat)
+            param_flat = sub2full_params_flat(
+                ss_param_flat,
+                proj_matrix,
+                params_offset,
+                type=self.proj_type,
+            )
+            return params_unraveler(param_flat)
 
         def pred_return(
             param: Dict,
-            items_TD: Float[Array, "T D"],
+            input: Union[Float[Array, "T D"], Float[Array, "T H W C"]],
         ) -> Float[Array, " "]:
-            inputs = rearrange(items_TD, "T D -> 1 T D")
+            inputs = jnp.expand_dims(input, axis=0)
+            variables = {"params": param}
+            if self.is_pixel:
+                variables["batch_stats"] = self.batch_stats
             outputs = self.model.apply(
-                {"params": param},
+                variables,
                 inputs,
                 method=self.model.predict_traj_return,
+                train=False,
+                mutable=False,
             ).squeeze(0)
             return outputs
 
         self.sub2full_params = sub2full_params
         self.pred_return = pred_return
 
-        def emission_fn(
-            ss_param_flat,
-            inputs: Float[Array, "2 T D"],
-        ) -> Float[Array, "2"]:
+        def emission_fn(ss_param_flat, input) -> Float[Array, "2"]:
             """
-            emission model where
-                inputs: (2 * T * D,) query features -> (2,) traj rewards as logits
-                predicted measurement: (2,) # probabilities of traj 2 > traj 1
-                gt measurement: (2,) # one hot labels
-
-            params: (sub_dim,)
-            inputs: (2 * T * D,)
+            ss_param_flat: (sub_dim,)
+            input: (2 * T * D,) or (2 * T * H * W * C)
             """
             params = sub2full_params(ss_param_flat)
-            inputs = rearrange(inputs, "(K T D) -> 1 K T D", K=2, D=self.n_feats)
-            logits = self.model.apply({"params": params}, inputs)  # (1,2,T,D) -> (1,2)
-            logits = rearrange(logits, "1 K -> K", K=2)
-            probs_2 = jnp.exp(jax.nn.log_softmax(logits))
+            input = jnp.reshape(input, (1, 2, *self.traj_shape))
+            variables = {"params": params}
+            if self.is_pixel:
+                variables["batch_stats"] = self.batch_stats
+            logits = self.model.apply(
+                variables,
+                input,
+                train=False,
+                mutable=False,
+            )  # (1, 2)
+            probs_2 = jnp.exp(jax.nn.log_softmax(logits.squeeze(0)))
             return probs_2
 
         init_mean = jnp.zeros(sub_dim)
@@ -264,8 +292,8 @@ class EKFAgent(Agent):
         prior_mean, prior_cov, t = bel.mean, bel.cov, bel.t
         context, label = batch.contexts, batch.labels
 
-        inputs = rearrange(context, "1 K T D -> 1 (K T D)", K=2)
-        emissions = rearrange(label, "1 K -> 1 K", K=2)
+        inputs = jnp.reshape(context, (1, -1))  # (1, 2*T*D) or (1, 2*T*H*W*C)
+        emissions = label  # (1,2)
 
         self.ekf_params = self.ekf_params._replace(
             initial_mean=prior_mean,

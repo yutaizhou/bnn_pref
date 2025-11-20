@@ -18,7 +18,7 @@ from bnn_pref.alg.mcmc import build_hmc, build_mh, plot_samples, plot_trace, run
 from bnn_pref.data import make_synthetic_data
 from bnn_pref.data.pref_utils import BradleyTerry
 from bnn_pref.utils.hydra_resolvers import *
-from bnn_pref.utils.metrics import MeanStd, alignment_metric, compute_accuracy2_mcmc
+from bnn_pref.utils.metrics import MeanStd, compute_accuracy2_mcmc, compute_alignment
 from bnn_pref.utils.test_functions import test_functions_dict
 from bnn_pref.utils.utils import get_random_seed
 
@@ -51,7 +51,7 @@ def run_experiment(key, cfg):
     )
 
     test_accs = compute_accuracy2_mcmc(samples_SD, test_prefs, learned_reward_fn)
-    aligns = alignment_metric(true_param_D, samples_SD)
+    aligns = compute_alignment(true_param_D, samples_SD)
     sample_D = samples_SD.mean(axis=0)
     sample_D /= jnpl.norm(sample_D)
     test_logpdf = dist.logpdf(sample_D, test_prefs, learned_reward_fn).mean()

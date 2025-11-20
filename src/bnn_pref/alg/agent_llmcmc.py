@@ -43,7 +43,7 @@ def init_model(
     """create trainstate for a single model"""
     dummy_input = jnp.ones((1, 2, *traj_shape))
     key, param_key = jr.split(key, 2)
-    params = model.init(param_key, dummy_input, deterministic=True)["params"]
+    params = model.init(param_key, dummy_input, train=False)["params"]
     ts = TrainState.create(apply_fn=model.apply, params=params, tx=tx)
     return ts
 
@@ -78,7 +78,7 @@ def mcmc_belief_update(
     ):
         x, y = data.contexts, data.labels  # (B, 2, T, D), (B, 2)
         params = model.recombine_params(llayer_flat, fixed_params, llayer_unraveler)
-        logits = model.apply(params, x, deterministic=True)  # (B, 2)
+        logits = model.apply(params, x, train=False)  # (B, 2)
         y = jnp.argmax(y, axis=1)  # (B,), y can't be 1-hot for distrax
 
         logprior = dtx.Normal(0.0, 1.0).log_prob(llayer_flat).sum()
@@ -164,14 +164,14 @@ class LMCMCAgent(Agent):
         def pred_return(
             params: Dict,  # {"params": actual_params}
             x: Float[Array, "T D"],
-            deterministic: bool = True,
+            train: bool = False,
         ) -> Scalar:
             x = rearrange(x, "T D -> 1 T D")
             ret = self.model.apply(
                 params,
                 x,
                 method=self.model.predict_traj_return,
-                deterministic=deterministic,
+                train=train,
             ).squeeze(0)
             return ret
 
@@ -223,7 +223,6 @@ class LMCMCAgent(Agent):
             ts,
             dataset=warmup_data,
             loss_fn=bt_loss_fn,
-            has_aux=True,
             niters=niters,
             batch_size=self.batch_size,
             l2_reg=self.l2_reg,
@@ -290,7 +289,7 @@ class LMCMCAgent(Agent):
             param = self.model.recombine_params(
                 llparam, self.fixed_params, self.last_params_unraveler
             )  # {"params": actual_params}
-            fn = partial(self.pred_return, param)
+            fn = partial(self.pred_return, param, train=False)
             ret_N = jax.lax.map(fn, env.items_NTD, batch_size=self.chunk_size)
             return _, ret_N
 
@@ -333,7 +332,7 @@ class LMCMCAgent(Agent):
             param = self.model.recombine_params(
                 llparam, self.fixed_params, self.last_params_unraveler
             )  # {"params": actual_params}
-            fn = partial(self.pred_return, param)
+            fn = partial(self.pred_return, param, train=False)
             ret_N = jax.lax.map(fn, items_NTD, batch_size=self.chunk_size)
             return _, ret_N
 

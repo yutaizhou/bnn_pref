@@ -28,10 +28,8 @@ class QueryData(NamedTuple):
         return self.contexts.shape[0]
 
     def add_leading_batch_dim(self):
-        return QueryData(
-            contexts=rearrange(self.contexts, "K T D -> 1 K T D", K=2),
-            labels=rearrange(self.labels, "K -> 1 K", K=2),
-        )
+        "(2 T D) -> (1 2 T D); (2) -> (1 2)"
+        return QueryData(contexts=self.contexts[None], labels=self.labels[None])
 
 
 # demonstrations

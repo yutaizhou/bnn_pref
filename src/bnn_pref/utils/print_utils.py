@@ -57,6 +57,7 @@ def get_run_cfg_msg(seed, cfg):
         f"  M={ekf_cfg['M']}, use_vmap={ekf_cfg['use_vmap']}\n"
         f"  prior / dynamics / obs noise: {ekf_cfg['prior_noise']} / {ekf_cfg['dynamics_noise']} / {ekf_cfg['obs_noise']}\n"
         f"  init: bs={ekf_cfg['bs']}, niters={ekf_cfg['niters_init']}[{ekf_cfg['warm_burns']}::{ekf_cfg['thinning']}] ({n_eff_iterates} eff), sub_dim={ekf_cfg['sub_dim']}, rnd_proj={ekf_cfg['rnd_proj']}\n"
+        f"  proj_type={ekf_cfg['proj_type']}, sparsity={ekf_cfg['sparsity']}\n"
         f"Ensemble:\n"
         f"  M={sgd_cfg['M']}, use_vmap={sgd_cfg['use_vmap']}\n"
         f"  init: bs={sgd_cfg['bs']}, niters={sgd_cfg['niters_init']}\n"

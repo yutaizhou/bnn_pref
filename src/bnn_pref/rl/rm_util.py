@@ -23,7 +23,7 @@ from omegaconf import OmegaConf
 from bnn_pref.alg.agent_dropout import init_model as init_model_dropout
 from bnn_pref.alg.agent_ekf import EKFBeliefState
 from bnn_pref.alg.agent_ensemble import init_model as init_model_ensemble
-from bnn_pref.alg.agent_utils import sub2full_params_flat
+from bnn_pref.alg.projection_matrix import sub2full_params_flat
 from bnn_pref.utils.network import RewardNet, count_params
 
 
@@ -126,7 +126,7 @@ def load_reward_model(
                 {"params": ts.params},
                 obs,
                 method=model.predict_traj_rewards,
-                deterministic=False,
+                train=True,
                 rngs={"dropout": key},
             )
             out_MT = jax.vmap(apply_fn, in_axes=(0, None))(jnp.array(key_dropout), obs)
@@ -169,9 +169,12 @@ def load_reward_model(
             seed=key_sample, sample_shape=(ekf_cfg["M"],)
         )  # (M, subdim)
         params_offset_flat, unravel_fn = ravel_pytree(ts.params)
-        params_flat = jax.vmap(sub2full_params_flat, in_axes=(0, None, None))(
-            ss_params, bel.proj_matrix, params_offset_flat
-        )  # (M, full_dim)
+        # projection type option was added later on
+        proj_type = ekf_cfg.get("proj_type", "dense")
+        params_flat = jax.vmap(
+            partial(sub2full_params_flat, type=proj_type),
+            in_axes=(0, None, None),
+        )(ss_params, bel.proj_matrix, params_offset_flat)  # (M, full_dim)
         params = jax.vmap(unravel_fn)(params_flat)
         params = {"params": params}
 

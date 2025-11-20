@@ -26,6 +26,9 @@ warm_burns: 20
 thinning: 2
 sub_dim: 200
 rnd_proj: False # True will use random projection instead of SVD for subspace construction
+# the following kwargs are for random projection
+proj_type: dense # dense, sparse
+sparsity: 0.001
 
 # * Subspace Inference w/ EKF
 # stronger posterior update: inc prior_noise, dec obs_noise

@@ -47,7 +47,7 @@ def init_model(
     """create trainstate for a single model"""
     dummy_input = jnp.ones((1, 2, *traj_shape))
     key, param_key = jr.split(key, 2)
-    params = model.init(param_key, dummy_input, deterministic=True)["params"]
+    params = model.init(param_key, dummy_input, train=False)["params"]
     ts = TrainState.create(apply_fn=model.apply, params=params, tx=tx)
     return ts
 
@@ -94,7 +94,7 @@ def laplace_belief_update(
         logits = model_def.apply(
             params,
             input,
-            deterministic=True,
+            train=False,
         )  # (1, 2)
         logits = logits.squeeze(0)
         return logits  # (2,)
@@ -190,14 +190,14 @@ class LaplaceAgent(Agent):
         def pred_return(
             params: Dict,  # {"params": actual_params}
             x: Float[Array, "T D"],
-            deterministic: bool = True,
+            train: bool = False,
         ) -> Scalar:
-            x = rearrange(x, "T D -> 1 T D")
+            x = jnp.expand_dims(x, axis=0)
             ret = self.model.apply(
                 params,
                 x,
                 method=self.model.predict_traj_return,
-                deterministic=deterministic,
+                train=train,
             ).squeeze(0)
             return ret
 
@@ -243,7 +243,6 @@ class LaplaceAgent(Agent):
             ts,
             dataset=warmup_data,
             loss_fn=bt_loss_fn,
-            has_aux=True,
             niters=niters,
             batch_size=self.batch_size,
             l2_reg=self.l2_reg,
@@ -278,7 +277,6 @@ class LaplaceAgent(Agent):
             bel.ts,
             dataset=ds,
             loss_fn=bt_loss_fn,
-            has_aux=True,
             niters=niters,
             batch_size=self.batch_size,
             l2_reg=self.l2_reg,
@@ -316,7 +314,7 @@ class LaplaceAgent(Agent):
 
         # * precompute logits for all items
         def scan_ts(_, particle: Dict):
-            fn = partial(self.pred_return, particle)
+            fn = partial(self.pred_return, particle, train=False)
             ret_N = jax.lax.map(fn, env.items_NTD, batch_size=self.chunk_size)
             return _, ret_N
 
@@ -356,7 +354,7 @@ class LaplaceAgent(Agent):
 
         # * precompute logits for all items
         def scan_ts(_, particle: Dict):
-            fn = partial(self.pred_return, particle)
+            fn = partial(self.pred_return, particle, train=False)
             ret_N = jax.lax.map(fn, items_NTD, batch_size=self.chunk_size)
             return _, ret_N
 
