@@ -214,9 +214,9 @@ class EKFAgent(Agent):
             returns: unflatten pytree of fullspace params
             """
             param_flat = sub2full_params_flat(
-                ss_param_flat,
-                proj_matrix,
-                params_offset,
+                params_subspace=ss_param_flat,
+                proj_matrix=proj_matrix,
+                params_full=params_offset,
                 type=self.proj_type,
             )
             return params_unraveler(param_flat)
@@ -301,8 +301,8 @@ class EKFAgent(Agent):
         )
         posterior = extended_kalman_filter(
             self.ekf_params,
-            emissions=emissions,
             inputs=inputs,
+            emissions=emissions,
             num_iter=self.iekf,
         )
 

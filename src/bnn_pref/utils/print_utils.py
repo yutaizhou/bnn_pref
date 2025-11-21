@@ -47,7 +47,7 @@ def get_run_cfg_msg(seed, cfg):
         f"Run:\n"
         f"  Seed: {seed} x {cfg['seeds']} (seed_vmap={cfg['seed_vmap']})\n"
         f"  Sanity: {cfg['sanity']} ({cfg['sanity_frac']} real frac)\n"
-        f"  Network: {cfg['network']['hidden_sizes']}\n"
+        f"  Network: MLP={cfg['network']['hidden_sizes']}, encoder={cfg['network']['encoder']}\n"
         f"Data:\n"
         f"  prune: {data_cfg['n_bins']} bins, {data_cfg['max_count_per_bin']} max_count_per_bin, {data_cfg['tokeep']} tokeep\n"
         f"  noisy_label: {data_cfg['noisy_label']} (beta={data_cfg['bt_beta']})\n"
