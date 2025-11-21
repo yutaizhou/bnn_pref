@@ -96,11 +96,11 @@ class EKFAgent(Agent):
         self.chunk_size = chunk_size
         self.use_vmap = use_vmap
 
-        #! only use this for subdim sweep
-        n_eff_iterates = (niters_init - warm_burns) // thinning
-        # assert n_eff_iterates >= sub_dim, f"{n_eff_iterates=} < {sub_dim=}"
-        if n_eff_iterates < sub_dim:
-            self.niters_init = sub_dim * thinning + warm_burns
+        if not rnd_proj:
+            # SVD-based subspace construction requires niters_init to be at least this much:
+            n_eff_iterates = (niters_init - warm_burns) // thinning
+            if n_eff_iterates < sub_dim:
+                self.niters_init = sub_dim * thinning + warm_burns
 
         assert acq in ["infogain", "disagreement"]
         self.acq = acq
@@ -258,13 +258,13 @@ class EKFAgent(Agent):
         self.sub2full_params = sub2full_params
         self.pred_return = pred_return
 
-        def emission_fn_state(
-            ss_param_flat: ParamsFlat,
-            input: Float[Array, "2 * T * D"],
-        ) -> Float[Array, "2"]:
+        def emission_fn_state(ss_param_flat: ParamsFlat, input):
             """
-            ss_param_flat: (sub_dim,)
-            input: (2 * T * D,)
+            Inputs:
+                ss_param_flat: (sub_dim,)
+                input: (2 * T * D,)
+            Outputs:
+                probs_2: (2,)
             """
             input = jnp.reshape(input, (1, 2, *self.traj_shape))
             params = sub2full_params(ss_param_flat)
@@ -278,10 +278,7 @@ class EKFAgent(Agent):
             probs_2 = jnp.exp(jax.nn.log_softmax(logits.squeeze(0)))
             return probs_2
 
-        def emission_fn_pixel(
-            ss_param_flat: ParamsFlat,
-            input: Float[Array, "2 * embed_dim"],
-        ) -> Float[Array, "2"]:
+        def emission_fn_pixel(ss_param_flat: ParamsFlat, input):
             """
             Inputs:
                 ss_param_flat: (sub_dim,)
