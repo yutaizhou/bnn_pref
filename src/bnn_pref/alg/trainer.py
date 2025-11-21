@@ -45,6 +45,7 @@ def run_alg(key, alg_name: str, cfg, data_dict, env):
         data_cfg=data_cfg,
         test_data=test_data,
         coverage_alpha=cfg["coverage_alpha"],
+        verbose=cfg["verbose"],
     )
 
     results = {
@@ -66,6 +67,7 @@ def alg_pipeline(
     data_cfg: Dict,
     test_data: Tuple[Float[Array, "N T D"], Int[Array, "Q 2"], Int[Array, "Q"]],
     coverage_alpha: float,
+    verbose: bool = False,
 ) -> Tuple[AgentState, Agent]:
     # * build pool for active learning
     nq_init, n_steps = data_cfg["nq_init"], data_cfg["nsteps"]
@@ -83,7 +85,12 @@ def alg_pipeline(
         dropout_prob=alg_cfg["dropout_prob"],
         encoder_type=alg_cfg["encoder"],
     )
-    bandit = alg_cls(model, traj_shape=traj_shape, **alg_cls.get_hydra_config(alg_cfg))
+    bandit = alg_cls(
+        model,
+        traj_shape=traj_shape,
+        **alg_cls.get_hydra_config(alg_cfg),
+        verbose=verbose,
+    )
 
     def eval_bel(key_eval, bel: AgentState):
         test_items_NTD, test_queries_Q2, test_labels_Q1 = test_data
@@ -130,7 +137,9 @@ def alg_pipeline(
         eval_results = [eval_bel(key_bel_init_eval, bel)]
 
     # * belief updates
-    for t in range(n_steps):
+    # for t in tqdm(range(n_steps), desc="Updating belief"):
+    pbar = tqdm(range(n_steps), desc="Updating belief", disable=not verbose)
+    for t in pbar:
         key = jr.fold_in(key, t)
         key_idx, key_update, key_eval = jr.split(key, 3)
 
@@ -144,6 +153,9 @@ def alg_pipeline(
         with timer.context("eval"):
             eval_result = eval_bel(key_eval, bel)
             eval_results.append(eval_result)
+
+        postfix = {"test_logpdf": eval_result["test_logpdf"]}
+        pbar.set_postfix(postfix)
 
     # * aggregate eval results and final belief
     eval_results = jax.tree.map(lambda *xs: jnp.stack(xs), *eval_results)

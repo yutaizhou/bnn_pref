@@ -166,6 +166,7 @@ class LaplaceAgent(Agent):
         use_vmap: bool = True,  # for training update_bel in {init,update}_bel
         acq: str = "disagreement",
         update_all: bool = True,
+        verbose: bool = False,
     ):
         self.traj_shape = traj_shape
         self.n_models = n_models
@@ -185,6 +186,7 @@ class LaplaceAgent(Agent):
         self.buffer: QueryBuffer = QueryBuffer.create(
             self.max_buffer_size, self.traj_shape
         )
+        self.verbose = verbose
 
         # * prepare ensemble predictors
         def pred_return(
@@ -250,6 +252,7 @@ class LaplaceAgent(Agent):
             n_models=1,
             use_dropout=False,
             use_vmap=self.use_vmap,
+            verbose=self.verbose,
         )
 
         new_particles = laplace_belief_update(

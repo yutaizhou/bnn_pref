@@ -106,6 +106,7 @@ def run_sgd(
     use_dropout: bool = False,
     use_batch_norm: bool = False,
     use_vmap: bool = True,
+    verbose: bool = False,
 ) -> Tuple[TrainState, Dict]:
     """
     Run SGD training for exactly niters steps, using for loop
@@ -205,10 +206,15 @@ def run_sgd(
         # * start training
         metrics = []
         train_step = jax.jit(train_step)
-        for _ in range(niters):
+        # for _ in range(niters):
+        pbar = tqdm(range(niters), desc="SGD steps", disable=not verbose, miniters=100)
+        for _ in pbar:
             batch = next(batch_iterator)
             ts, metric = train_step(ts, batch)
             metrics.append(metric)
+
+            postfix = {"train_loss": metric["loss"]}
+            pbar.set_postfix(postfix)
 
         if get_param_trace:
             metrics = jax.tree.map(lambda *xs: jnp.stack(xs), *metrics)

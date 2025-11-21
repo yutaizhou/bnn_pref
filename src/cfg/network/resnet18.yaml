@@ -1,5 +1,5 @@
 hidden_sizes:
   - 256
-  - 128
+  - 256
 n_splits: 1
 encoder: resnet

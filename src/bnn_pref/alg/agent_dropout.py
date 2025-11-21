@@ -62,6 +62,7 @@ class DropoutAgent(Agent):
         use_vmap: bool = True,  # for training update_bel in {init,update}_bel
         acq: str = "disagreement",
         update_all: bool = True,
+        verbose: bool = False,
     ):
         self.traj_shape = traj_shape
         self.n_models = n_models
@@ -80,6 +81,7 @@ class DropoutAgent(Agent):
         self.buffer: QueryBuffer = QueryBuffer.create(
             self.max_buffer_size, self.traj_shape
         )
+        self.verbose = verbose
 
         # * prepare ensemble predictors
         def pred_return(
@@ -149,6 +151,7 @@ class DropoutAgent(Agent):
             n_models=1,
             use_dropout=True,
             use_vmap=self.use_vmap,
+            verbose=self.verbose,
         )
 
         bel = DropoutBeliefState(ts=warm_ts, t=0)

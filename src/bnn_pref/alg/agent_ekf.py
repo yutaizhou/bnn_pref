@@ -74,6 +74,7 @@ class EKFAgent(Agent):
         n_models: int = 20,
         chunk_size: int = 64,
         use_vmap: bool = True,
+        verbose: bool = False,
     ):
         self.model: RewardNet = model
         self.traj_shape = traj_shape  # (T, D) or (T, H, W, C)
@@ -95,7 +96,7 @@ class EKFAgent(Agent):
         self.n_models = n_models
         self.chunk_size = chunk_size
         self.use_vmap = use_vmap
-
+        self.verbose = verbose
         if not rnd_proj:
             # SVD-based subspace construction requires niters_init to be at least this much:
             n_eff_iterates = (niters_init - warm_burns) // thinning
@@ -189,6 +190,7 @@ class EKFAgent(Agent):
             use_dropout=False,
             use_batch_norm=self.is_pixel,  # only image experiments using BN
             use_vmap=self.use_vmap,
+            verbose=self.verbose,
         )
         self.batch_stats = warm_ts.batch_stats if self.is_pixel else None
 

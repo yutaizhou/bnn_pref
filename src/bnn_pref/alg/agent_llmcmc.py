@@ -232,6 +232,7 @@ class LMCMCAgent(Agent):
             n_models=1,
             use_dropout=False,
             use_vmap=self.use_vmap,
+            verbose=self.verbose,
         )
         self.fixed_params = LastLayerHelpers.get_frozen_params(
             {"params": warm_ts.params}

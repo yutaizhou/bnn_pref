@@ -15,6 +15,7 @@ defaults:
 # - optional run: debug
 - hydra: default
 
+verbose: True # for tqdm in belief updates and SGD steps
 fhat: linear # only used for synthetic tasks
 M: 100 # number of models / samples for ensembling / EKF sampling
 active: False # active vs. random querying

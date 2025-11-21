@@ -374,7 +374,8 @@ xticks = ax.get_xticks()
 ax.set_xticks(xticks)
 ax.set_xticklabels([f"{int(x):d}" for x in xticks], **get_font_kw(16))
 set_xlim_offset(ax)
-ax.set_xlim(right=60.5)  # Cut off the graph at x=60
+n_queries_xlim = len(data_mean) + 0.5
+ax.set_xlim(right=n_queries_xlim)  # Cut off the graph
 
 ax.set_ylabel("Test Log-Likelihood", **get_font_kw(18))
 yticks = ax.get_yticks()
