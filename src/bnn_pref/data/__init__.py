@@ -1,8 +1,8 @@
 from .make_d4rl import make_d4rl_data
-
-# from .make_ogbench import make_ogbench_data
 from .make_prefcc import make_prefcc_data
 from .make_synthetic import make_synthetic_data
+
+# from .make_ogbench import make_ogbench_data
 
 __all__ = [
     # "make_ogbench_data",

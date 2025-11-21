@@ -87,7 +87,6 @@ class EKFAgent(Agent):
         self.obs_noise = obs_noise
         self.iekf = iekf
         self.n_models = n_models
-        # self.n_feats = None
         self.chunk_size = chunk_size
         self.use_vmap = use_vmap
 
@@ -241,10 +240,10 @@ class EKFAgent(Agent):
         self.sub2full_params = sub2full_params
         self.pred_return = pred_return
 
-        def emission_fn(ss_param_flat, input) -> Float[Array, "2"]:
+        def emission_fn_state(ss_param_flat, input) -> Float[Array, "2"]:
             """
             ss_param_flat: (sub_dim,)
-            input: (2 * T * D,) or (2 * T * H * W * C)
+            input: (2 * T * D,)
             """
             params = sub2full_params(ss_param_flat)
             input = jnp.reshape(input, (1, 2, *self.traj_shape))
@@ -260,6 +259,23 @@ class EKFAgent(Agent):
             probs_2 = jnp.exp(jax.nn.log_softmax(logits.squeeze(0)))
             return probs_2
 
+        def emission_fn_pixel(ss_param_flat, embd) -> Float[Array, "2"]:
+            """
+            ss_param_flat: (sub_dim,)
+            input: (2 * E,)
+            """
+            embd = jnp.reshape(embd, (2, -1))  # (2, E,)
+            params = self.sub2full_params(ss_param_flat)
+            variables = {"params": params, "batch_stats": self.batch_stats}
+            logits = self.model.apply(
+                variables,
+                embd,
+                train=False,
+                method=self.model.compute_return_from_agg_embeddings,
+            )  # (2, E) -> (2, 1)
+            probs_2 = jnp.exp(jax.nn.log_softmax(logits.squeeze(1)))
+            return probs_2
+
         init_mean = jnp.zeros(sub_dim)
         init_cov = jnp.eye(sub_dim) * self.prior_noise
         Q = jnp.eye(sub_dim) * self.dynamics_noise
@@ -269,7 +285,7 @@ class EKFAgent(Agent):
             initial_covariance=init_cov,
             dynamics_function=lambda z, u: z,  # constant dynamics
             dynamics_covariance=Q,
-            emission_function=emission_fn,
+            emission_function=emission_fn_pixel if self.is_pixel else emission_fn_state,
             emission_covariance=R,
         )
 
@@ -292,8 +308,18 @@ class EKFAgent(Agent):
         prior_mean, prior_cov, t = bel.mean, bel.cov, bel.t
         context, label = batch.contexts, batch.labels
 
-        inputs = jnp.reshape(context, (1, -1))  # (1, 2*T*D) or (1, 2*T*H*W*C)
         emissions = label  # (1,2)
+        if not self.is_pixel:
+            inputs = jnp.reshape(context, (1, -1))  # (1, 2*T*D) or (1, 2*T*H*W*C)
+        else:
+            inputs = self.model.apply(
+                {"params": bel.offset_ts.params, "batch_stats": self.batch_stats},
+                jnp.reshape(context, (2, *self.traj_shape)),  # (2, T, H, W, C),
+                train=False,
+                method=self.model.compute_embeddings,
+                agg=True,
+            )  # (2, T, H, W, C) -> (2, E)
+            inputs = jnp.reshape(inputs, (1, -1))  # (2 * E,)
 
         self.ekf_params = self.ekf_params._replace(
             initial_mean=prior_mean,

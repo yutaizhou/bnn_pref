@@ -1,4 +1,4 @@
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, List, Union
 
 import flax.linen as nn
 import ipdb
@@ -102,7 +102,7 @@ class PositionWiseMLP(nn.Module):
         self.mlp = MLP(hidden_sizes=self.hidden_sizes, dropout_prob=self.dropout_prob)
 
     def compute_pw_mlp(self, x, train: bool = False):
-        """(B, T, dim) -> (B, T)"""
+        """(B, T, dim) -> (B, T, 1)"""
         return self.mlp(x, train=train)
 
     def compute_embeddings(self, x, train: bool = False):
@@ -183,12 +183,13 @@ class RewardNet(nn.Module):
 
     def compute_return_from_agg_embeddings(self, x, train: bool = False):
         """
-        (B, E) -> (B,)
+        (B, E) -> (B, 1)
         meant to be used after compute_embeddings(..., agg=True)
         """
-        x = jnp.expand_dims(x, axis=1)  # (B, 1, E)
-        x = self.pw_encoder.compute_pw_mlp(x, train=train)  # (B, 1)
-        return x.squeeze(1)  # (B,)
+        x = jnp.expand_dims(x, axis=1)  # (B, E) -> (B, 1, E)
+        x = self.pw_encoder.compute_pw_mlp(x, train=train)  # (B, 1, 1)
+        x = jnp.squeeze(x, axis=1)  # (B, 1, 1) -> (B, 1)
+        return x  # (B, 1)
 
     # * For last layer Bayesian methods: last layer must be named "last_layer"
     @staticmethod
@@ -251,7 +252,7 @@ if __name__ == "__main__":
     )
     input = jnp.ones((1, 2, T, D))
     params = model_def.init(key, input)["params"]
-    print(model_def.tabulate(key, input))
+    # print(model_def.tabulate(key, input))
 
     # * ResNet based RewardNet
     model_def = RewardNet(
@@ -269,7 +270,6 @@ if __name__ == "__main__":
     print("========== RewardNet output ==========")
     print(f"{input.shape=}")
     print(f"{out.shape=}")
-    ipdb.set_trace()
 
     # * ResNet by itself
     input = jnp.ones((1, T, H, W, C))
@@ -289,16 +289,14 @@ if __name__ == "__main__":
     input = jnp.ones((B, T, H, W, C))
     embedding = model_def.apply(
         variables, input, train=False, method=model_def.compute_embeddings, agg=True
-    )  # (B, E)
+    )  # (B, T, H, W, C) -> (B, E)
     return_from_embeddings = model_def.apply(
         variables,
         embedding,
         train=False,
         method=model_def.compute_return_from_agg_embeddings,
-    )  # (B,)
+    )  # (B, E) -> (B, 1)
     print("========== Embedding output ==========")
     print(f"{input.shape=}")
     print(f"{embedding.shape=}")
     print(f"{return_from_embeddings.shape=}")
-
-    ipdb.set_trace()

@@ -5,12 +5,9 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 from jaxtyping import Array, Float, Int
+from tqdm import tqdm
 
-from bnn_pref.alg.agent_dropout import DropoutAgent, DropoutBeliefState
-from bnn_pref.alg.agent_ekf import EKFAgent, EKFBeliefState
-from bnn_pref.alg.agent_ensemble import EnsembleAgent, EnsembleBeliefState
-from bnn_pref.alg.agent_laplace import LaplaceAgent, LaplaceBeliefState
-from bnn_pref.alg.agent_llmcmc import LMCMCAgent, LMCMCBeliefState
+from bnn_pref.alg import AgentState, alg_classes
 from bnn_pref.alg.agent_utils import Agent
 from bnn_pref.data.data_env import PreferenceEnv
 from bnn_pref.utils.metrics import (
@@ -26,26 +23,11 @@ from bnn_pref.utils.utils import Timer
 
 warnings.filterwarnings("ignore")
 
-AgentState = Union[
-    EKFBeliefState,
-    EnsembleBeliefState,
-    DropoutBeliefState,
-    LMCMCBeliefState,
-    LaplaceBeliefState,
-]
-
 
 def run_alg(key, alg_name: str, cfg, data_dict, env):
-    assert alg_name in ["ekf", "sgd", "do", "llmcmc", "laplace"]
-    alg_cls_dict = {
-        "ekf": EKFAgent,
-        "sgd": EnsembleAgent,
-        "do": DropoutAgent,
-        "llmcmc": LMCMCAgent,
-        "laplace": LaplaceAgent,
-    }
+    assert alg_name in alg_classes.keys()
     alg_cfg = cfg[alg_name]
-    alg_cls = alg_cls_dict[alg_name]
+    alg_cls = alg_classes[alg_name]
     data_cfg = cfg["data"]
     test_items_NTD = data_dict["test_trajs"]["observations"]
     test_queries_Q2 = data_dict["test_prefs"].queries_Q2
