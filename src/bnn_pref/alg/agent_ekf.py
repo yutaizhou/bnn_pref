@@ -11,7 +11,7 @@ from einops import rearrange
 from flax import linen as nn
 from flax.training.train_state import TrainState
 from jax.flatten_util import ravel_pytree
-from jaxtyping import Array, Float, Int
+from jaxtyping import Array, Float, Int, Scalar
 
 from bnn_pref.alg.agent_utils import (
     Agent,
@@ -24,7 +24,13 @@ from bnn_pref.alg.agent_utils import (
 from bnn_pref.alg.pca_jax import JaxPCA
 from bnn_pref.alg.projection_matrix import generate_random_basis, sub2full_params_flat
 from bnn_pref.data.data_env import PreferenceEnv
-from bnn_pref.utils.network import count_params
+from bnn_pref.utils.network import (
+    ParamsDict,
+    ParamsFlat,
+    ResNetHelpers,
+    RewardNet,
+    count_params,
+)
 from bnn_pref.utils.type import QueryData, unpackable_dataclass
 
 
@@ -69,7 +75,7 @@ class EKFAgent(Agent):
         chunk_size: int = 64,
         use_vmap: bool = True,
     ):
-        self.model = model
+        self.model: RewardNet = model
         self.traj_shape = traj_shape  # (T, D) or (T, H, W, C)
         self.is_pixel = True if len(traj_shape) == 4 else False
         self.opt = optax.sgd(learning_rate, momentum)
@@ -143,6 +149,7 @@ class EKFAgent(Agent):
         self.subspace_param_count = self.sub_dim
         key, model_key = jr.split(key, 2)
         dummy_input = jnp.ones((1, 2, *self.traj_shape))
+
         if not self.is_pixel:
             params = self.model.init(model_key, dummy_input)["params"]
             ts = TrainState.create(
@@ -165,7 +172,8 @@ class EKFAgent(Agent):
                 batch_stats=batch_stats,
             )
 
-        self.param_count = count_params(params)
+        # * run SGD on warmup data: always trains whole model
+        # * EKF maybe be done only on submodel, e.g. MLP not ResNet encoder
         key, key_sgd = jr.split(key, 2)
         warm_ts, warm_metrics = run_sgd(
             key_sgd,
@@ -183,6 +191,18 @@ class EKFAgent(Agent):
             use_vmap=self.use_vmap,
         )
         self.batch_stats = warm_ts.batch_stats if self.is_pixel else None
+
+        if not self.is_pixel:
+            self.param_count = count_params(warm_ts.params)
+            params_offset, params_unraveler = ravel_pytree(warm_ts.params)
+        else:
+            params = {"params": warm_ts.params}
+            trainable_params = ResNetHelpers.get_trainable_params(params)  # MLP
+            self.frozen_params = ResNetHelpers.get_frozen_params(params)  # encoder
+
+            self.param_count = count_params(trainable_params)
+            params_offset, params_unraveler = ravel_pytree(trainable_params)
+            self.params_unraveler = params_unraveler
 
         if self.rnd_proj:
             assert isinstance(self.sub_dim, int)
@@ -203,11 +223,7 @@ class EKFAgent(Agent):
             self.sub_dim = pca.n_components_
             proj_matrix = pca.components_  # (sub_dim, full_dim)
 
-        params_offset, params_unraveler = ravel_pytree(warm_ts.params)
-        self.warmed_params = warm_ts.params
-
-        # these two are used for projection matrix "efficient" version
-        def sub2full_params(ss_param_flat):
+        def sub2full_params(ss_param_flat: ParamsFlat) -> ParamsDict:
             """
             ss_param_flat: flattened vector of subspace params (sub_dim,)
             returns: unflatten pytree of fullspace params
@@ -221,13 +237,15 @@ class EKFAgent(Agent):
             return params_unraveler(param_flat)
 
         def pred_return(
-            param: Dict,
+            param: ParamsDict,
             input: Union[Float[Array, "T D"], Float[Array, "T H W C"]],
-        ) -> Float[Array, " "]:
-            inputs = jnp.expand_dims(input, axis=0)
-            variables = {"params": param}
-            if self.is_pixel:
-                variables["batch_stats"] = self.batch_stats
+        ) -> Scalar:
+            inputs = jnp.expand_dims(input, axis=0)  # (1, T, D) or (1, T, H, W, C)
+            if not self.is_pixel:
+                variables = {"params": param}
+            else:
+                param = ResNetHelpers.recombine_params(param, self.frozen_params)
+                variables = {"params": param["params"], "batch_stats": self.batch_stats}
             outputs = self.model.apply(
                 variables,
                 inputs,
@@ -240,16 +258,17 @@ class EKFAgent(Agent):
         self.sub2full_params = sub2full_params
         self.pred_return = pred_return
 
-        def emission_fn_state(ss_param_flat, input) -> Float[Array, "2"]:
+        def emission_fn_state(
+            ss_param_flat: ParamsFlat,
+            input: Float[Array, "2 * T * D"],
+        ) -> Float[Array, "2"]:
             """
             ss_param_flat: (sub_dim,)
             input: (2 * T * D,)
             """
-            params = sub2full_params(ss_param_flat)
             input = jnp.reshape(input, (1, 2, *self.traj_shape))
+            params = sub2full_params(ss_param_flat)
             variables = {"params": params}
-            if self.is_pixel:
-                variables["batch_stats"] = self.batch_stats
             logits = self.model.apply(
                 variables,
                 input,
@@ -259,17 +278,24 @@ class EKFAgent(Agent):
             probs_2 = jnp.exp(jax.nn.log_softmax(logits.squeeze(0)))
             return probs_2
 
-        def emission_fn_pixel(ss_param_flat, embd) -> Float[Array, "2"]:
+        def emission_fn_pixel(
+            ss_param_flat: ParamsFlat,
+            input: Float[Array, "2 * embed_dim"],
+        ) -> Float[Array, "2"]:
             """
-            ss_param_flat: (sub_dim,)
-            input: (2 * E,)
+            Inputs:
+                ss_param_flat: (sub_dim,)
+                input: (2 * embed_dim,)
+            Outputs:
+                probs_2: (2,)
             """
-            embd = jnp.reshape(embd, (2, -1))  # (2, E,)
+            input = jnp.reshape(input, (2, -1))  # (2 * E,) -> (2, E)
             params = self.sub2full_params(ss_param_flat)
-            variables = {"params": params, "batch_stats": self.batch_stats}
+            params = ResNetHelpers.recombine_params(params, self.frozen_params)
+            variables = {"params": params["params"], "batch_stats": self.batch_stats}
             logits = self.model.apply(
                 variables,
-                embd,
+                input,
                 train=False,
                 method=self.model.compute_return_from_agg_embeddings,
             )  # (2, E) -> (2, 1)
@@ -305,25 +331,28 @@ class EKFAgent(Agent):
         bel: EKFBeliefState,
         batch: QueryData,
     ) -> EKFBeliefState:
-        prior_mean, prior_cov, t = bel.mean, bel.cov, bel.t
         context, label = batch.contexts, batch.labels
 
         emissions = label  # (1,2)
         if not self.is_pixel:
             inputs = jnp.reshape(context, (1, -1))  # (1, 2*T*D) or (1, 2*T*H*W*C)
         else:
+            # for pixel tasks, use image embeddings
+            params = self.sub2full_params(bel.mean)
+            params = ResNetHelpers.recombine_params(params, self.frozen_params)
+            variables = {"params": params["params"], "batch_stats": self.batch_stats}
             inputs = self.model.apply(
-                {"params": bel.offset_ts.params, "batch_stats": self.batch_stats},
+                variables,
                 jnp.reshape(context, (2, *self.traj_shape)),  # (2, T, H, W, C),
                 train=False,
                 method=self.model.compute_embeddings,
                 agg=True,
-            )  # (2, T, H, W, C) -> (2, E)
-            inputs = jnp.reshape(inputs, (1, -1))  # (2 * E,)
+            )  # (2, T, H, W, C) -embed-> (2, T, E) -agg-> (2, E)
+            inputs = jnp.reshape(inputs, (1, -1))  # (1, 2 * E)
 
         self.ekf_params = self.ekf_params._replace(
-            initial_mean=prior_mean,
-            initial_covariance=prior_cov,
+            initial_mean=bel.mean,
+            initial_covariance=bel.cov,
         )
         posterior = extended_kalman_filter(
             self.ekf_params,
@@ -334,7 +363,7 @@ class EKFAgent(Agent):
 
         posterior_mean = posterior.filtered_means[-1]
         posterior_cov = posterior.filtered_covariances[-1]
-        bel = bel.replace(mean=posterior_mean, cov=posterior_cov, t=t + 1)
+        bel = bel.replace(mean=posterior_mean, cov=posterior_cov, t=bel.t + 1)
         return bel
 
     @partial(jax.jit, static_argnames=["self", "env"])

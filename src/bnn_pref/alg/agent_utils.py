@@ -8,8 +8,9 @@ import optax
 from flax.training.train_state import TrainState
 from jax.flatten_util import ravel_pytree
 from jaxtyping import Array, Float, Int
+from tqdm import tqdm
 
-from bnn_pref.data.data_env import BatchIndexManager, PreferenceEnv, retrieve
+from bnn_pref.data.data_env import PreferenceEnv, retrieve
 from bnn_pref.utils.type import QueryData
 
 

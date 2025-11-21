@@ -50,7 +50,7 @@ python src/scripts/run_rm.py \
     learning_rate=0.001 \
     update_all=True \
     niters_init=420 \
-    niters_update=10 \
+    niters_update=20 \
     ekf.learning_rate=0.003 \
     ekf.bs=1 \
     ekf.iekf=5 \

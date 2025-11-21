@@ -1,4 +1,4 @@
-from typing import Callable, Dict, List, Union
+from typing import Callable, Dict, List, Optional, Union
 
 import flax.linen as nn
 import ipdb
@@ -18,6 +18,10 @@ B2TD = Float[Array, "batch 2 steps dim"]
 BTD = Float[Array, "batch steps dim"]
 BT = Float[Array, "batch steps"]
 B = Float[Array, "batch"]
+
+# to be used with ravel_pytree and unraveler
+ParamsDict = Dict
+ParamsFlat = Float[Array, "n_params"]
 
 
 def count_params(params_dict: dict) -> int:
@@ -191,21 +195,28 @@ class RewardNet(nn.Module):
         x = jnp.squeeze(x, axis=1)  # (B, 1, 1) -> (B, 1)
         return x  # (B, 1)
 
-    # * For last layer Bayesian methods: last layer must be named "last_layer"
+
+class LastLayerHelpers:
+    """
+    For last layer Bayesian methods, where we train only the last layer MLP params.
+    Rest of the MLP and preceding encoder params are frozen.
+
+    Assumes the following structure from model_def.init(...):
+
+    variables["params"]["pw_encoder"]
+        |-> ["mlp"]
+            |-> ["Dense_0"]
+            |-> ["Dense_1"]
+            |-> ["last_layer"]
+        |-> ["encoder"]
+    """
+
     @staticmethod
     def recombine_params(
-        last_param_flat: Float[Array, "last_layer_dim"],
-        fixed_param_dict: Dict,
+        last_param_flat: ParamsFlat,
+        fixed_param_dict: ParamsDict,
         last_unravel_fn: Callable,
     ):
-        """
-        variables["params"]["pw_encoder"]
-            |-> ["mlp"]
-                |-> ["Dense_0"]
-                |-> ["Dense_1"]
-                |-> ["last_layer"]
-            |-> ["encoder"]
-        """
         last_layer_dict = last_unravel_fn(last_param_flat)
         params = {
             "mlp": {
@@ -218,8 +229,8 @@ class RewardNet(nn.Module):
         return {"params": {"pw_encoder": params}}
 
     @staticmethod
-    def get_fixed_params(variables):
-        """Take variables dict, extract all but last layer params"""
+    def get_frozen_params(variables: ParamsDict) -> ParamsDict:
+        """Take variables dict, extract all but last layer MLP params"""
         mlp_params = variables["params"]["pw_encoder"]["mlp"]
         enc_params = variables["params"]["pw_encoder"].get("encoder", None)
         params = {
@@ -230,11 +241,56 @@ class RewardNet(nn.Module):
         return params
 
     @staticmethod
-    def get_last_layer_params(variables):
+    def get_trainable_params(variables: ParamsDict) -> ParamsDict:
         ll_params = variables["params"]["pw_encoder"]["mlp"]["last_layer"]
         params = {
             "mlp": {"last_layer": ll_params},
         }
+
+        return params
+
+
+class ResNetHelpers:
+    """
+    For ResNet-based RewardNet, where we train only the MLP params, while freezing the ResNet encoder.
+
+    Assumes the following structure from model_def.init(...):
+
+    variables["params"]["pw_encoder"]
+        |-> ["mlp"]
+            |-> ["Dense_0"]
+            |-> ["Dense_1"]
+            |-> ["last_layer"]
+        |-> ["encoder"]
+    """
+
+    @staticmethod
+    def recombine_params(
+        trainable_params: Union[ParamsDict, ParamsFlat],
+        fixed_params: ParamsDict,
+        unraveler: Optional[Callable] = None,
+    ) -> ParamsDict:
+        # if no unraveler, assume trainable_params is a dict. o.w. it's a flat array
+        trainable_dict = (
+            unraveler(trainable_params) if unraveler is not None else trainable_params
+        )
+        params = {
+            "mlp": trainable_dict["mlp"],
+            "encoder": fixed_params["encoder"],
+        }
+        return {"params": {"pw_encoder": params}}
+
+    @staticmethod
+    def get_frozen_params(variables: ParamsDict) -> ParamsDict:
+        """Take variables dict, extract only ResNet encoder params"""
+        enc_params = variables["params"]["pw_encoder"]["encoder"]
+        params = {"encoder": enc_params}
+        return params
+
+    @staticmethod
+    def get_trainable_params(variables: ParamsDict) -> ParamsDict:
+        mlp_params = variables["params"]["pw_encoder"]["mlp"]
+        params = {"mlp": mlp_params}
 
         return params
 

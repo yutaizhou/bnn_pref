@@ -23,7 +23,7 @@ from bnn_pref.alg.agent_utils import (
 )
 from bnn_pref.alg.data_buffer import QueryBuffer
 from bnn_pref.data.data_env import PreferenceEnv
-from bnn_pref.utils.network import RewardNet, count_params
+from bnn_pref.utils.network import LastLayerHelpers, RewardNet, count_params
 from bnn_pref.utils.type import QueryData, unpackable_dataclass
 
 
@@ -62,8 +62,8 @@ def mcmc_belief_update(
 ) -> Float[Array, "M llayer_dim"]:
     assert n_steps % n_particles == 0
     thinning = n_steps // n_particles
-    fixed_params = model.get_fixed_params(params)
-    llayer_params = model.get_last_layer_params(params)
+    fixed_params = LastLayerHelpers.get_frozen_params(params)
+    llayer_params = LastLayerHelpers.get_trainable_params(params)
     llayer_params_flat, llayer_unraveler = ravel_pytree(llayer_params)
 
     if initial_particle is not None:
@@ -77,7 +77,9 @@ def mcmc_belief_update(
         model: RewardNet,
     ):
         x, y = data.contexts, data.labels  # (B, 2, T, D), (B, 2)
-        params = model.recombine_params(llayer_flat, fixed_params, llayer_unraveler)
+        params = LastLayerHelpers.recombine_params(
+            llayer_flat, fixed_params, llayer_unraveler
+        )
         logits = model.apply(params, x, train=False)  # (B, 2)
         y = jnp.argmax(y, axis=1)  # (B,), y can't be 1-hot for distrax
 
@@ -210,7 +212,7 @@ class LMCMCAgent(Agent):
     def init_bel(self, key, warmup_data: QueryData) -> LMCMCBeliefState:
         key, key_model = jr.split(key)
         ts = init_model(key_model, self.model, self.opt, self.traj_shape)
-        last_params = self.model.get_last_layer_params({"params": ts.params})
+        last_params = LastLayerHelpers.get_trainable_params({"params": ts.params})
         _, self.last_params_unraveler = ravel_pytree(last_params)
         self.last_layer_param_count = count_params(last_params)
         self.param_count = count_params(ts.params)
@@ -231,7 +233,9 @@ class LMCMCAgent(Agent):
             use_dropout=False,
             use_vmap=self.use_vmap,
         )
-        self.fixed_params = self.model.get_fixed_params({"params": warm_ts.params})
+        self.fixed_params = LastLayerHelpers.get_frozen_params(
+            {"params": warm_ts.params}
+        )
 
         key, key_mcmc = jr.split(key, 2)
         new_particles = mcmc_belief_update(
@@ -286,7 +290,7 @@ class LMCMCAgent(Agent):
 
         # * precompute logits for all items
         def scan_ts(_, llparam: Float[Array, "llayer_dim"]):
-            param = self.model.recombine_params(
+            param = LastLayerHelpers.recombine_params(
                 llparam, self.fixed_params, self.last_params_unraveler
             )  # {"params": actual_params}
             fn = partial(self.pred_return, param, train=False)
@@ -329,7 +333,7 @@ class LMCMCAgent(Agent):
 
         # * precompute logits for all items
         def scan_ts(_, llparam: Float[Array, "llayer_dim"]):
-            param = self.model.recombine_params(
+            param = LastLayerHelpers.recombine_params(
                 llparam, self.fixed_params, self.last_params_unraveler
             )  # {"params": actual_params}
             fn = partial(self.pred_return, param, train=False)
