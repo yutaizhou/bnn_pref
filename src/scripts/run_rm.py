@@ -64,7 +64,7 @@ def main(cfg):
     train_trajs, test_trajs = data_dict["train_trajs"], data_dict["test_trajs"]
     train_prefs, test_prefs = data_dict["train_prefs"], data_dict["test_prefs"]
 
-    nt_train, T, D = train_trajs["observations"].shape
+    nt_train, T, *D = train_trajs["observations"].shape  # last dim: D or (H, W, C)
     nt_test = test_trajs["observations"].shape[0]
     nq_train = train_prefs.queries_Q2.shape[0]
     nq_test = test_prefs.queries_Q2.shape[0]
@@ -113,8 +113,8 @@ def main(cfg):
             "is_active": is_al,
             "nq_train": nq_train,
             "nq_test": nq_test,
-            "duration": res_m["train_duration"].mean(),
-            "eval_duration": res_m["eval_duration"].mean(),
+            "duration": res_m["train_duration"],  # (n_seeds,)
+            "eval_duration": res_m["eval_duration"],  # (n_seeds,)
             # * metrics below are of shape (n_seeds, 1 + nq_update)
             # * logpdf
             "test_logpdf_all": res_m["test_logpdf"],
@@ -159,7 +159,7 @@ def main(cfg):
             # f"coverage: {res['test_coverage_final']['mean']:.2%} ± {res['test_coverage_final']['std']:.2%}, "
             # f"sharpness: {res['test_sharpness_final']['mean']:.2f} ± {res['test_sharpness_final']['std']:.2f}, "
             f"{get_param_count_msg(cfg, alg, res_m)}, "
-            f"({res['duration']:.1f}s / {res['eval_duration']:.1f}s)"
+            f"({res['duration'].mean():.1f} ± {res['duration'].std():.1f}s / {res['eval_duration'].mean():.1f} ± {res['eval_duration'].std():.1f}s)"
         )
         if nonfinites.any():
             print(f"nonfinites: {nonfinites.sum(1)}")

@@ -85,7 +85,6 @@ def alg_pipeline(
     )
     bandit = alg_cls(model, traj_shape=traj_shape, **alg_cls.get_hydra_config(alg_cfg))
 
-    # * eval fn
     def eval_bel(key_eval, bel: AgentState):
         test_items_NTD, test_queries_Q2, test_labels_Q1 = test_data
         # compute posterior predictive
@@ -121,8 +120,8 @@ def alg_pipeline(
         else:
             return bandit.compute_next_query(key_query, bel, env, pool_idxs)
 
-    # * belief init
     timer = Timer()
+    # * belief init
     key, key_warm_data, key_bel_init, key_bel_init_eval = jr.split(key, 4)
     warmup_data = env.warmup(key_warm_data, nq_init)
     with timer.context("train"):

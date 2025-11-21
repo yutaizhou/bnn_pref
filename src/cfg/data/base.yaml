@@ -33,3 +33,7 @@ nsteps: ${get_nsteps:${.nq_train}, ${.nq_init}, ${.nq_update}} #! do not set man
 
 min_traj_len: 50 # only used by d4rl; if <=0, no filtering; otherwise, throw out trajs shorter than this
 segment_size: 50 # if -1, use whole traj. 
+
+# * vd4rl specific
+vd4rl_segment_size: 10 # shorter trajs for images
+vd4rl_64: True

@@ -260,7 +260,7 @@ class EnsembleAgent(Agent):
             logits_M2 = rearrange(logits_NM[inds_2], "K M -> M K", K=2)
             logprobs_M2 = jax.nn.log_softmax(logits_M2, axis=1)
             if self.acq == "infogain":
-                value = compute_info_gain(logprobs_M2, M)
+                value = compute_info_gain(logprobs_M2)
             elif self.acq == "disagreement":
                 value = compute_disagreement(logprobs_M2)
             return value

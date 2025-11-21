@@ -55,20 +55,22 @@ def make_d4rl_data(key, cfg) -> ArrayDict:
     demo_train_frac = data_cfg["demo_train_frac"]
     nq_train, nq_test = data_cfg["nq_train"], data_cfg["nq_test"]
 
-    # todo: come on this is so hacky and you know it
-    if ds_type == "vd4rl":
-        data_cfg["segment_size"] = 5
-
-    sz = data_cfg["segment_size"]
     ns_train, ns_test = data_cfg["n_segments_train"], data_cfg["n_segments_test"]
 
     # * d4rl transitions -> trajs, pad to max length w/ masks, filter out short traj length
     if ds_type == "d4rl":
         ds = gym.make(task_cfg["name"]).get_dataset()
         trajs = process_d4rl_data(ds, min_traj_len=data_cfg["min_traj_len"])
+        sz = data_cfg["segment_size"]
+
     elif ds_type == "vd4rl":
         ds_dir = task_cfg["dataset_dir"]
-        trajs = process_vd4rl_data(Path(ds_dir), min_traj_len=data_cfg["min_traj_len"])
+        trajs = process_vd4rl_data(
+            Path(ds_dir),
+            min_traj_len=data_cfg["min_traj_len"],
+            vd4rl_64=data_cfg["vd4rl_64"],
+        )
+        sz = data_cfg["vd4rl_segment_size"]
     else:
         raise ValueError(f"Unknown dataset type: {ds_type}")
 
@@ -78,9 +80,10 @@ def make_d4rl_data(key, cfg) -> ArrayDict:
     trajs = _sort_by_return(trajs)
 
     # * segment trajectories: (N, T, ...) -> (N * n_chunks, sz, ...)
-    # * can be done before or after splitting into train/test
+    # example obs: (150, 501, HWC), 0.86G ->  (7650, 10, HWC), 0.87G
     if sz != -1:
         trajs = segment_arraydict_masked(trajs, sz)
+        del trajs["masks"]
 
     # * split segments into train/test, each sorted by ascending return
     key, key_split = jr.split(key, 2)
@@ -99,9 +102,6 @@ def make_d4rl_data(key, cfg) -> ArrayDict:
     elif ds_type == "vd4rl":
         train_trajs.update({"observations": scale_image(train_trajs["observations"])})
         test_trajs.update({"observations": scale_image(test_trajs["observations"])})
-
-    del train_trajs["masks"]
-    del test_trajs["masks"]
 
     # * turn train/test trajs into preference data
     key, key_train, key_test = jr.split(key, 3)
@@ -201,12 +201,33 @@ def process_d4rl_data(
     return output
 
 
-def process_vd4rl_data(offline_dir: Path, min_traj_len: int = 50):
+def process_vd4rl_data(
+    offline_dir: Path, min_traj_len: int = 50, vd4rl_64: bool = True
+):
     def converter(ds: Dict):
-        """Convert vd4rl dictionary to d4rl dictionary."""
+        """
+        Convert vd4rl dictionary to d4rl dictionary.
+
+        Input vd4rl dictionary:
+        - observation: (S, C, H, W), uint8
+        - action: (S, A), float32
+        - reward: (S,) float32
+        - discount: (S,) float32
+        - step_type: (S,) int32
+
+        Output d4rl dictionary:
+        - observations: (S, H, W, C), uint8
+        - actions: (S, A), float32
+        - rewards: (S,) float32
+        - terminals: (S,) bool
+        - timeouts: (S,) bool
+        """
 
         # vd4rl only uses terminals. jax CNN uses (H, W, C)
         obs = rearrange(ds["observation"], "S C H W-> S H W C")
+        if vd4rl_64:
+            shape = (len(obs), 64, 64, 3)
+            obs = jax.image.resize(obs, shape, "lanczos3").astype(jnp.uint8)
         timeouts = jnp.zeros_like(ds["step_type"], dtype=jnp.bool_)
 
         out = {

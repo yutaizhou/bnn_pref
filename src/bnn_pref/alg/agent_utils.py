@@ -59,11 +59,12 @@ def bt_loss_fn(params, logits_B2, labels_B2, l2_reg: float = 0.0):
     return loss + l2_loss, logits_B2
 
 
-def compute_info_gain(logprobs_M2, M: int) -> Float[Array, " "]:
+def compute_info_gain(logprobs_M2) -> Float[Array, " "]:
     """
     Compute InfoGain for a single query, given binary logprob from each model of ensemble
     work in logspace for numerical stability
     """
+    M = logprobs_M2.shape[0]
     log_sum_p = jax.nn.logsumexp(logprobs_M2, axis=0, keepdims=True)
     mi_M2 = jnp.exp(logprobs_M2) * (jnp.log(M) + logprobs_M2 - log_sum_p) / jnp.log(2)
     value = jnp.sum(mi_M2) / jnp.log(M)
