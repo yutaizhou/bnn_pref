@@ -8,16 +8,18 @@ import os
 import sys
 from collections import defaultdict
 from datetime import datetime
-
-import ipdb
+from typing import Optional
 
 os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
 os.environ["DISABLE_CODESIGN_WARNING"] = "1"
 os.environ["JAX_PLATFORM_NAME"] = "cpu"
 logging.getLogger("absl").setLevel(logging.WARNING)
 
+import ipdb
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.legend_handler import HandlerBase
+from matplotlib.lines import Line2D
 
 from bnn_pref.utils.plotting import (
     get_font_kw,
@@ -101,6 +103,7 @@ tasks = task_select[task_set]
 n_tasks = len(tasks)
 algs = ["ekf", "sgd", "do", "laplace", "llmcmc"] if task_set == "iclr" else ["ekf"]
 is_als = [True, False]
+LEGEND_NCOL = 3 if len(algs) == 5 else 1
 
 
 """
@@ -188,7 +191,7 @@ for alg, is_al in it.product(algs, is_als):
         stats_agg[metric][f"{alg}_{is_al}"] = mean(arr, axis=(0,), nan=handle_nan)
 
 
-def get_label(alg: str, is_active: bool) -> str:
+def get_label(alg: str, is_active: Optional[bool] = None) -> str:
     alg2label = {
         "ekf": "PreferenceEKF",
         "sgd": "DeepEnsemble",
@@ -196,10 +199,13 @@ def get_label(alg: str, is_active: bool) -> str:
         "laplace": "Laplace",
         "llmcmc": "LLMCMC",
     }
-    active2label = {True: "A", False: "R"}
     alg_label = alg2label[alg]
-    active_label = active2label[is_active]
-    return f"{alg_label} ({active_label})"
+    if is_active is not None:
+        active2label = {True: "A", False: "R"}
+        active_label = active2label[is_active]
+        return f"{alg_label} ({active_label})"
+    else:
+        return alg_label
 
 
 def get_style(alg: str, is_active: bool) -> dict:
@@ -212,6 +218,36 @@ def get_style(alg: str, is_active: bool) -> dict:
     }
     linestyle = "-" if is_active else "--"
     return {"color": alg2color[alg], "linestyle": linestyle}
+
+
+class DualLineHandler(HandlerBase):
+    """Custom legend handler that creates two lines (solid and dashed) for a single legend entry."""
+
+    def create_artists(
+        self, legend, orig_handle, x0, y0, width, height, fontsize, trans
+    ):
+        # orig_handle is a tuple: (color, label)
+        color, _ = orig_handle
+        common = {"color": color, "linewidth": 2, "transform": trans}
+        # Create two lines: solid on top, dashed below
+        l1 = Line2D(
+            [x0, x0 + width],
+            [0.7 * height, 0.7 * height],
+            linestyle="-",
+            **common,
+        )
+        l2 = Line2D(
+            [x0, x0 + width],
+            [0.3 * height, 0.3 * height],
+            linestyle="--",
+            **common,
+        )
+        return [l1, l2]
+
+
+# Reorder function to fill rows first (left-to-right) instead of columns first
+# Based on: https://stackoverflow.com/questions/66783109/matplotlibs-legend-how-to-order-entries-by-row-first-rather-than-by-column
+reorder_legend_row_major = lambda lst, nc: sum((lst[i::nc] for i in range(nc)), [])
 
 
 def plot_logpdf_agg():
@@ -257,30 +293,36 @@ def plot_logpdf_agg():
 
             frac = 1 - x_active / x_random
 
-            # Draw vertical dotted lines down to a lower y for annotation
-            y_bottom = ax.get_ylim()[0] + 0.20  # adjust as needed for your plot
+            # Get y-values on EKF active line at the annotation points
+            y_active_at_x = ekf_active_mean_T[x_active]
+            y_active_at_end = ekf_active_mean_T[x_random]
+            y_top = (
+                max(y_active_at_x, y_active_at_end) + 0.03
+            )  # Position above the EKF line
+
+            # Draw vertical dotted lines up from the EKF line to the top for annotation
             ax.vlines(
-                [x_active, x_random], y_bottom, y_tgt, linestyles="dotted", colors="k"
+                [x_active, x_random], y_tgt, y_top, linestyles="dotted", colors="k"
             )
             ax.plot(
                 [x_active, x_random], [y_tgt, y_tgt], "ko", markersize=4
             )  # mark the two points
 
-            # Draw double-headed arrow and annotate at the bottom
+            # Draw double-headed arrow and annotate at the top
             ax.annotate(
                 "",
-                xy=(x_active, y_bottom),
-                xytext=(x_random, y_bottom),
+                xy=(x_active, y_top),
+                xytext=(x_random, y_top),
                 arrowprops=dict(
                     arrowstyle="<->", color="black", linewidth=1.5, shrinkA=0, shrinkB=0
                 ),
             )
             ax.text(
                 (x_active + x_random) / 2,
-                y_bottom - 0.01,  # slightly below the arrow
+                y_top + 0.01,  # slightly above the arrow
                 f"~{frac:.0%} fewer samples",
                 ha="center",
-                va="top",
+                va="bottom",
                 color="black",
                 **get_font_kw(18),
             )
@@ -298,11 +340,31 @@ def plot_logpdf_agg():
     ax.set_yticks(yticks)
     ax.set_yticklabels([f"{y:.2f}" for y in yticks], **get_font_kw(16))
 
+    # Create custom legend with both solid and dashed lines for each algorithm
+    legend_handles = []
+    legend_labels = []
+    handler_map = {}
+    for alg in algs:
+        alg_color = get_style(alg, True)["color"]  # Get color (same for both A/R)
+        alg_label = get_label(alg)  # Get label only
+        # Create a tuple handle that the handler will use
+        handle = (alg_color, alg_label)
+        legend_handles.append(handle)
+        legend_labels.append(alg_label)
+        handler_map[tuple] = DualLineHandler()
+
+    # Reorder to fill rows first (left-to-right, then top-to-bottom)
+    legend_handles = reorder_legend_row_major(legend_handles, LEGEND_NCOL)
+    legend_labels = reorder_legend_row_major(legend_labels, LEGEND_NCOL)
+
     ax.legend(
+        handles=legend_handles,
+        labels=legend_labels,
+        handler_map=handler_map,
         **get_legend_kw(18),
         loc="upper center",
         bbox_to_anchor=(0.5, -0.12),
-        ncol=len(algs),
+        ncol=LEGEND_NCOL,
     )
     save_path = f"{save_dir}/{timestamp}_0_logpdf_nTasks={n_tasks}_agg.png"
     plt.savefig(save_path, bbox_inches="tight", dpi=300)
@@ -359,19 +421,31 @@ def plot_logpdf_per_task():
         ax.set_yticks(yticks)
         ax.set_yticklabels([f"{y:.2f}" for y in yticks], **get_font_kw(12))
 
-    # --- Shared legend using dummy lines, outside the subplots ---
-    dummy_lines = [
-        plt.plot([], [], **get_style(alg, is_al), label=get_label(alg, is_al))[0]
-        for alg, is_al in it.product(algs, is_als)
-    ]
+    # --- Shared legend using custom handler with both line styles ---
+    legend_handles = []
+    legend_labels = []
+    handler_map = {}
+    for alg in algs:
+        alg_color = get_style(alg, True)["color"]
+        alg_label = get_label(alg)
+        handle = (alg_color, alg_label)
+        legend_handles.append(handle)
+        legend_labels.append(alg_label)
+        handler_map[tuple] = DualLineHandler()
+
+    # Reorder to fill rows first (left-to-right, then top-to-bottom)
+    legend_handles = reorder_legend_row_major(legend_handles, LEGEND_NCOL)
+    legend_labels = reorder_legend_row_major(legend_labels, LEGEND_NCOL)
+
     fig.supxlabel("Number of Queries", **get_font_kw(16))
     fig.supylabel("Test Log-Likelihood", **get_font_kw(16))
     fig.legend(
-        dummy_lines,
-        [get_label(alg, is_al) for alg, is_al in it.product(algs, is_als)],
+        handles=legend_handles,
+        labels=legend_labels,
+        handler_map=handler_map,
         loc="lower center",
         bbox_to_anchor=(0.5, -0.12),
-        ncol=len(algs),
+        ncol=LEGEND_NCOL,
         handlelength=2,
         **get_legend_kw(16),
     )
@@ -415,16 +489,29 @@ def plot_ece_brier_agg():
             **get_font_kw(18),
         )
     fig.supxlabel("Number of Queries", **get_font_kw(16))
-    dummy_lines = [
-        plt.plot([], [], **get_style(alg, is_al), label=get_label(alg, is_al))[0]
-        for alg, is_al in it.product(algs, is_als)
-    ]
+    # Create custom legend
+    legend_handles = []
+    legend_labels = []
+    handler_map = {}
+    for alg in algs:
+        alg_color = get_style(alg, True)["color"]
+        alg_label = get_label(alg)
+        handle = (alg_color, alg_label)
+        legend_handles.append(handle)
+        legend_labels.append(alg_label)
+        handler_map[tuple] = DualLineHandler()
+
+    # Reorder to fill rows first (left-to-right, then top-to-bottom)
+    legend_handles = reorder_legend_row_major(legend_handles, LEGEND_NCOL)
+    legend_labels = reorder_legend_row_major(legend_labels, LEGEND_NCOL)
+
     fig.legend(
-        dummy_lines,
-        [get_label(alg, is_al) for alg, is_al in it.product(algs, is_als)],
+        handles=legend_handles,
+        labels=legend_labels,
+        handler_map=handler_map,
         loc="lower center",
         bbox_to_anchor=(0.5, -0.1),
-        ncol=len(algs),
+        ncol=LEGEND_NCOL,
         handlelength=2,
         **get_legend_kw(16),
     )
@@ -462,16 +549,29 @@ def plot_all_metrics_agg():
             )
         ax.set_ylabel(prettify_title(metric), **get_font_kw(18))
     fig.supxlabel("Number of Queries", **get_font_kw(16))
-    dummy_lines = [
-        plt.plot([], [], **get_style(alg, is_al), label=get_label(alg, is_al))[0]
-        for alg, is_al in it.product(algs, is_als)
-    ]
+    # Create custom legend
+    legend_handles = []
+    legend_labels = []
+    handler_map = {}
+    for alg in algs:
+        alg_color = get_style(alg, True)["color"]
+        alg_label = get_label(alg)
+        handle = (alg_color, alg_label)
+        legend_handles.append(handle)
+        legend_labels.append(alg_label)
+        handler_map[tuple] = DualLineHandler()
+
+    # Reorder to fill rows first (left-to-right, then top-to-bottom)
+    legend_handles = reorder_legend_row_major(legend_handles, LEGEND_NCOL)
+    legend_labels = reorder_legend_row_major(legend_labels, LEGEND_NCOL)
+
     fig.legend(
-        dummy_lines,
-        [get_label(alg, is_al) for alg, is_al in it.product(algs, is_als)],
+        handles=legend_handles,
+        labels=legend_labels,
+        handler_map=handler_map,
         loc="lower center",
         bbox_to_anchor=(0.5, -0.08),
-        ncol=len(algs),
+        ncol=LEGEND_NCOL,
         handlelength=2,
         **get_legend_kw(16),
     )
