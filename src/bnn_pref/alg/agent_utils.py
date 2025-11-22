@@ -207,7 +207,8 @@ def run_sgd(
         metrics = []
         train_step = jax.jit(train_step)
         # for _ in range(niters):
-        pbar = tqdm(range(niters), desc="SGD steps", disable=not verbose, miniters=100)
+        # pbar = tqdm(range(niters), desc="SGD steps", disable=not verbose, miniters=100)
+        pbar = tqdm(range(niters), desc="SGD steps", disable=True, miniters=100)
         for _ in pbar:
             batch = next(batch_iterator)
             ts, metric = train_step(ts, batch)

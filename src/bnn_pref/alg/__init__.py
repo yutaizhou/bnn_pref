@@ -14,9 +14,9 @@ AgentState = Union[
     LaplaceBeliefState,
 ]
 alg_classes = {
-    "dropout": DropoutAgent,
     "ekf": EKFAgent,
-    "ensemble": EnsembleAgent,
-    "laplace": LaplaceAgent,
+    "sgd": EnsembleAgent,
+    "do": DropoutAgent,
     "llmcmc": LMCMCAgent,
+    "laplace": LaplaceAgent,
 }

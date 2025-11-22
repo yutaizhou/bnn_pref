@@ -1,3 +1,4 @@
+import gc
 import itertools as it
 import logging
 import os
@@ -40,10 +41,10 @@ def main(cfg):
     key = jr.key(seed)
 
     algs = ["ekf", "sgd", "do", "laplace", "llmcmc"]
-    # algs = ["ekf", "sgd"]
+    # algs = ["ekf"]
 
     is_als = [False, True]
-    # is_als = [True]
+    # is_als = [False]
 
     task_cfg = cfg["task"]
     data_cfg = cfg["data"]
@@ -105,6 +106,11 @@ def main(cfg):
             bel_final = res.pop("final_belief")  # tree stack can't handle ts.apply_fn
             res_m.append(res)
             bel_m.append(bel_final)
+
+            del res, bel_final
+            gc.collect()
+            jax.clear_caches()
+
         res_m = jax.tree_util.tree_map(lambda *xs: jnp.stack(xs), *res_m)
 
         res = {

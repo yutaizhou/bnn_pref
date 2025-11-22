@@ -138,7 +138,12 @@ def alg_pipeline(
 
     # * belief updates
     # for t in tqdm(range(n_steps), desc="Updating belief"):
-    pbar = tqdm(range(n_steps), desc="Updating belief", disable=not verbose)
+    active_str = "A" if alg_cfg["active"] else "R"
+    pbar = tqdm(
+        range(n_steps),
+        desc=f"Belief updates {alg_name} ({active_str}) ",
+        disable=not verbose,
+    )
     for t in pbar:
         key = jr.fold_in(key, t)
         key_idx, key_update, key_eval = jr.split(key, 3)
