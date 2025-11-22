@@ -41,20 +41,21 @@ TASK_LIST=$(IFS=,; echo "${TASKS[*]}")
 # this runs through product (alg, is_al) in sequence, for each task
 # lr=0.0001 for update_all=True, lr=0.001 for update_all=False
 python src/scripts/run_rm.py \
-    -m seed=-1 seeds=1 \
+    -m seed=-1 seeds=5 \
     verbose=True \
     task=$TASK_LIST \
     network=resnet18 \
-    data.nq_init=200 \
-    data.nq_update=250 \
+    data.nq_init=150 \
+    data.nq_update=150 \
     acq=infogain \
     ekf.rnd_proj=True \
     ekf.proj_type=dense \
     ekf.sub_dim=500 \
-    ekf.niters_init=7000 \
+    ekf.niters_init=3000 \
     ekf.learning_rate=0.0001 \
     ekf.bs=16 \
     ekf.iekf=5 \
+    ekf.M=50 \
     ekf.use_vmap=False \
     hydra/launcher=slurm \
     hydra.launcher.gres=gpu:1 \
