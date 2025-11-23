@@ -100,12 +100,13 @@ def run_sgd(
     niters: int,
     batch_size: int = -1,
     l2_reg: float = 0.0,
-    get_param_trace: bool = False,
+    get_param_trace: bool = False,  # only used for EKF's SVD subspace construction
+    # * Bayesian methods kwargs
     n_models: int = 1,
     split_datastream: bool = False,
+    use_vmap: bool = True,
     use_dropout: bool = False,
     use_batch_norm: bool = False,
-    use_vmap: bool = True,
     verbose: bool = False,
 ) -> Tuple[TrainState, Dict]:
     """
@@ -182,9 +183,9 @@ def run_sgd(
     batch_iterator = get_batch_iter(
         key_data,
         dataset=dataset,
-        n_models=n_models,
         niters=niters,
         bs=batch_size,
+        n_models=n_models,
         split_datastream=split_datastream,
     )
     # * training with vmap over ts
@@ -218,7 +219,8 @@ def run_sgd(
     elif n_models > 1 and not use_vmap:
         train_step = jax.jit(train_step)
         batches = []
-        # get all batches upfront: (niters, bs) or (niters, n_models, bs)
+        # get all batches upfront with optional split datastream
+        # (niters, bs) or (niters, n_models, bs)
         for _ in range(niters):
             batches.append(next(batch_iterator))
 
@@ -249,9 +251,9 @@ def get_nth_pytree(ts, n: int):
 def get_batch_iter(
     key,
     dataset: QueryData,
-    n_models: int,
     niters: int,
     bs: int,
+    n_models: int,
     split_datastream: bool,
 ):
     """

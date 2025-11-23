@@ -24,7 +24,7 @@ from bnn_pref.alg.agent_utils import (
 )
 from bnn_pref.alg.data_buffer import QueryBuffer
 from bnn_pref.data.data_env import PreferenceEnv
-from bnn_pref.utils.network import RewardNet, count_params
+from bnn_pref.utils.network import ParamsDict, RewardNet, count_params
 from bnn_pref.utils.type import QueryData, unpackable_dataclass
 
 logger.remove()
@@ -75,20 +75,21 @@ class BatchedLoader:
 def laplace_belief_update(
     key,
     model_def: RewardNet,
-    params: Dict,  # {"params": actual_params}
+    params: ParamsDict,  # {"params": actual_params}
     data: QueryData,  # all queries seen so far
     n_particles: int,
     # * laplace hyperparameter
     prior_prec: float = 1000.0,
     laplace_bs: int = 32,
-) -> Dict[str, Array]:
-    # x, y = data.contexts, data.labels  # (N, 2, T, D), (N, 2)
-    # N = len(x)
-
+) -> ParamsDict:  # leading axis is M
     def model_fn(input, params):
         """
-        if laplace(vmap_over_data=True), then input should be (2, T, D), and output (2,)
-        otherwise, input should be (B, 2, T, D)
+        vmap_over_data=True,
+            input: (2, T, ...)
+        otherwise,
+            input: (B, 2, T, ...)
+
+        output logits: (2,)
         """
         input = jnp.expand_dims(input, axis=0)  # (2,T,D) -> (1, 2, T, D)
         logits = model_def.apply(
@@ -188,7 +189,7 @@ class LaplaceAgent(Agent):
 
         # * prepare ensemble predictors
         def pred_return(
-            params: Dict,  # {"params": actual_params}
+            params: ParamsDict,
             x: Float[Array, "T D"],
             train: bool = False,
         ) -> Scalar:
@@ -308,12 +309,10 @@ class LaplaceAgent(Agent):
         """
         active learning: greedily compute query that maximizes acquisition function
         """
-        M = self.n_models
-
         particles = bel.particles  # particles["params"]["pw_mlp"]["Dense_0"]
 
         # * precompute logits for all items
-        def scan_ts(_, particle: Dict):
+        def scan_ts(_, particle: ParamsDict):
             fn = partial(self.pred_return, particle, train=False)
             ret_N = jax.lax.map(fn, env.items_NTD, batch_size=self.chunk_size)
             return _, ret_N
@@ -353,7 +352,7 @@ class LaplaceAgent(Agent):
         particles = bel.particles  # particles["params"]["pw_mlp"]["Dense_0"]
 
         # * precompute logits for all items
-        def scan_ts(_, particle: Dict):
+        def scan_ts(_, particle: ParamsDict):
             fn = partial(self.pred_return, particle, train=False)
             ret_N = jax.lax.map(fn, items_NTD, batch_size=self.chunk_size)
             return _, ret_N

@@ -23,7 +23,13 @@ from bnn_pref.alg.agent_utils import (
 )
 from bnn_pref.alg.data_buffer import QueryBuffer
 from bnn_pref.data.data_env import PreferenceEnv
-from bnn_pref.utils.network import LastLayerHelpers, RewardNet, count_params
+from bnn_pref.utils.network import (
+    LastLayerHelpers,
+    ParamsDict,
+    ParamsFlat,
+    RewardNet,
+    count_params,
+)
 from bnn_pref.utils.type import QueryData, unpackable_dataclass
 
 
@@ -51,7 +57,7 @@ def init_model(
 def mcmc_belief_update(
     key,
     model: RewardNet,
-    params: Dict,  # {"params": actual_params}
+    params: ParamsDict,
     data: QueryData,
     n_particles: int,  # ensemble size
     # mcmc hyperparameters
@@ -59,7 +65,7 @@ def mcmc_belief_update(
     n_steps: int,
     # optionally starting mcmc from a given state
     initial_particle: Optional[Float[Array, "llayer_dim"]] = None,
-) -> Float[Array, "M llayer_dim"]:
+) -> ParamsFlat:  # leading axis is M
     assert n_steps % n_particles == 0
     thinning = n_steps // n_particles
     fixed_params = LastLayerHelpers.get_frozen_params(params)
@@ -70,12 +76,12 @@ def mcmc_belief_update(
         llayer_params_flat = initial_particle
 
     def bnn_logjoint_lastlayer(
-        llayer_flat: Float[Array, "llayer_dim"],
-        fixed_params: Dict,
+        llayer_flat: ParamsFlat,
+        fixed_params: ParamsDict,
         llayer_unraveler: Callable,
         data: QueryData,
         model: RewardNet,
-    ):
+    ) -> Scalar:
         x, y = data.contexts, data.labels  # (B, 2, T, D), (B, 2)
         params = LastLayerHelpers.recombine_params(
             llayer_flat, fixed_params, llayer_unraveler
@@ -164,7 +170,7 @@ class LMCMCAgent(Agent):
 
         # * prepare ensemble predictors
         def pred_return(
-            params: Dict,  # {"params": actual_params}
+            params: ParamsDict,  # {"params": actual_params}
             x: Float[Array, "T D"],
             train: bool = False,
         ) -> Scalar:
@@ -284,12 +290,10 @@ class LMCMCAgent(Agent):
         """
         active learning: greedily compute query that maximizes acquisition function
         """
-        M = self.n_models
-
         particles = bel.particles  # (M, llayer_dim)
 
         # * precompute logits for all items
-        def scan_ts(_, llparam: Float[Array, "llayer_dim"]):
+        def scan_ts(_, llparam: ParamsFlat):
             param = LastLayerHelpers.recombine_params(
                 llparam, self.fixed_params, self.last_params_unraveler
             )  # {"params": actual_params}
