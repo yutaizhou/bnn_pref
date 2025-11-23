@@ -19,7 +19,6 @@ l2_reg: ${..l2_reg}
 learning_rate: ${..learning_rate}
 niters_init: ${..niters_init}  # Total number of GD steps on warmup data
 niters_update: ${..niters_update}
-update_all: ${..update_all}
 
 # mcmc hyperparameters: belief_update() starts from current belief's last particle, so mcmc warmups need fewer steps
 mcmc_warmups_init: 500

@@ -34,7 +34,6 @@ JAX_PLATFORMS=cpu python scripts/run_scaling.py \
     ekf.use_vmap=True \
     data.nq_train=50000 \
     data.nq_update=60 \
-    update_all=True \
     niters_update=-3 \
     sgd.split_datastream=True \
     learning_rate=0.001 \

@@ -61,7 +61,6 @@ class DropoutAgent(Agent):
         chunk_size: int = 64,
         use_vmap: bool = True,  # for training update_bel in {init,update}_bel
         acq: str = "disagreement",
-        update_all: bool = True,
         verbose: bool = False,
     ):
         self.traj_shape = traj_shape
@@ -77,7 +76,6 @@ class DropoutAgent(Agent):
         self.max_buffer_size = max_buffer_size
         assert acq in ["disagreement", "infogain"]
         self.acq = acq
-        self.update_all = update_all
         self.buffer: QueryBuffer = QueryBuffer.create(
             self.max_buffer_size, self.traj_shape
         )
@@ -114,7 +112,6 @@ class DropoutAgent(Agent):
             "batch_size": alg_cfg["bs"],
             "l2_reg": alg_cfg["l2_reg"],
             # update
-            "update_all": alg_cfg["update_all"],
             "niters_update": alg_cfg["niters_update"],
             # ensembling
             "n_models": alg_cfg["M"],
@@ -160,19 +157,6 @@ class DropoutAgent(Agent):
     def update_bel(
         self, key, bel: DropoutBeliefState, batch: QueryData
     ) -> DropoutBeliefState:
-        key, key_update = jr.split(key)
-        if self.update_all:
-            return self.update_bel_all(key_update, bel, batch)
-        else:
-            return self.update_bel_most_recent(key_update, bel, batch)
-
-    # @partial(jax.jit, static_argnames=["self"])
-    def update_bel_all(
-        self,
-        key,
-        bel: DropoutBeliefState,
-        batch: QueryData,
-    ) -> DropoutBeliefState:
         """Train on all queries in the buffer."""
         self.buffer = self.buffer.add_samples(batch)
 
@@ -192,41 +176,6 @@ class DropoutAgent(Agent):
             use_dropout=True,
             use_vmap=self.use_vmap,
         )
-        bel = bel.replace(ts=new_ts, t=bel.t + 1)
-        return bel
-
-    # @partial(jax.jit, static_argnames=["self"])
-    def update_bel_most_recent(
-        self,
-        key,
-        bel: DropoutBeliefState,
-        batch: QueryData,
-    ) -> DropoutBeliefState:
-        """Train on the most recent query."""
-        self.buffer = self.buffer.add_samples(batch)
-        ds = self.buffer.get_newest_n(n=1)
-
-        def train_fn(ts, batch: QueryData):
-            key, key_dropout = jr.split(ts.dropout_key)
-            contexts_B2TD, labels_B2 = batch.contexts, batch.labels
-
-            def parameterized_loss(params):
-                logits_B2 = ts.apply_fn(
-                    {"params": params},
-                    contexts_B2TD,
-                    train=True,
-                    rngs={"dropout": key_dropout},
-                )
-                return bt_loss_fn(params, logits_B2, labels_B2, self.l2_reg)
-
-            grad_fn = jax.value_and_grad(parameterized_loss, has_aux=True)
-            (loss, _), grads = grad_fn(ts.params)
-            ts = ts.apply_gradients(grads=grads)
-            ts = ts.replace(dropout_key=key)
-            return ts
-
-        new_ts = train_fn(bel.ts, ds)
-
         bel = bel.replace(ts=new_ts, t=bel.t + 1)
         return bel
 

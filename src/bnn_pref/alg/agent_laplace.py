@@ -165,7 +165,6 @@ class LaplaceAgent(Agent):
         chunk_size: int = 64,
         use_vmap: bool = True,  # for training update_bel in {init,update}_bel
         acq: str = "disagreement",
-        update_all: bool = True,
         verbose: bool = False,
     ):
         self.traj_shape = traj_shape
@@ -182,7 +181,6 @@ class LaplaceAgent(Agent):
         self.max_buffer_size = max_buffer_size
         assert acq in ["disagreement", "infogain"]
         self.acq = acq
-        self.update_all = update_all
         self.buffer: QueryBuffer = QueryBuffer.create(
             self.max_buffer_size, self.traj_shape
         )
@@ -216,7 +214,6 @@ class LaplaceAgent(Agent):
             "batch_size": alg_cfg["bs"],
             "l2_reg": alg_cfg["l2_reg"],
             # update
-            "update_all": alg_cfg["update_all"],
             "niters_update": alg_cfg["niters_update"],
             "prior_prec": alg_cfg["prior_prec"],
             # ensembling

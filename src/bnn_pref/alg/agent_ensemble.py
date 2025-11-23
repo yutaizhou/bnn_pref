@@ -58,7 +58,6 @@ class EnsembleAgent(Agent):
         chunk_size: int = 64,
         use_vmap: bool = True,  # for training update_bel in {init,update}_bel
         acq: str = "disagreement",
-        update_all: bool = True,
         split_datastream: bool = True,
         verbose: bool = False,
     ):
@@ -75,7 +74,6 @@ class EnsembleAgent(Agent):
         self.max_buffer_size = max_buffer_size
         assert acq in ["disagreement", "infogain"]
         self.acq = acq
-        self.update_all = update_all
         self.split_datastream = split_datastream
         self.buffer: QueryBuffer = QueryBuffer.create(
             self.max_buffer_size, self.traj_shape
@@ -111,7 +109,6 @@ class EnsembleAgent(Agent):
             "batch_size": alg_cfg["bs"],
             "l2_reg": alg_cfg["l2_reg"],
             # update
-            "update_all": alg_cfg["update_all"],
             "niters_update": alg_cfg["niters_update"],
             # ensembling
             "n_models": alg_cfg["M"],
@@ -164,19 +161,6 @@ class EnsembleAgent(Agent):
     def update_bel(
         self, key, bel: EnsembleBeliefState, batch: QueryData
     ) -> EnsembleBeliefState:
-        key, key_update = jr.split(key)
-        if self.update_all:
-            return self.update_bel_all(key_update, bel, batch)
-        else:
-            return self.update_bel_most_recent(key_update, bel, batch)
-
-    # @partial(jax.jit, static_argnames=["self"])
-    def update_bel_all(
-        self,
-        key,
-        bel: EnsembleBeliefState,
-        batch: QueryData,
-    ) -> EnsembleBeliefState:
         """Train on all queries in the buffer."""
         self.buffer = self.buffer.add_samples(batch)
 
@@ -197,39 +181,6 @@ class EnsembleAgent(Agent):
             use_dropout=False,
             use_vmap=self.use_vmap,
         )
-        bel = bel.replace(ts=new_ts, t=bel.t + 1)
-        return bel
-
-    # @partial(jax.jit, static_argnames=["self"])
-    def update_bel_most_recent(
-        self,
-        key,
-        bel: EnsembleBeliefState,
-        batch: QueryData,
-    ) -> EnsembleBeliefState:
-        """Train on the most recent query."""
-        self.buffer = self.buffer.add_samples(batch)
-        ds = self.buffer.get_newest_n(n=1)
-
-        def train_fn(ts, batch: QueryData):
-            contexts_B2TD, labels_B2 = batch.contexts, batch.labels
-
-            def parameterized_loss(params):
-                logits_B2 = ts.apply_fn({"params": params}, contexts_B2TD)
-                return bt_loss_fn(params, logits_B2, labels_B2, self.l2_reg)
-
-            grad_fn = jax.value_and_grad(parameterized_loss, has_aux=True)
-            (loss, _), grads = grad_fn(ts.params)
-            ts = ts.apply_gradients(grads=grads)
-            return ts
-
-        if self.use_vmap:
-            grad_fn = jax.vmap(train_fn, in_axes=(0, None))  # vmap over ts
-            new_ts = grad_fn(bel.ts, ds)
-        else:
-            grad_fn = partial(train_fn, batch=ds)
-            new_ts = jax.lax.map(grad_fn, bel.ts)
-
         bel = bel.replace(ts=new_ts, t=bel.t + 1)
         return bel
 
@@ -302,79 +253,3 @@ class EnsembleAgent(Agent):
         llik_Q2 = jax.nn.logsumexp(llik_QM2, axis=1) - jnp.log(M)
         prob_Q2 = jnp.exp(llik_Q2)
         return prob_Q2
-
-
-if __name__ == "__main__":
-    import ipdb
-
-    # def init_model(key, model, input_shape, tx):
-    #     dummy_input = jnp.ones((1, *input_shape))
-    #     params = model.init(key, dummy_input)["params"]
-    #     ts = TrainState.create(
-    #         apply_fn=model.apply,
-    #         params=params,
-    #         tx=tx,
-    #     )
-    #     return ts
-
-    def train_step(ts: TrainState, batch) -> Tuple[TrainState, Scalar]:
-        """Forward pass and loss computation vectorized across models."""
-        contexts_N2TD, labels_N2 = batch
-
-        def loss_fn(params) -> Tuple[Scalar, Float[Array, "N 2"]]:
-            logits_N2 = model.apply({"params": params}, contexts_N2TD)
-            loss = optax.softmax_cross_entropy(logits_N2, labels_N2).mean()
-            return loss, logits_N2
-
-        # Vectorize the loss computation across models
-        vgrad_fn = jax.value_and_grad(loss_fn, has_aux=True)
-        (loss, _), grads = vgrad_fn(ts.params)
-
-        ts = ts.apply_gradients(grads=grads)
-        return ts, loss
-
-    def predict_step(ts, batch):
-        contexts_Q2TD, labels_Q2 = batch
-        logits_Q2 = model.apply({"params": ts.params}, contexts_Q2TD)
-        return logits_Q2
-
-    # * Model definition
-    key = jr.key(0)
-    n_models = 4
-    model = RewardNet(hidden_sizes=[32, 32])
-    Q, K, T, D = 100, 2, 6, 3
-    input_shape = (K, T, D)
-
-    # * data def
-    key, key_data = jr.split(key)
-    contexts_Q2TD = jr.normal(key_data, shape=(Q, *input_shape))
-    labels_Q2 = jax.nn.one_hot(jnp.ones((Q,)), num_classes=K)
-    batch = (contexts_Q2TD, labels_Q2)
-
-    # * Model initialization
-    key, *keys_model = jr.split(key, 1 + n_models)
-    keys_model = jnp.array(keys_model)
-    tx = optax.adam(3e-4)
-    ts = jax.vmap(init_model, in_axes=(0, None, None, None))(
-        keys_model, model, input_shape, tx
-    )
-    print(jax.tree.map(lambda x: x.shape, ts.params))
-    train_step_vj = jax.jit(jax.vmap(train_step, in_axes=(0, None)))
-
-    # * Model training
-    n_iters = 100
-    # for i in range(n_iters):
-    #     ts, loss = train_step_vj(ts, batch)
-    #     print(loss)
-
-    def scan_step(ts, _):
-        ts, loss = train_step_vj(ts, batch)
-        return ts, (loss, ts)
-
-    _, (loss, ts) = jax.lax.scan(scan_step, init=ts, length=n_iters)
-    print(loss)
-
-    # * Model prediction
-    predict_step_vj = jax.jit(jax.vmap(predict_step, in_axes=(0, None)))
-    logits_Q2 = predict_step_vj(ts, batch)
-    print(logits_Q2.shape)

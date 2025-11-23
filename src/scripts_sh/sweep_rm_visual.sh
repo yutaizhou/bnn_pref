@@ -39,7 +39,6 @@ TASK_LIST=$(IFS=,; echo "${TASKS[*]}")
 
 
 # this runs through product (alg, is_al) in sequence, for each task
-# lr=0.0001 for update_all=True, lr=0.001 for update_all=False
 python src/scripts/run_rm.py \
     -m seed=-1 seeds=5 \
     verbose=True \
