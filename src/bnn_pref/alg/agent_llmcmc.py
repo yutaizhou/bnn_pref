@@ -122,7 +122,7 @@ def mcmc_belief_update(
 class LMCMCAgent(Agent):
     def __init__(
         self,
-        model: nn.Module,
+        model: RewardNet,
         traj_shape: Tuple[int, ...],
         learning_rate: float,
         n_models: int,
@@ -142,7 +142,7 @@ class LMCMCAgent(Agent):
     ):
         self.traj_shape = traj_shape
         self.n_models = n_models
-        self.model: RewardNet = model
+        self.model = model
         self.opt = optax.adam(learning_rate)
         self.batch_size = batch_size
         self.l2_reg = l2_reg

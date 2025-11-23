@@ -20,7 +20,7 @@ from bnn_pref.alg.agent_utils import (
 )
 from bnn_pref.alg.data_buffer import QueryBuffer
 from bnn_pref.data.data_env import PreferenceEnv
-from bnn_pref.utils.network import count_params
+from bnn_pref.utils.network import RewardNet, count_params
 from bnn_pref.utils.type import QueryData, unpackable_dataclass
 
 
@@ -49,7 +49,7 @@ def init_model(
 class DropoutAgent(Agent):
     def __init__(
         self,
-        model: nn.Module,
+        model: RewardNet,
         traj_shape: Tuple[int, ...],
         learning_rate: float,
         n_models: int,

@@ -152,7 +152,7 @@ def laplace_belief_update(
 class LaplaceAgent(Agent):
     def __init__(
         self,
-        model: nn.Module,
+        model: RewardNet,
         traj_shape: Tuple[int, ...],
         learning_rate: float,
         n_models: int,
@@ -169,7 +169,7 @@ class LaplaceAgent(Agent):
     ):
         self.traj_shape = traj_shape
         self.n_models = n_models
-        self.model: RewardNet = model
+        self.model = model
         self.opt = optax.adam(learning_rate)
         self.l2_reg = l2_reg
         self.niters_init = niters_init

@@ -53,7 +53,7 @@ class EKFBeliefState:
 class EKFAgent(Agent):
     def __init__(
         self,
-        model: nn.Module,
+        model: RewardNet,
         traj_shape: Tuple[int, ...],  # kept for compat with Ensemble buffer
         learning_rate: float,
         momentum: float,
@@ -76,7 +76,7 @@ class EKFAgent(Agent):
         use_vmap: bool = True,
         verbose: bool = False,
     ):
-        self.model: RewardNet = model
+        self.model = model
         self.traj_shape = traj_shape  # (T, D) or (T, H, W, C)
         self.is_pixel = True if len(traj_shape) == 4 else False
         self.opt = optax.sgd(learning_rate, momentum)

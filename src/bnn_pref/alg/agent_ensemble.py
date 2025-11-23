@@ -46,7 +46,7 @@ def init_model(
 class EnsembleAgent(Agent):
     def __init__(
         self,
-        model: nn.Module,
+        model: RewardNet,
         traj_shape: Tuple[int, ...],
         n_models: int,
         learning_rate: float,
