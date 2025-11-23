@@ -145,9 +145,7 @@ def run_sgd(
             ts = ts.apply_gradients(grads=grads)
             if use_batch_norm:
                 ts = ts.replace(batch_stats=updates["batch_stats"])
-            flat_params, _ = (
-                ravel_pytree(ts.params) if get_param_trace else (None, None)
-            )
+            flat_params = ravel_pytree(ts.params)[0] if get_param_trace else None
             return ts, {"loss": loss, "params": flat_params}
 
     else:
@@ -174,9 +172,7 @@ def run_sgd(
             (loss, _), grads = grad_fn(ts.params)
             ts = ts.apply_gradients(grads=grads)
             ts = ts.replace(dropout_key=key)
-            flat_params, _ = (
-                ravel_pytree(ts.params) if get_param_trace else (None, None)
-            )
+            flat_params = ravel_pytree(ts.params)[0] if get_param_trace else None
             return ts, {"loss": loss, "params": flat_params}
 
     # * data batch iterator for different model training cases:
@@ -216,9 +212,8 @@ def run_sgd(
 
             postfix = {"train_loss": metric["loss"]}
             pbar.set_postfix(postfix)
+        metrics = jax.tree.map(lambda *xs: jnp.stack(xs), *metrics)
 
-        if get_param_trace:
-            metrics = jax.tree.map(lambda *xs: jnp.stack(xs), *metrics)
     # * training with for loop over ts
     elif n_models > 1 and not use_vmap:
         train_step = jax.jit(train_step)
@@ -238,9 +233,9 @@ def run_sgd(
             models.append(ts_single)
             # metrics.append(metric)
         ts = jax.tree.map(lambda *xs: jnp.stack(xs), *models)
-        if get_param_trace:
-            # metrics = jax.tree.map(lambda *xs: jnp.stack(xs), *metrics)
-            raise NotImplementedError("Not implemented")
+        # if get_param_trace:
+        #     # metrics = jax.tree.map(lambda *xs: jnp.stack(xs), *metrics)
+        #     raise NotImplementedError("Not implemented")
     else:
         raise ValueError("Invalid use_vmap or n_models")
 
