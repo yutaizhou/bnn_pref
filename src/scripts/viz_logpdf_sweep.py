@@ -613,14 +613,19 @@ def compute_2sample_t_test():
 
     leaves, _ = jax.tree.flatten(stats_agg["logpdf"])  # list of (seeds, steps)
     min_value = np.min(leaves)
+    max_value = 0  # logpdf theoretical maximum
+    n_queries = stats_agg["logpdf"]["ekf_True"].shape[1]
+    max_auc = (max_value - min_value) * n_queries
 
     # stats_agg["logpdf"] -> aucs["alg_is_al"] = (seeds, )
     aucs = {}
     for alg, is_al in it.product(algs, is_als):
         name = f"{alg}_{is_al}"
         arr = stats_agg["logpdf"][name]  # (seeds, steps)
-        arr = arr - min_value
-        auc_score = np.trapz(arr, axis=1)
+
+        arr_shifted = arr - min_value
+        auc_score = np.trapz(arr_shifted, axis=1)
+        auc_score = auc_score / max_auc
         aucs[name] = auc_score
 
     def cohens_d(arr1, arr2):
