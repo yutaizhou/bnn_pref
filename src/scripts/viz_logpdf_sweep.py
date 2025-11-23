@@ -90,7 +90,21 @@ iclr_tasks = [
 
 visual_tasks = [
     "vcheetahMediumExpert",
+    "vhumanoidMediumExpert",
+    "vwalkerMediumExpert",
 ]
+
+# visual_tasks = [
+#     "vcheetahRandom",
+#     "vcheetahMediumReplay",
+# "vcheetahMediumExpert",
+#     "vhumanoidRandom",
+#     "vhumanoidMediumReplay",
+#     "vhumanoidMediumExpert",
+#     "vwalkerRandom",
+#     "vwalkerMediumReplay",
+#     "vwalkerMediumExpert",
+# ]
 
 task_select = {
     "neurips": neurips_tasks,
@@ -581,7 +595,139 @@ def plot_all_metrics_agg():
     print(f"Plot saved as: {save_path}")
 
 
+def compute_2sample_t_test():
+    """
+    stats["logpdf"]["laplace_True"] = array(n_tasks, seeds, steps)
+    stats_agg["logpdf"]["laplace_True"] = array(seeds, steps)
+
+    AUC: np.trapz(array.mean(0))
+
+    d["laplace_True"] = AUC (Scalar)
+
+    """
+    import jax
+    from prettytable import PrettyTable
+    from scipy.stats import ttest_ind
+
+    np.set_printoptions(precision=4)
+
+    leaves, _ = jax.tree.flatten(stats_agg["logpdf"])  # list of (seeds, steps)
+    min_value = np.min(leaves)
+
+    # stats_agg["logpdf"] -> aucs["alg_is_al"] = (seeds, )
+    aucs = {}
+    for alg, is_al in it.product(algs, is_als):
+        name = f"{alg}_{is_al}"
+        arr = stats_agg["logpdf"][name]  # (seeds, steps)
+        arr = arr - min_value
+        auc_score = np.trapz(arr, axis=1)
+        aucs[name] = auc_score
+
+    def cohens_d(arr1, arr2):
+        """
+        Compute Cohen's d effect size for two independent samples.
+        Uses pooled standard deviation for Welch's t-test (unequal variances).
+        """
+        mean1, mean2 = np.mean(arr1), np.mean(arr2)
+        std1, std2 = np.std(arr1, ddof=1), np.std(arr2, ddof=1)
+        n1, n2 = len(arr1), len(arr2)
+
+        # Pooled standard deviation (weighted by sample size)
+        pooled_std = np.sqrt(((n1 - 1) * std1**2 + (n2 - 1) * std2**2) / (n1 + n2 - 2))
+
+        if pooled_std == 0:
+            return 0.0
+
+        d = (mean1 - mean2) / pooled_std
+        return d
+
+    def interpret_effect_size(d):
+        """
+        Cohen's d:
+        |d| < 0.2: negligible
+        0.2 ≤ |d| < 0.5: small
+        0.5 ≤ |d| < 0.8: medium
+        |d| ≥ 0.8: large
+        """
+        if abs(d) < 0.2:
+            return "negligible"
+        elif abs(d) < 0.5:
+            return "small"
+        elif abs(d) < 0.8:
+            return "medium"
+        else:
+            return "large"
+
+    def compute_stats(arr1, arr2):
+        result = ttest_ind(arr1, arr2, equal_var=False, alternative="greater")
+        t_stat = result.statistic
+        p_value = result.pvalue
+        ci = result.confidence_interval()
+        d = cohens_d(arr1, arr2)
+        effect_size = interpret_effect_size(d)
+        return t_stat, p_value, ci, d, effect_size
+
+    table_names = {
+        "ekf": "EKF",
+        "sgd": "Ensemble",
+        "do": "Dropout",
+        "laplace": "Laplace",
+        "llmcmc": "LLMCMC",
+    }
+
+    print(
+        "\n"
+        "================================================================================\n"
+        "2-sample t-test: active vs. random for each algorithm, aggregated over all tasks\n"
+        "================================================================================"
+    )
+    table = PrettyTable()
+    table.field_names = ["Active vs. Random", "t", "p-value", "Cohen's d", "95% CI"]
+    table.align["Active vs. Random"] = "l"
+    for alg in algs:
+        name_active = f"{alg}_True"
+        name_random = f"{alg}_False"
+        arr_active = aucs[name_active]  # (seeds, )
+        arr_random = aucs[name_random]  # (seeds, )
+        t_stat, p_value, ci, d, effect_size = compute_stats(arr_active, arr_random)
+        row = [
+            table_names[alg],
+            f"{t_stat:.2f}",
+            f"{p_value:.4f}",
+            f"{d:.2f} ({effect_size})",
+            f"({ci.low:.2f}, {ci.high:.2f})",
+        ]
+        table.add_row(row)
+    print(table)
+
+    print(
+        "\n"
+        "================================================================================\n"
+        "2-sample t-test: Active EKF vs. other active algorithms, aggregated over all tasks\n"
+        "================================================================================"
+    )
+    table = PrettyTable()
+    table.field_names = ["EKF vs.", "t", "p-value", "Cohen's d", "95% CI"]
+    table.align["EKF vs."] = "l"
+    for alg in algs[1:]:
+        name_ekf = "ekf_True"
+        name_alg = f"{alg}_True"
+        arr_ekf = aucs[name_ekf]  # (seeds, )
+        arr_alg = aucs[name_alg]  # (seeds, )
+        t_stat, p_value, ci, d, effect_size = compute_stats(arr_ekf, arr_alg)
+        row = [
+            f"EKF vs. {table_names[alg]}",
+            f"{t_stat:.2f}",
+            f"{p_value:.4f}",
+            f"{d:.2f} ({effect_size})",
+            f"({ci.low:.2f}, {ci.high:.2f})",
+        ]
+        table.add_row(row)
+    print(table)
+
+
 plot_logpdf_agg()
 plot_logpdf_per_task()
 plot_ece_brier_agg()
 plot_all_metrics_agg()
+compute_2sample_t_test()
