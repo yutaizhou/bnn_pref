@@ -195,7 +195,6 @@ class EnsembleAgent(Agent):
         """
         active learning: greedily compute query that maximizes acquisition function
         """
-        M = self.n_models
 
         # * precompute logits for all items
         def scan_ts(_, ts_single):

@@ -24,15 +24,15 @@
 
 #* vd4rl
 TASKS=(
-    # "vcheetahRandom"
-    # "vcheetahMediumReplay"
+    "vcheetahRandom"
+    "vcheetahMediumReplay"
     "vcheetahMediumExpert"
-    # 'vhumanoidRandom'
-    # 'vhumanoidMediumReplay'
-    # 'vhumanoidMediumExpert'
-    # 'vwalkerRandom'
-    # 'vwalkerMediumReplay'
-    # 'vwalkerMediumExpert'
+    'vhumanoidRandom'
+    'vhumanoidMediumReplay'
+    'vhumanoidMediumExpert'
+    'vwalkerRandom'
+    'vwalkerMediumReplay'
+    'vwalkerMediumExpert'
 )
 
 TASK_LIST=$(IFS=,; echo "${TASKS[*]}")
@@ -45,7 +45,9 @@ python src/scripts/run_rm.py \
     task=$TASK_LIST \
     network=resnet18 \
     data.nq_init=150 \
-    data.nq_update=150 \
+    data.nq_update=100 \
+    data.vd4rl_64=False \
+    data.vd4rl_segment_size=10 \
     acq=infogain \
     ekf.rnd_proj=True \
     ekf.proj_type=dense \
