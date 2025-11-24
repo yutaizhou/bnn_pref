@@ -24,11 +24,11 @@
 
 #* vd4rl
 TASKS=(
-    "vcheetahRandom"
-    "vcheetahMediumReplay"
+    # "vcheetahRandom"
+    # "vcheetahMediumReplay"
     "vcheetahMediumExpert"
-    'vhumanoidRandom'
-    'vhumanoidMediumReplay'
+    # 'vhumanoidRandom'
+    # 'vhumanoidMediumReplay'
     'vhumanoidMediumExpert'
     'vwalkerRandom'
     'vwalkerMediumReplay'

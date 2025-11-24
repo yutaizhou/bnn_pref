@@ -36,7 +36,7 @@ def run_alg(key, alg_name: str, cfg, data_dict, env):
 
     # * build + train
     key, key_train = jr.split(key, 2)
-    eval_results, bel_final, durations, alg_info = alg_pipeline(
+    eval_results, bel_final, alg_info = alg_pipeline(
         key=key_train,
         alg_name=alg_name,
         alg_cls=alg_cls,
@@ -48,13 +48,7 @@ def run_alg(key, alg_name: str, cfg, data_dict, env):
         verbose=cfg["verbose"],
     )
 
-    results = {
-        "final_belief": bel_final,
-        **eval_results,  # (n_seeds, 1 + nq_update)
-        **alg_info,
-        **durations,
-    }
-
+    results = {"final_belief": bel_final, **eval_results, **alg_info}
     return results
 
 
@@ -79,6 +73,11 @@ def alg_pipeline(
 
     # * build reward model, agent, env
     traj_shape = env.get_traj_shape()  # (T, D) or (T, H, W, C)
+    if len(traj_shape) == 4:
+        assert alg_cfg["encoder"] == "resnet", (
+            f"{alg_cfg['encoder']=} must be resnet for pixel tasks"
+        )
+
     model = RewardNet(
         hidden_sizes=alg_cfg["hidden_sizes"],
         n_splits=alg_cfg["n_splits"],
@@ -110,7 +109,6 @@ def alg_pipeline(
         )
         test_sharpness = compute_sharpness(prob_Q2)
 
-        # all scalar arrays: concatenated by scan to form array of (1 + nq_updates, )
         result = {
             "test_logpdf": test_logpdf,
             "test_acc": test_acc,
@@ -118,6 +116,20 @@ def alg_pipeline(
             "test_brier": test_brier_score,
             "test_coverage": test_coverage_rate,
             "test_sharpness": test_sharpness,
+        }
+        return result
+
+    def eval_reliability(key_eval, bel: AgentState):
+        """stores probabilities for reliability diagram"""
+        test_items_NTD, test_queries_Q2, test_labels_Q1 = test_data
+        # compute posterior predictive
+        prob_Q2 = bandit.compute_postpred(
+            key_eval, bel, test_items_NTD, test_queries_Q2
+        )
+        prob_Q2 = jnp.clip(prob_Q2, min=1e-4, max=1 - 1e-4)  # stability
+        result = {
+            "test_probs": prob_Q2,
+            "test_labels": test_labels_Q1,
         }
         return result
 
@@ -162,17 +174,23 @@ def alg_pipeline(
         postfix = {"test_logpdf": eval_result["test_logpdf"]}
         pbar.set_postfix(postfix)
 
-    # * aggregate eval results and final belief
+    key_reliability = jr.fold_in(key_eval, n_steps)
+    reliability_results = eval_reliability(key_reliability, bel)
+
+    # * aggregate results
+    # eval_results: concatenated to form array of (1 + nq_updates, )
     eval_results = jax.tree.map(lambda *xs: jnp.stack(xs), *eval_results)
     bel_final = bel if alg_name in ["ekf", "llmcmc", "laplace"] else bel.ts
     if alg_name == "do":
         bel_final = bel_final.replace(dropout_key=jr.key_data(bel_final.dropout_key))
 
     times = timer.get_total_times()
-    durations = {
-        "train_duration": times["train"],
-        "eval_duration": times["eval"],
+    eval_results = {
+        **eval_results,  # (1 + nq_update, )
+        **reliability_results,  # (Q, 2), (Q, 1)
+        "train_duration": times["train"],  # ()
+        "eval_duration": times["eval"],  # ()
     }
     alg_info = bandit.get_alg_info()
 
-    return eval_results, bel_final, durations, alg_info
+    return eval_results, bel_final, alg_info

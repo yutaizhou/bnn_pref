@@ -114,32 +114,37 @@ def main(cfg):
         res_m = jax.tree_util.tree_map(lambda *xs: jnp.stack(xs), *res_m)
 
         res = {
+            # * metadata: scalar
             "task": task_choice,
             "task_name": task_cfg["name"],
             "is_active": is_al,
             "nq_train": nq_train,
             "nq_test": nq_test,
-            "duration": res_m["train_duration"],  # (n_seeds,)
-            "eval_duration": res_m["eval_duration"],  # (n_seeds,)
-            # * metrics below are of shape (n_seeds, 1 + nq_update)
-            # * logpdf
+            # * duration: (n_seeds,)
+            "duration": res_m["train_duration"],
+            "eval_duration": res_m["eval_duration"],
+            # * increment eval results: (n_seeds, 1 + nq_update)
+            # logpdf
             "test_logpdf_all": res_m["test_logpdf"],
             "test_logpdf_final": MeanStd(res_m["test_logpdf"][:, -1]).get_stats(),
-            # * acc
+            # acc
             "test_acc_all": res_m["test_acc"],
             "test_acc_final": MeanStd(res_m["test_acc"][:, -1]).get_stats(),
-            # * ece
+            # ece
             "test_ece_all": res_m["test_ece"],
             "test_ece_final": MeanStd(res_m["test_ece"][:, -1]).get_stats(),
-            # * brier
+            # brier
             "test_brier_all": res_m["test_brier"],
             "test_brier_final": MeanStd(res_m["test_brier"][:, -1]).get_stats(),
-            # * coverage
+            # coverage
             "test_coverage_all": res_m["test_coverage"],
             "test_coverage_final": MeanStd(res_m["test_coverage"][:, -1]).get_stats(),
-            # * sharpness
+            # sharpness
             "test_sharpness_all": res_m["test_sharpness"],
             "test_sharpness_final": MeanStd(res_m["test_sharpness"][:, -1]).get_stats(),
+            # * final belief results: (just reliability for now)
+            "test_probs_final": res_m["test_probs"],  # (n_seeds, Q, 2)
+            "test_labels_final": res_m["test_labels"],  # (n_seeds, Q, 1)
         }
         best_seed = jnp.argmax(res_m["test_logpdf"][:, -1])
         best_belief = bel_m[best_seed]

@@ -94,17 +94,17 @@ visual_tasks = [
     "vwalkerMediumExpert",
 ]
 
-# visual_tasks = [
-#     "vcheetahRandom",
-#     "vcheetahMediumReplay",
-# "vcheetahMediumExpert",
-#     "vhumanoidRandom",
-#     "vhumanoidMediumReplay",
-#     "vhumanoidMediumExpert",
-#     "vwalkerRandom",
-#     "vwalkerMediumReplay",
-#     "vwalkerMediumExpert",
-# ]
+visual_tasks = [
+    # "vcheetahRandom",
+    # "vcheetahMediumReplay",
+    "vcheetahMediumExpert",
+    # "vhumanoidRandom",
+    # "vhumanoidMediumReplay",
+    "vhumanoidMediumExpert",
+    "vwalkerRandom",
+    "vwalkerMediumReplay",
+    "vwalkerMediumExpert",
+]
 
 task_select = {
     "neurips": neurips_tasks,
