@@ -177,12 +177,21 @@ for task in tasks:
 
 # stats["logpdf"][alg_is_al] = (n_tasks, seeds, steps); e.g. stats["logpdf"]["ekf_True"]
 stats = {metric: defaultdict(lambda: list()) for metric in metric_names}
+stats["probs"] = defaultdict(lambda: list())
+stats["labels"] = defaultdict(lambda: list())
 
 for alg, is_al in it.product(algs, is_als):
     for task in tasks:
         res = data[task][alg][is_al]  # (n_seeds, n_steps)
         for metric in metric_names:
             stats[metric][f"{alg}_{is_al}"].append(res[f"test_{metric}_all"])
+        if "test_probs_final" in res:
+            eval_reliability = True
+            # * (n_seeds, Q, 2), (n_seeds, Q, 1)
+            test_probs_final = res["test_probs_final"]
+            test_labels_final = res["test_labels_final"]
+            stats["probs"][f"{alg}_{is_al}"].append(test_probs_final)
+            stats["labels"][f"{alg}_{is_al}"].append(test_labels_final)
 
 
 def list2array(stats: dict) -> dict:
@@ -198,11 +207,22 @@ for metric in metric_names:
 
 # * aggregate over tasks -> stats_agg[metric][alg_is_al] = array(seeds, steps)
 stats_agg = {metric: {} for metric in metric_names}
-
+stats_agg["probs"] = {}
+stats_agg["labels"] = {}
 for alg, is_al in it.product(algs, is_als):
     for metric in metric_names:
         arr = stats[metric][f"{alg}_{is_al}"]  # (n_tasks, seeds, steps)
         stats_agg[metric][f"{alg}_{is_al}"] = mean(arr, axis=(0,), nan=handle_nan)
+    if eval_reliability:
+        probs = stats["probs"][f"{alg}_{is_al}"]  # [(seeds, Q, 2) * n_tasks]
+        labels = stats["labels"][f"{alg}_{is_al}"]  # [(seeds, Q, 1) * n_tasks]
+        # (n_seeds * n_tasks, Q, ...)
+        stats_agg["probs"][f"{alg}_{is_al}"] = np.concatenate(
+            [a.reshape(-1, 2) for a in probs]
+        )
+        stats_agg["labels"][f"{alg}_{is_al}"] = np.concatenate(
+            [a.reshape(-1, 1) for a in labels]
+        )
 
 
 def get_label(alg: str, is_active: Optional[bool] = None) -> str:
@@ -595,6 +615,186 @@ def plot_all_metrics_agg():
     print(f"Plot saved as: {save_path}")
 
 
+def plot_reliability_diagram(n_bins: int = 10):
+    """
+    Plot reliability diagram with stacked bars (accuracy and gap) for each algorithm.
+
+    Creates a bar chart showing:
+    - Blue bars: Accuracy within each confidence bin
+    - Yellow bars: Gap (difference between confidence and accuracy)
+    - Diagonal line: Perfect calibration reference
+    - ECE value: Displayed on each plot
+
+    Uses confidence (max probability) for binning, matching the ECE computation.
+    Layout: 5 columns x 2 rows (top row: active, bottom row: random)
+    """
+
+    # Create 5x2 subplot layout: top row = active, bottom row = random
+    n_cols = len(algs)
+    n_rows = 2  # Active and Random
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(4 * n_cols, 4 * n_rows))
+    axes = axes.flatten()
+
+    # Create ordered list: all active first, then all random
+    alg_order = []
+    for is_al in [True, False]:  # Active first, then Random
+        for alg in algs:
+            alg_order.append((alg, is_al))
+
+    for idx, (alg, is_al) in enumerate(alg_order):
+        ax = axes[idx]
+        invisible_topright_spines(ax)
+
+        alg_isactive = f"{alg}_{is_al}"
+        probs = stats_agg["probs"][alg_isactive]  # (n_seeds * n_tasks * Q, 2)
+        labels = stats_agg["labels"][alg_isactive]  # (n_seeds * n_tasks * Q, 1)
+
+        # Flatten labels if needed
+        if labels.ndim > 1:
+            labels = labels.squeeze()
+
+        # Use confidence (max probability) for binning, matching ECE computation
+        # This is the probability of the predicted class
+        confidence = np.max(probs, axis=1)  # (n_samples,)
+        predictions = np.argmax(probs, axis=1)  # (n_samples,)
+
+        # For calibration curve, we need the probability of the true class
+        # But we'll bin by confidence and check if predictions are correct
+        correct = (predictions == labels).astype(float)
+
+        # Filter out invalid values
+        valid_mask = (
+            np.isfinite(confidence) & np.isfinite(labels) & np.isfinite(correct)
+        )
+        confidence = confidence[valid_mask]
+        correct = correct[valid_mask]
+        labels = labels[valid_mask]
+
+        # # Check if we have both classes
+        # unique_labels = np.unique(labels)
+        # if len(unique_labels) == 1:
+        #     # Still plot, but it won't be meaningful for calibration assessment
+        #     print(
+        #         f"Warning: {alg_isactive} has only one class (labels={unique_labels}). "
+        #         f"Cannot properly assess calibration. All labels are {unique_labels[0]}."
+        #     )
+
+        # For reliability diagram, we bin by confidence and compute accuracy in each bin
+        # This matches the ECE computation approach
+        # We'll use manual binning to match ECE exactly
+        bin_boundaries = np.linspace(0, 1, n_bins + 1)
+        bin_lowers = bin_boundaries[:-1]
+        bin_uppers = bin_boundaries[1:]
+
+        prob_true = []
+        prob_pred = []
+
+        for bin_lower, bin_upper in zip(bin_lowers, bin_uppers):
+            # Find samples in this bin
+            bin_mask = (bin_lower < confidence) & (confidence <= bin_upper)
+            bin_count = np.sum(bin_mask)
+
+            if bin_count > 0:
+                # Accuracy in this bin (fraction of correct predictions)
+                bin_acc = np.mean(correct[bin_mask])
+                # Mean confidence in this bin
+                bin_conf = np.mean(confidence[bin_mask])
+                prob_true.append(bin_acc)
+                prob_pred.append(bin_conf)
+            else:
+                # Empty bin - use bin center
+                prob_true.append(0.0)
+                prob_pred.append((bin_lower + bin_upper) / 2)
+
+        prob_true = np.array(prob_true)
+        prob_pred = np.array(prob_pred)
+
+        # Compute ECE
+        ece_arr = stats_agg["ece"][alg_isactive]  # (seeds, steps)
+        ece_mean = mean(ece_arr[:, -1:], axis=0, nan=handle_nan)[0]
+
+        # Bin boundaries for plotting
+        bin_width = 1.0 / n_bins
+        bin_centers = prob_pred
+
+        # Accuracy (blue bars) - fraction of positives in each bin
+        accuracy = prob_true
+
+        # Confidence (mean predicted probability in each bin)
+        confidence = prob_pred
+
+        # Gap (yellow bars) - difference between confidence and accuracy
+        gap = confidence - accuracy
+
+        # Plot stacked bars
+        x_pos = bin_centers
+        width = bin_width * 0.8  # Slightly narrower bars
+
+        # Blue bars: Accuracy
+        ax.bar(
+            x_pos, accuracy, width=width, label="Outputs", color="#1f77b4", alpha=0.8
+        )
+
+        # Yellow bars: Gap (stacked on top of accuracy)
+        ax.bar(
+            x_pos,
+            gap,
+            width=width,
+            bottom=accuracy,
+            label="Gap",
+            color="#ffbb78",
+            alpha=0.8,
+        )
+
+        # Diagonal line for perfect calibration
+        ax.plot(
+            [0, 1], [0, 1], "k--", linewidth=2, alpha=0.7, label="Perfectly calibrated"
+        )
+
+        # Set labels and limits
+        ax.set_xlabel("Confidence", **get_font_kw(14))
+        ax.set_ylabel("Accuracy (%)", **get_font_kw(14))
+        ax.set_xlim([0, 1])
+        ax.set_ylim([0, 1])
+
+        # Set ticks and convert y-axis to percentage
+        yticks = ax.get_yticks()
+        ax.set_yticks(yticks)
+        ax.set_yticklabels([f"{int(y * 100)}" for y in yticks], **get_font_kw(12))
+        xticks = ax.get_xticks()
+        ax.set_xticks(xticks)
+        ax.set_xticklabels([f"{x:.1f}" for x in xticks], **get_font_kw(12))
+
+        # Add ECE value as text box
+        label = get_label(alg, is_al)
+        ax.text(
+            0.02,
+            0.98,
+            f"ECE={ece_mean:.2f}",
+            transform=ax.transAxes,
+            fontsize=12,
+            verticalalignment="top",
+            horizontalalignment="left",
+            bbox=dict(boxstyle="round", facecolor="white", alpha=0.8),
+        )
+
+        # Title
+        ax.set_title(label, **get_font_kw(14))
+
+        # Legend (only on first subplot)
+        if idx == 0:
+            ax.legend(**get_legend_kw(12), loc="upper left", bbox_to_anchor=(0.0, 0.9))
+
+        ax.grid(True, alpha=0.3, axis="y")
+
+    # Adjust spacing to fix gap issue
+    plt.tight_layout(pad=1.0, w_pad=0.5, h_pad=0.8)
+    save_path = f"{save_dir}/{timestamp}_4_reliability_nTasks={n_tasks}_agg.png"
+    plt.savefig(save_path, bbox_inches="tight", dpi=300)
+    plt.close()
+    print(f"Plot saved as: {save_path}")
+
+
 def compute_2sample_t_test():
     """
     stats["logpdf"]["laplace_True"] = array(n_tasks, seeds, steps)
@@ -735,4 +935,5 @@ plot_logpdf_agg()
 plot_logpdf_per_task()
 plot_ece_brier_agg()
 plot_all_metrics_agg()
+plot_reliability_diagram()
 compute_2sample_t_test()

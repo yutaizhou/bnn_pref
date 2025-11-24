@@ -2,17 +2,14 @@ from dataclasses import dataclass
 from functools import partial
 from typing import Callable
 
-import distrax
-import ipdb
 import jax
 import jax.numpy as jnp
 import jax.numpy.linalg as jnpl
 from jax import Array
 from jaxtyping import Scalar
 
-from bnn_pref.alg.agent_ekf import EKFBeliefState
 from bnn_pref.data.pref_utils import QueryFeaturesAndResponses
-from bnn_pref.utils.type import NTD, SD, D
+from bnn_pref.utils.type import SD, D
 
 
 @dataclass()
