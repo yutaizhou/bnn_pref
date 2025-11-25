@@ -147,15 +147,15 @@ is_als = [True, False]
 LEGEND_NCOL = 3 if len(algs) == 5 else 1
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-print("=" * 50)
 print(
-    f"query-budget: {args.query_budget}\n"
-    f"task set: {args.task_set}\n"
+    "=====================================================\n"
+    f"query_budget: {args.query_budget}\n"
+    f"task_set: {args.task_set}\n"
     f"algs: {algs}\n"
     f"load/save dir: {'/'.join(args.dirp.parts[-2:])}\n"
     f"timestamp: {timestamp}\n"
+    "=====================================================\n"
 )
-print("=" * 50)
 
 
 """
@@ -483,6 +483,8 @@ def plot_logpdf_per_task():
                 alpha=0.2,
                 **style,
             )
+        if "v" in task:  # vwalkerMediumExpert -> walkerMediumExpert
+            task = task.replace("v", "")
         ax.set_title(prettify_title(task), **get_font_kw(14))
 
         y_all = np.concatenate([line.get_ydata() for line in ax.get_lines()])
@@ -983,6 +985,13 @@ def compute_2sample_t_test():
         ]
         table.add_row(row)
     print(table)
+
+    save_path = (
+        args.dirp
+        / f"{timestamp}_5_ttest_nTasks={n_tasks}_agg_Q={args.query_budget}.txt"
+    )
+    with open(save_path, "w") as f:
+        f.write(table.get_string())
 
 
 plot_logpdf_agg()

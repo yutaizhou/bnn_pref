@@ -22,6 +22,15 @@ TASKS=(
     "mazeLargeDense"
 )
 
+# * testout state exps
+# TASKS=(
+#     "cheetahMediumReplay"
+#     "hopperMediumReplay"
+#     "walkerMediumReplay"
+#     "penHuman"
+#     "mazeMediumDense"
+# )
+
 #* vd4rl
 # TASKS=(
 #     "vcheetahRandom"
