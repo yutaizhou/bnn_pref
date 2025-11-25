@@ -1,3 +1,4 @@
+import gc
 import logging
 import os
 from datetime import datetime
@@ -28,6 +29,7 @@ def main(cfg):
     seed = get_random_seed(cfg["seed"])
     key = jr.key(seed)
     algs = ["ekf", "sgd", "do", "laplace", "llmcmc"]
+    # algs = ["llmcmc"]
 
     task = cfg["task"]["name"]
     task_cfg = cfg["task"]
@@ -50,6 +52,7 @@ def main(cfg):
     nq_train = train_prefs.queries_Q2.shape[0]
     nq_test = test_prefs.queries_Q2.shape[0]
 
+    print(f"M: {cfg['M']}; {cfg['network']['hidden_sizes']}")
     print(
         f"{task} ({T=}, {D=}): train/test nt=({nt_train}/{nt_test}), nq=({nq_train}/{nq_test})"
     )
@@ -83,6 +86,8 @@ def main(cfg):
             "test_acc_all": res_m["test_acc"],
             "test_acc_final": res_m["test_acc"][-1],
         }
+        gc.collect()
+        jax.clear_caches()
 
         stats[task][alg] = res
 
