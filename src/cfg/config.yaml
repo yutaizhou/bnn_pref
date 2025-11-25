@@ -50,7 +50,7 @@ save_fig: False
 # for gradient descent methods
 max_buffer_size: 500 # for keeping observed queries for training. keep it roughly around `nq_updates`
 bs: 8 # batch size for training
-learning_rate: 0.001
+learning_rate: 0.003
 l2_reg: 0.0
 
 # make sure to adjust `learning_rate` according to update strategy

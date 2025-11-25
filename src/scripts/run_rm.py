@@ -6,6 +6,7 @@ from datetime import datetime
 from functools import partial
 
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
+# os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = "1.0"
 os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
 os.environ["DISABLE_CODESIGN_WARNING"] = "1"
 logging.getLogger("absl").setLevel(logging.WARNING)

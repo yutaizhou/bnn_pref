@@ -7,7 +7,10 @@ import logging
 import os
 import sys
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
+from pprint import pprint
 from typing import Optional
 
 os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
@@ -18,6 +21,7 @@ logging.getLogger("absl").setLevel(logging.WARNING)
 import ipdb
 import matplotlib.pyplot as plt
 import numpy as np
+import tyro
 from matplotlib.legend_handler import HandlerBase
 from matplotlib.lines import Line2D
 
@@ -30,17 +34,6 @@ from bnn_pref.utils.plotting import (
     set_xlim_offset,
     smooth,
 )
-
-timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-dirp = sys.argv[1]  # where to load
-task_set = sys.argv[2]  # "neurips", "iclr", "visual"
-save_dir = dirp  # where to save
-metric_names = ["logpdf", "acc", "ece", "brier", "coverage", "sharpness"]
-use_stderr = True  # otherwise use stderr
-use_smooth = True
-handle_nan = False
-nan_mask = False
-
 
 # neurips tasks
 neurips_tasks = [
@@ -97,13 +90,13 @@ test_tasks = [
     "mazeMediumDense",
 ]
 
-visual_tasks = [
+visual3_tasks = [
     "vcheetahMediumExpert",
     "vhumanoidMediumExpert",
     "vwalkerMediumExpert",
 ]
 
-visual_tasks = [
+visual5_tasks = [
     # "vcheetahRandom",
     # "vcheetahMediumReplay",
     "vcheetahMediumExpert",
@@ -118,17 +111,51 @@ visual_tasks = [
 task_select = {
     "neurips": neurips_tasks,
     "iclr": iclr_tasks,
-    "visual": visual_tasks,
     "test": test_tasks,
+    "visual3": visual3_tasks,
+    "visual5": visual5_tasks,
+}
+
+alg_all = ["ekf", "sgd", "do", "laplace", "llmcmc"]
+alg_ekf_only = ["ekf"]
+alg_select = {
+    "neurips": alg_all,
+    "iclr": alg_all,
+    "test": alg_all,
+    "visual3": alg_ekf_only,
+    "visual5": alg_ekf_only,
 }
 
 
-tasks = task_select[task_set]
+@dataclass
+class Args:
+    dirp: Path  # for both loading and saving
+    task_set: str  # e.g., "neurips", "iclr", "test", "visual3", "visual5"
+    query_budget: int = -1
+    use_stderr: bool = True
+    use_smooth: bool = True
+    handle_nan: bool = False
+    nan_mask: bool = False
+
+
+args = tyro.cli(Args)
+metric_names = ["logpdf", "acc", "ece", "brier", "coverage", "sharpness"]
+tasks = task_select[args.task_set]
 n_tasks = len(tasks)
-# algs = ["ekf", "sgd", "do", "laplace", "llmcmc"] if task_set == "iclr" else ["ekf"]
-algs = ["ekf"] if "visual" in task_set else ["ekf", "sgd", "do", "laplace", "llmcmc"]
+algs = alg_select[args.task_set]
 is_als = [True, False]
 LEGEND_NCOL = 3 if len(algs) == 5 else 1
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+print("=" * 50)
+print(
+    f"query-budget: {args.query_budget}\n"
+    f"task set: {args.task_set}\n"
+    f"algs: {algs}\n"
+    f"load/save dir: {'/'.join(args.dirp.parts[-2:])}\n"
+    f"timestamp: {timestamp}\n"
+)
+print("=" * 50)
 
 
 """
@@ -180,9 +207,9 @@ def sterr(arr, axis, nan=False, nan_mask=False):
 # data["cheetahRandom"]["ekf"][False]["test_logpdf_all"] = (n_seeds, n_steps)
 data = {}
 for task in tasks:
-    for folder in os.listdir(dirp):
+    for folder in os.listdir(args.dirp):
         if f"task={task}" in folder:
-            path = os.path.join(dirp, folder, "stats.npz")
+            path = args.dirp / folder / "stats.npz"
             data[task] = np.load(path, allow_pickle=True)[task].item()
 
 
@@ -196,7 +223,9 @@ for alg, is_al in it.product(algs, is_als):
     for task in tasks:
         res = data[task][alg][is_al]  # (n_seeds, n_steps)
         for metric in metric_names:
-            stats[metric][f"{alg}_{is_al}"].append(res[f"test_{metric}_all"])
+            # stat = res[f"test_{metric}_all"]
+            stat = res[f"test_{metric}_all"][:, : args.query_budget]
+            stats[metric][f"{alg}_{is_al}"].append(stat)
         if "test_probs_final" in res:
             eval_reliability = True
             # * (n_seeds, Q, 2), (n_seeds, Q, 1)
@@ -225,7 +254,7 @@ for alg, is_al in it.product(algs, is_als):
     alg_is_al = f"{alg}_{is_al}"
     for metric in metric_names:
         arr = stats[metric][alg_is_al]  # (n_tasks, seeds, steps)
-        stats_agg[metric][alg_is_al] = mean(arr, axis=(0,), nan=handle_nan)
+        stats_agg[metric][alg_is_al] = mean(arr, axis=(0,), nan=args.handle_nan)
     if eval_reliability:
         probs = stats["probs"][alg_is_al]  # [(seeds, Q, 2) * n_tasks]
         labels = stats["labels"][alg_is_al]  # [(seeds, Q, 1) * n_tasks]
@@ -303,11 +332,11 @@ def plot_logpdf_agg():
     for alg, is_al in it.product(algs, is_als):
         alg_isactive = f"{alg}_{is_al}"
         arr = stats_agg["logpdf"][alg_isactive]  # (seeds, steps)
-        data_mean = mean(arr, axis=0, nan=handle_nan)
+        data_mean = mean(arr, axis=0, nan=args.handle_nan)
         data_std = (
-            std(arr, axis=0, nan=handle_nan)
-            if not use_stderr
-            else sterr(arr, axis=0, nan=handle_nan)
+            std(arr, axis=0, nan=args.handle_nan)
+            if not args.use_stderr
+            else sterr(arr, axis=0, nan=args.handle_nan)
         )
         label = get_label(alg, is_al)
         style = get_style(alg, is_al)
@@ -324,10 +353,10 @@ def plot_logpdf_agg():
     # only do so if EKF active outperforms EKF random
     if "ekf" in algs:
         ekf_active_mean_T = mean(
-            stats_agg["logpdf"]["ekf_True"], axis=0, nan=handle_nan
+            stats_agg["logpdf"]["ekf_True"], axis=0, nan=args.handle_nan
         )
         ekf_random_mean_T = mean(
-            stats_agg["logpdf"]["ekf_False"], axis=0, nan=handle_nan
+            stats_agg["logpdf"]["ekf_False"], axis=0, nan=args.handle_nan
         )
 
         if ekf_active_mean_T[-1] > ekf_random_mean_T[-1]:
@@ -413,11 +442,14 @@ def plot_logpdf_agg():
         bbox_to_anchor=(0.5, -0.12),
         ncol=LEGEND_NCOL,
     )
-    save_path = f"{save_dir}/{timestamp}_0_logpdf_nTasks={n_tasks}_agg.png"
+    save_path = (
+        args.dirp
+        / f"{timestamp}_0_logpdf_nTasks={n_tasks}_agg_Q={args.query_budget}.png"
+    )
     plt.savefig(save_path, bbox_inches="tight", dpi=300)
     plt.close()
 
-    print(f"Plot saved as: {save_path}")
+    print("Saved logpdf agg")
 
 
 def plot_logpdf_per_task():
@@ -433,14 +465,14 @@ def plot_logpdf_per_task():
         for alg, is_al in it.product(algs, is_als):
             arr = stats["logpdf"][f"{alg}_{is_al}"]  # (tasks, seeds, steps)
             arr_task = arr[i, :, :]  # (seeds, steps)
-            mean_E = mean(arr_task, axis=0, nan=handle_nan)  # (steps, )
+            mean_E = mean(arr_task, axis=0, nan=args.handle_nan)  # (steps, )
             std_E = (
-                std(arr_task, axis=0, nan=handle_nan)
-                if not use_stderr
-                else sterr(arr_task, axis=0, nan=handle_nan)
+                std(arr_task, axis=0, nan=args.handle_nan)
+                if not args.use_stderr
+                else sterr(arr_task, axis=0, nan=args.handle_nan)
             )  # (steps, )
-            mean_E = smooth(mean_E) if use_smooth else mean_E
-            std_E = smooth(std_E) if use_smooth else std_E
+            mean_E = smooth(mean_E) if args.use_smooth else mean_E
+            std_E = smooth(std_E) if args.use_smooth else std_E
             label = get_label(alg, is_al)
             style = get_style(alg, is_al)
             ax.plot(mean_E, label=label, **style)
@@ -497,10 +529,12 @@ def plot_logpdf_per_task():
         **get_legend_kw(16),
     )
     plt.tight_layout(rect=[0, 0.05, 1, 1])
-    save_path = f"{save_dir}/{timestamp}_1_logpdf_nTasks={n_tasks}.png"
+    save_path = (
+        args.dirp / f"{timestamp}_1_logpdf_nTasks={n_tasks}_Q={args.query_budget}.png"
+    )
     plt.savefig(save_path, bbox_inches="tight", dpi=300)
     plt.close()
-    print(f"Plot saved as: {save_path}")
+    print("Saved logpdf per task")
 
 
 def plot_ece_brier_agg():
@@ -513,11 +547,11 @@ def plot_ece_brier_agg():
         for alg, is_al in it.product(algs, is_als):
             alg_isactive = f"{alg}_{is_al}"
             arr = stats_agg[metric][alg_isactive]  # (seeds, steps)
-            data_mean = mean(arr, axis=0, nan=handle_nan)  # (steps, )
+            data_mean = mean(arr, axis=0, nan=args.handle_nan)  # (steps, )
             data_std = (
-                std(arr, axis=0, nan=handle_nan)
-                if not use_stderr
-                else sterr(arr, axis=0, nan=handle_nan)
+                std(arr, axis=0, nan=args.handle_nan)
+                if not args.use_stderr
+                else sterr(arr, axis=0, nan=args.handle_nan)
             )
             label = get_label(alg, is_al)
             style = get_style(alg, is_al)
@@ -562,10 +596,13 @@ def plot_ece_brier_agg():
         handlelength=2,
         **get_legend_kw(16),
     )
-    save_path = f"{save_dir}/{timestamp}_2_ECEBrier_nTasks={n_tasks}_agg.png"
+    save_path = (
+        args.dirp
+        / f"{timestamp}_2_ECEBrier_nTasks={n_tasks}_agg_Q={args.query_budget}.png"
+    )
     plt.savefig(save_path, bbox_inches="tight", dpi=300)
     plt.close()
-    print(f"Plot saved as: {save_path}")
+    print("Saved ECE/Brier agg")
 
 
 def plot_all_metrics_agg():
@@ -578,11 +615,11 @@ def plot_all_metrics_agg():
         for alg, is_al in it.product(algs, is_als):
             alg_isactive = f"{alg}_{is_al}"
             arr = stats_agg[metric][alg_isactive]  # (seeds, steps)
-            data_mean = mean(arr, axis=0, nan=handle_nan)  # (steps, )
+            data_mean = mean(arr, axis=0, nan=args.handle_nan)  # (steps, )
             data_std = (
-                std(arr, axis=0, nan=handle_nan)
-                if not use_stderr
-                else sterr(arr, axis=0, nan=handle_nan)
+                std(arr, axis=0, nan=args.handle_nan)
+                if not args.use_stderr
+                else sterr(arr, axis=0, nan=args.handle_nan)
             )
             label = get_label(alg, is_al)
             style = get_style(alg, is_al)
@@ -622,10 +659,13 @@ def plot_all_metrics_agg():
         handlelength=2,
         **get_legend_kw(16),
     )
-    save_path = f"{save_dir}/{timestamp}_3_metrics_nTasks={n_tasks}_agg.png"
+    save_path = (
+        args.dirp
+        / f"{timestamp}_3_metrics_nTasks={n_tasks}_agg_Q={args.query_budget}.png"
+    )
     plt.savefig(save_path, bbox_inches="tight", dpi=300)
     plt.close()
-    print(f"Plot saved as: {save_path}")
+    print("Saved all metrics agg")
 
 
 def plot_reliability_diagram(n_bins: int = 10):
@@ -724,7 +764,7 @@ def plot_reliability_diagram(n_bins: int = 10):
 
         # Compute ECE
         ece_arr = stats_agg["ece"][alg_isactive]  # (seeds, steps)
-        ece_mean = mean(ece_arr[:, -1:], axis=0, nan=handle_nan)[0]
+        ece_mean = mean(ece_arr[:, -1:], axis=0, nan=args.handle_nan)[0]
 
         # Bin boundaries for plotting
         bin_width = 1.0 / n_bins
@@ -802,10 +842,13 @@ def plot_reliability_diagram(n_bins: int = 10):
 
     # Adjust spacing to fix gap issue
     plt.tight_layout(pad=1.0, w_pad=0.5, h_pad=0.8)
-    save_path = f"{save_dir}/{timestamp}_4_reliability_nTasks={n_tasks}_agg.png"
+    save_path = (
+        args.dirp
+        / f"{timestamp}_4_reliability_nTasks={n_tasks}_agg_Q={args.query_budget}.png"
+    )
     plt.savefig(save_path, bbox_inches="tight", dpi=300)
     plt.close()
-    print(f"Plot saved as: {save_path}")
+    print("Saved reliability diagram")
 
 
 def compute_2sample_t_test():

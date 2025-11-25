@@ -47,7 +47,7 @@ python src/scripts/run_rm.py \
     data.nq_update=60 \
     acq=infogain \
     bs=8 \
-    learning_rate=0.001 \
+    learning_rate=0.003 \
     niters_init=420 \
     niters_update=10 \
     ekf.learning_rate=0.003 \
