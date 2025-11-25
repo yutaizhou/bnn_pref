@@ -88,6 +88,15 @@ iclr_tasks = [
     "mazeLargeDense",
 ]
 
+# test_tasks
+test_tasks = [
+    "cheetahMediumReplay",
+    "hopperMediumReplay",
+    "walkerMediumReplay",
+    "penHuman",
+    "mazeMediumDense",
+]
+
 visual_tasks = [
     "vcheetahMediumExpert",
     "vhumanoidMediumExpert",
@@ -110,12 +119,14 @@ task_select = {
     "neurips": neurips_tasks,
     "iclr": iclr_tasks,
     "visual": visual_tasks,
+    "test": test_tasks,
 }
 
 
 tasks = task_select[task_set]
 n_tasks = len(tasks)
-algs = ["ekf", "sgd", "do", "laplace", "llmcmc"] if task_set == "iclr" else ["ekf"]
+# algs = ["ekf", "sgd", "do", "laplace", "llmcmc"] if task_set == "iclr" else ["ekf"]
+algs = ["ekf"] if "visual" in task_set else ["ekf", "sgd", "do", "laplace", "llmcmc"]
 is_als = [True, False]
 LEGEND_NCOL = 3 if len(algs) == 5 else 1
 
@@ -180,6 +191,7 @@ stats = {metric: defaultdict(lambda: list()) for metric in metric_names}
 stats["probs"] = defaultdict(lambda: list())
 stats["labels"] = defaultdict(lambda: list())
 
+eval_reliability = False
 for alg, is_al in it.product(algs, is_als):
     for task in tasks:
         res = data[task][alg][is_al]  # (n_seeds, n_steps)
@@ -210,17 +222,18 @@ stats_agg = {metric: {} for metric in metric_names}
 stats_agg["probs"] = {}
 stats_agg["labels"] = {}
 for alg, is_al in it.product(algs, is_als):
+    alg_is_al = f"{alg}_{is_al}"
     for metric in metric_names:
-        arr = stats[metric][f"{alg}_{is_al}"]  # (n_tasks, seeds, steps)
-        stats_agg[metric][f"{alg}_{is_al}"] = mean(arr, axis=(0,), nan=handle_nan)
+        arr = stats[metric][alg_is_al]  # (n_tasks, seeds, steps)
+        stats_agg[metric][alg_is_al] = mean(arr, axis=(0,), nan=handle_nan)
     if eval_reliability:
-        probs = stats["probs"][f"{alg}_{is_al}"]  # [(seeds, Q, 2) * n_tasks]
-        labels = stats["labels"][f"{alg}_{is_al}"]  # [(seeds, Q, 1) * n_tasks]
+        probs = stats["probs"][alg_is_al]  # [(seeds, Q, 2) * n_tasks]
+        labels = stats["labels"][alg_is_al]  # [(seeds, Q, 1) * n_tasks]
         # (n_seeds * n_tasks, Q, ...)
-        stats_agg["probs"][f"{alg}_{is_al}"] = np.concatenate(
+        stats_agg["probs"][alg_is_al] = np.concatenate(
             [a.reshape(-1, 2) for a in probs]
         )
-        stats_agg["labels"][f"{alg}_{is_al}"] = np.concatenate(
+        stats_agg["labels"][alg_is_al] = np.concatenate(
             [a.reshape(-1, 1) for a in labels]
         )
 
@@ -807,31 +820,37 @@ def compute_2sample_t_test():
     """
     import jax
     from prettytable import PrettyTable
-    from scipy.stats import ttest_ind
+    from scipy.stats import ttest_ind, ttest_rel
 
     np.set_printoptions(precision=4)
 
     leaves, _ = jax.tree.flatten(stats_agg["logpdf"])  # list of (seeds, steps)
-    min_value = np.min(leaves)
-    max_value = 0  # logpdf theoretical maximum
+    min_logpdf = np.min(leaves)
+    max_logpdf = 0  # logpdf theoretical maximum
     n_queries = stats_agg["logpdf"]["ekf_True"].shape[1]
-    max_auc = (max_value - min_value) * n_queries
+    max_auc = (max_logpdf - min_logpdf) * n_queries
 
     # stats_agg["logpdf"] -> aucs["alg_is_al"] = (seeds, )
-    aucs = {}
+    scores = {}
     for alg, is_al in it.product(algs, is_als):
         name = f"{alg}_{is_al}"
         arr = stats_agg["logpdf"][name]  # (seeds, steps)
 
-        arr_shifted = arr - min_value
-        auc_score = np.trapz(arr_shifted, axis=1)
-        auc_score = auc_score / max_auc
-        aucs[name] = auc_score
+        auc_score = np.trapz(arr - min_logpdf, axis=1) / max_auc  # (seeds, )
+        scores[name] = auc_score
+        # logpdf_score = (arr[:, -1] - min_logpdf) / (max_logpdf - min_logpdf)  # (s, )
+        # scores[name] = 0.9 * auc_score + 0.1 * logpdf_score
 
     def cohens_d(arr1, arr2):
         """
         Compute Cohen's d effect size for two independent samples.
         Uses pooled standard deviation for Welch's t-test (unequal variances).
+
+        Interpretation of Cohen's d:
+            |d| < 0.2: negligible
+            0.2 ≤ |d| < 0.5: small
+            0.5 ≤ |d| < 0.8: medium
+            |d| ≥ 0.8: large
         """
         mean1, mean2 = np.mean(arr1), np.mean(arr2)
         std1, std2 = np.std(arr1, ddof=1), np.std(arr2, ddof=1)
@@ -844,32 +863,32 @@ def compute_2sample_t_test():
             return 0.0
 
         d = (mean1 - mean2) / pooled_std
-        return d
 
-    def interpret_effect_size(d):
-        """
-        Cohen's d:
-        |d| < 0.2: negligible
-        0.2 ≤ |d| < 0.5: small
-        0.5 ≤ |d| < 0.8: medium
-        |d| ≥ 0.8: large
-        """
-        if abs(d) < 0.2:
-            return "negligible"
-        elif abs(d) < 0.5:
-            return "small"
-        elif abs(d) < 0.8:
-            return "medium"
+        val = abs(d)
+        if val < 0.2:
+            effect_size = "negligible"
+        elif val < 0.5:
+            effect_size = "small"
+        elif val < 0.8:
+            effect_size = "medium"
         else:
-            return "large"
+            effect_size = "large"
+        return d, effect_size
 
-    def compute_stats(arr1, arr2):
-        result = ttest_ind(arr1, arr2, equal_var=False, alternative="greater")
+    def do_ttest(arr1, arr2):
+        """
+        arr1, arr2: (seeds, )
+
+        ttest_ind: independent samples (different seeds)
+        ttest_rel: paired samples (same seeds) -> is the way to go
+        """
+
+        # result = ttest_ind(arr1, arr2, equal_var=False, alternative="greater")
+        result = ttest_rel(arr1, arr2, alternative="greater")
         t_stat = result.statistic
         p_value = result.pvalue
-        ci = result.confidence_interval()
-        d = cohens_d(arr1, arr2)
-        effect_size = interpret_effect_size(d)
+        ci = result.confidence_interval(confidence_level=0.95)
+        d, effect_size = cohens_d(arr1, arr2)
         return t_stat, p_value, ci, d, effect_size
 
     table_names = {
@@ -887,43 +906,35 @@ def compute_2sample_t_test():
         "================================================================================"
     )
     table = PrettyTable()
-    table.field_names = ["Active vs. Random", "t", "p-value", "Cohen's d", "95% CI"]
-    table.align["Active vs. Random"] = "l"
+    table.field_names = ["Comparison", "t", "p-value", "Cohen's d", "95% CI"]
+    table.align["Comparison"] = "l"
+    # * active vs. random for each algorithm
     for alg in algs:
         name_active = f"{alg}_True"
         name_random = f"{alg}_False"
-        arr_active = aucs[name_active]  # (seeds, )
-        arr_random = aucs[name_random]  # (seeds, )
-        t_stat, p_value, ci, d, effect_size = compute_stats(arr_active, arr_random)
+        arr_active = scores[name_active]  # (seeds, )
+        arr_random = scores[name_random]  # (seeds, )
+        t_stat, p_value, ci, d, effect_size = do_ttest(arr_active, arr_random)
         row = [
-            table_names[alg],
+            f"{table_names[alg]} (A vs. R)",
             f"{t_stat:.2f}",
-            f"{p_value:.4f}",
+            f"{p_value:.3f}",
             f"{d:.2f} ({effect_size})",
             f"({ci.low:.2f}, {ci.high:.2f})",
         ]
         table.add_row(row)
-    print(table)
 
-    print(
-        "\n"
-        "================================================================================\n"
-        "2-sample t-test: Active EKF vs. other active algorithms, aggregated over all tasks\n"
-        "================================================================================"
-    )
-    table = PrettyTable()
-    table.field_names = ["EKF vs.", "t", "p-value", "Cohen's d", "95% CI"]
-    table.align["EKF vs."] = "l"
+    # * Active EKF vs. other active algorithms
     for alg in algs[1:]:
         name_ekf = "ekf_True"
         name_alg = f"{alg}_True"
-        arr_ekf = aucs[name_ekf]  # (seeds, )
-        arr_alg = aucs[name_alg]  # (seeds, )
-        t_stat, p_value, ci, d, effect_size = compute_stats(arr_ekf, arr_alg)
+        arr_ekf = scores[name_ekf]  # (seeds, )
+        arr_alg = scores[name_alg]  # (seeds, )
+        t_stat, p_value, ci, d, effect_size = do_ttest(arr_ekf, arr_alg)
         row = [
             f"EKF vs. {table_names[alg]}",
             f"{t_stat:.2f}",
-            f"{p_value:.4f}",
+            f"{p_value:.3f}",
             f"{d:.2f} ({effect_size})",
             f"({ci.low:.2f}, {ci.high:.2f})",
         ]
