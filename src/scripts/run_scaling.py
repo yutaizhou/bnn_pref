@@ -16,7 +16,7 @@ from bnn_pref.alg.trainer import run_alg
 from bnn_pref.data import dataset_creators
 from bnn_pref.data.data_env import PreferenceEnv
 from bnn_pref.utils.hydra_resolvers import *
-from bnn_pref.utils.print_utils import get_param_count_msg
+from bnn_pref.utils.print_utils import get_param_count_msg, print_run_cfg
 from bnn_pref.utils.utils import get_random_seed, nested_defaultdict, slurm_auto_scancel
 
 logging.getLogger("jax._src.xla_bridge").setLevel(logging.ERROR)
@@ -27,44 +27,14 @@ jnp.set_printoptions(precision=2)
 def main(cfg):
     seed = get_random_seed(cfg["seed"])
     key = jr.key(seed)
-    algs = ["ekf", "sgd", "do"]
+    algs = ["ekf", "sgd", "do", "laplace", "llmcmc"]
 
     task = cfg["task"]["name"]
     task_cfg = cfg["task"]
     data_cfg = cfg["data"]
-    ekf_cfg = cfg["ekf"]
-    sgd_cfg = cfg["sgd"]
-    do_cfg = cfg["do"]
     nq_train, nq_test = data_cfg["nq_train"], data_cfg["nq_test"]
-    nq_init, nsteps = data_cfg["nq_init"], data_cfg["nsteps"]
-    n_eff_iterates = (ekf_cfg["niters_init"] - ekf_cfg["warm_burns"]) // ekf_cfg[
-        "thinning"
-    ]
 
-    print(
-        f"Run:\n"
-        f"  Seed: {seed} x {cfg['seeds']} (seed_vmap={cfg['seed_vmap']})\n"
-        f"  Sanity: {cfg['sanity']} ({cfg['sanity_frac']} real frac)\n"
-        f"  Network: {cfg['network']['hidden_sizes']}\n"
-        f"Data:\n"
-        f"  prune: {data_cfg['n_bins']} bins, {data_cfg['max_count_per_bin']} max_count_per_bin, {data_cfg['tokeep']} tokeep\n"
-        f"  noisy_label: {data_cfg['noisy_label']} (beta={data_cfg['bt_beta']})\n"
-        f"  Train/Test: {nq_train}/{nq_test}\n"
-        f"  Init/Update: {nq_init}/{nsteps}\n"
-        f"EKF:\n"
-        f"  M={ekf_cfg['M']}, use_vmap={ekf_cfg['use_vmap']}\n"
-        f"  prior / dynamics / obs noise: {ekf_cfg['prior_noise']} / {ekf_cfg['dynamics_noise']} / {ekf_cfg['obs_noise']}\n"
-        f"  init: bs={ekf_cfg['bs']}, niters={ekf_cfg['niters_init']}[{ekf_cfg['warm_burns']}::{ekf_cfg['thinning']}] ({n_eff_iterates} eff), sub_dim={ekf_cfg['sub_dim']}, rnd_proj={ekf_cfg['rnd_proj']}\n"
-        f"Ensemble:\n"
-        f"  M={sgd_cfg['M']}, use_vmap={sgd_cfg['use_vmap']}\n"
-        f"  init: bs={sgd_cfg['bs']}, niters={sgd_cfg['niters_init']}\n"
-        f"  update: bs={sgd_cfg['bs']}, niters={sgd_cfg['niters_update']}\n"
-        f"Dropout:\n"
-        f"  M={do_cfg['M']}, use_vmap={do_cfg['use_vmap']}\n"
-        f"  init: bs={do_cfg['bs']}, niters={do_cfg['niters_init']}\n"
-        f"  update: bs={do_cfg['bs']}, niters={do_cfg['niters_update']}\n"
-    )
-    print(jax.devices())
+    print_run_cfg(seed, cfg)
 
     total_duration = datetime.now()
     # * create dataset
@@ -94,24 +64,24 @@ def main(cfg):
     key, key_seed = jr.split(key)
     stats = nested_defaultdict()
     for alg in algs:
-        start = datetime.now()
         res_m = run_alg(key_seed, alg_name=alg, cfg=cfg, data_dict=data_dict, env=env)
-        duration = (datetime.now() - start).total_seconds()
 
         # (1 + nq_update)
         res = {
             "task": task,
             "nq_train": nq_train,
             "nq_test": nq_test,
-            "duration": duration,
-            # * logpdf
+            # * duration: ( )
+            "train_duration": res_m["train_duration"],
+            "eval_duration": res_m["eval_duration"],
+            "total_duration": res_m["total_duration"],
+            # * increment eval results: (1 + nq_update,)
+            # logpdf
             "test_logpdf_all": res_m["test_logpdf"],
             "test_logpdf_final": res_m["test_logpdf"][-1],
-            # * acc
+            # acc
             "test_acc_all": res_m["test_acc"],
             "test_acc_final": res_m["test_acc"][-1],
-            # duration
-            "train_duration": res_m["train_duration"],  # only use if run_alg not vmap
         }
 
         stats[task][alg] = res
@@ -124,7 +94,7 @@ def main(cfg):
             f"acc: {res['test_acc_final']:.2%}, "
             f"logpdf: {res['test_logpdf_final']:.2f}; "
             f"{get_param_count_msg(cfg, alg, res_m)}, "
-            f"({res['duration']:.1f}s, {res['train_duration']:.1f}s)"
+            f"({res['total_duration']:.1f}s, {res['train_duration']:.1f}s, {res['eval_duration']:.1f}s)"
         )
         if nans.any():
             print(f"nans: {nans.sum(1)}")

@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Ms=(5 15)
-Ms=(5 15 30 50 75 100 150)
+# Ms=(5 10)
+Ms=(5 15 30 50 75 100)
 M_LIST=$(IFS=,; echo "${Ms[*]}")
 
 # NETS=(
@@ -23,24 +23,29 @@ M_LIST=$(IFS=,; echo "${Ms[*]}")
 # python script is meant to be ran with 1 seed at a time. if multiple needed, pass in `seeds=1,1,1` as hydra syntax
 
 # JAX_DISABLE_JIT=1 
-JAX_PLATFORMS=cpu python scripts/run_scaling.py \
+JAX_PLATFORMS=cpu python src/scripts/run_scaling.py \
     -m seed=-1 seeds=1,1,1 seed_vmap=False \
     task=walkerMediumExpert \
     active=True \
-    network=64x2 \
+    data.nq_train=50000 \
+    data.nq_update=60 \
+    network=256x2 \
     M=${M_LIST} \
     acq=infogain \
     use_vmap=False \
-    ekf.use_vmap=True \
-    data.nq_train=50000 \
-    data.nq_update=60 \
-    niters_update=-3 \
-    sgd.split_datastream=True \
-    learning_rate=0.001 \
     bs=8 \
+    learning_rate=0.003 \
+    niters_init=420 \
+    niters_update=10 \
     ekf.learning_rate=0.003 \
     ekf.bs=1 \
     ekf.iekf=5 \
+    ekf.use_vmap=True \
+    sgd.split_datastream=True \
+    laplace.prior_prec=1000 \
+    llmcmc.mcmc_warmups_init=500 \
+    llmcmc.mcmc_warmups_update=20 \
+    llmcmc.mcmc_steps=1000 \
     dir_extra=M_infogain_cpu \
     hydra/launcher=slurm \
     hydra.launcher.gres=null \

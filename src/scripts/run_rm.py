@@ -25,7 +25,7 @@ from bnn_pref.data.data_env import PreferenceEnv
 from bnn_pref.data.pref_utils import modify_queries
 from bnn_pref.utils.hydra_resolvers import *
 from bnn_pref.utils.metrics import MeanStd
-from bnn_pref.utils.print_utils import get_param_count_msg, get_run_cfg_msg
+from bnn_pref.utils.print_utils import get_param_count_msg, print_run_cfg
 from bnn_pref.utils.utils import get_random_seed, nested_defaultdict, slurm_auto_scancel
 
 logging.getLogger("jax._src.xla_bridge").setLevel(logging.ERROR)
@@ -52,7 +52,7 @@ def main(cfg):
 
     nq_train, nq_test = data_cfg["nq_train"], data_cfg["nq_test"]
     nq_init = data_cfg["nq_init"]
-    get_run_cfg_msg(seed, cfg)
+    print_run_cfg(seed, cfg)
 
     ckpter = ocp.PyTreeCheckpointer()
     total_duration = datetime.now()
@@ -124,6 +124,7 @@ def main(cfg):
             # * duration: (n_seeds,)
             "duration": res_m["train_duration"],
             "eval_duration": res_m["eval_duration"],
+            "total_duration": res_m["total_duration"],
             # * increment eval results: (n_seeds, 1 + nq_update)
             # logpdf
             "test_logpdf_all": res_m["test_logpdf"],

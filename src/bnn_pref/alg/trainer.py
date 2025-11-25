@@ -140,6 +140,7 @@ def alg_pipeline(
             return bandit.compute_next_query(key_query, bel, env, pool_idxs)
 
     timer = Timer()
+    timer.tick("total")
     # * belief init
     key, key_warm_data, key_bel_init, key_bel_init_eval = jr.split(key, 4)
     warmup_data = env.warmup(key_warm_data, nq_init)
@@ -176,7 +177,7 @@ def alg_pipeline(
 
     key_reliability = jr.fold_in(key_eval, n_steps)
     reliability_results = eval_reliability(key_reliability, bel)
-
+    timer.tock("total")
     # * aggregate results
     # eval_results: concatenated to form array of (1 + nq_updates, )
     eval_results = jax.tree.map(lambda *xs: jnp.stack(xs), *eval_results)
@@ -190,6 +191,7 @@ def alg_pipeline(
         **reliability_results,  # (Q, 2), (Q, 1)
         "train_duration": times["train"],  # ()
         "eval_duration": times["eval"],  # ()
+        "total_duration": times["total"],  # ()
     }
     alg_info = bandit.get_alg_info()
 

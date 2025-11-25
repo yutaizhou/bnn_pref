@@ -28,7 +28,7 @@ def get_param_count_msg(cfg, alg: str, res_m: dict) -> str:
         raise ValueError(f"Unknown algorithm: {alg}")
 
 
-def get_run_cfg_msg(seed, cfg):
+def print_run_cfg(seed, cfg):
     data_cfg = cfg["data"]
     ekf_cfg = cfg["ekf"]
     sgd_cfg = cfg["sgd"]
