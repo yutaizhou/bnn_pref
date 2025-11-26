@@ -1,12 +1,12 @@
 from functools import partial
-from typing import Tuple
+from typing import Callable, Dict, Tuple
 
 import jax
 import jax.numpy as jnp
 import jax.random as jr
 import optax
+import orbax.checkpoint as ocp
 from einops import rearrange
-from flax import linen as nn
 from jaxtyping import Array, Float, Int, Scalar
 
 from bnn_pref.alg.agent_utils import (
@@ -32,7 +32,7 @@ class DropoutBeliefState:
 
 def init_model(
     key,
-    model: nn.Module,
+    model: RewardNet,
     tx: optax.GradientTransformation,
     traj_shape: Tuple[int, ...],  # batch-less shape like (T, D)
 ) -> DropoutTrainState:
@@ -250,3 +250,53 @@ class DropoutAgent(Agent):
         llik_Q2 = jax.nn.logsumexp(llik_QM2, axis=1) - jnp.log(M)
         prob_Q2 = jnp.exp(llik_Q2)
         return prob_Q2
+
+    @staticmethod
+    def load_reward_model(
+        key,
+        cfg: Dict,
+        traj_shape: Tuple[int, ...],
+        ckpt_fp: str,
+    ) -> Callable:
+        """
+        Load reward model from checkpoint.
+        Args:
+            cfg: hydra config
+            traj_shape: (N, D)
+            fp: checkpoint file path, e.g. f'{ckpts_dir}/{task_name}_{alg}_al={is_al}'
+        Returns:
+            reward_fn: reward function
+        """
+
+        ckptr = ocp.PyTreeCheckpointer()
+        sharding = jax.sharding.PositionalSharding(jax.local_devices())
+
+        alg_cfg = cfg["do"]
+        model = RewardNet(alg_cfg["hidden_sizes"], dropout_prob=alg_cfg["dropout_prob"])
+        key, key_init = jr.split(key)
+        opt = optax.adam(alg_cfg["learning_rate"])
+        dummy_item = init_model(key_init, model, opt, traj_shape)
+        dummy_item = dummy_item.replace(dropout_key=jr.key_data(dummy_item.dropout_key))
+        dummy_items = jax.tree.map(lambda x: jax.device_put(x, sharding), dummy_item)
+        restore_kw = {
+            "restore_args": ocp.checkpoint_utils.construct_restore_args(
+                dummy_items, jax.tree.map(lambda _: sharding, dummy_items)
+            )
+        }
+        ts = ckptr.restore(ckpt_fp, item=dummy_items, **restore_kw)
+
+        key, *key_dropout = jr.split(key, cfg["do"]["M"] + 1)
+
+        def reward_fn(obs: Float[Array, "T D"]) -> Float[Array, "T"]:
+            obs = rearrange(obs, "T D -> 1 T D")
+            apply_fn = lambda key, obs: ts.apply_fn(
+                {"params": ts.params},
+                obs,
+                method=model.predict_traj_rewards,
+                train=True,
+                rngs={"dropout": key},
+            )
+            out_MT = jax.vmap(apply_fn, in_axes=(0, None))(jnp.array(key_dropout), obs)
+            return out_MT.mean(axis=0).squeeze(0)
+
+        return reward_fn

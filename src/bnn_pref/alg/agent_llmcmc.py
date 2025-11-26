@@ -7,8 +7,8 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 import optax
+import orbax.checkpoint as ocp
 from einops import rearrange
-from flax import linen as nn
 from flax.training.train_state import TrainState
 from jax.flatten_util import ravel_pytree
 from jaxtyping import Array, Float, Int, Scalar
@@ -354,3 +354,63 @@ class LMCMCAgent(Agent):
         llik_Q2 = jax.nn.logsumexp(llik_QM2, axis=1) - jnp.log(M)
         prob_Q2 = jnp.exp(llik_Q2)
         return prob_Q2
+
+    @staticmethod
+    def load_reward_model(
+        key,
+        cfg: Dict,
+        traj_shape: Tuple[int, ...],
+        ckpt_fp: str,
+    ) -> Callable:
+        """
+        Load reward model from checkpoint.
+        Args:
+            cfg: hydra config
+            traj_shape: (N, D)
+            fp: checkpoint file path, e.g. f'{ckpts_dir}/{task_name}_{alg}_al={is_al}'
+        Returns:
+            reward_fn: reward function
+        """
+
+        ckptr = ocp.PyTreeCheckpointer()
+        sharding = jax.sharding.PositionalSharding(jax.local_devices())
+
+        alg_cfg = cfg["llmcmc"]
+        model = RewardNet(alg_cfg["hidden_sizes"])
+        key, key_init = jr.split(key)
+        opt = optax.adam(alg_cfg["learning_rate"])
+        dummy_ts = init_model(key_init, model, opt, traj_shape)
+        params = {"params": dummy_ts.params}
+        unraveler = ravel_pytree(params)[1]
+
+        train_params = LastLayerHelpers.get_trainable_params(params)
+        _, unraveler = ravel_pytree(train_params)
+        param_count = count_params(train_params)
+        dummy_item = LMCMCBeliefState(
+            ts=dummy_ts,
+            particles=jnp.zeros((alg_cfg["M"], param_count)),
+            t=0,
+        )
+
+        dummy_items = jax.tree.map(lambda x: jax.device_put(x, sharding), dummy_item)
+        restore_kw = {
+            "restore_args": ocp.checkpoint_utils.construct_restore_args(
+                dummy_items, jax.tree.map(lambda _: sharding, dummy_items)
+            )
+        }
+
+        bel = ckptr.restore(ckpt_fp, item=dummy_items, **restore_kw)
+        ts = bel.ts
+        frozen_params = LastLayerHelpers.get_frozen_params({"params": ts.params})
+        particles_flat = bel.particles
+        params = jax.vmap(LastLayerHelpers.recombine_params, in_axes=(0, None, None))(
+            particles_flat, frozen_params, unraveler
+        )
+
+        def reward_fn(obs: Float[Array, "T D"]) -> Float[Array, "T"]:
+            # (T,D -> T)
+            apply_fn = partial(ts.apply_fn, method=model.predict_traj_rewards)
+            out_MT = jax.vmap(apply_fn, in_axes=(0, None))(params, obs)
+            return out_MT.mean(axis=0)
+
+        return reward_fn

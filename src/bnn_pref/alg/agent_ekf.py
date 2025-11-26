@@ -1,14 +1,14 @@
 from functools import partial
-from typing import Dict, Tuple, Union
+from typing import Callable, Dict, Tuple, Union
 
 import distrax
 import jax
 import jax.numpy as jnp
 import jax.random as jr
 import optax
+import orbax.checkpoint as ocp
 from dynamax.nonlinear_gaussian_ssm import ParamsNLGSSM, extended_kalman_filter
 from einops import rearrange
-from flax import linen as nn
 from flax.training.train_state import TrainState
 from jax.flatten_util import ravel_pytree
 from jaxtyping import Array, Float, Int, Scalar
@@ -452,3 +452,71 @@ class EKFAgent(Agent):
         llik_Q2 = jax.nn.logsumexp(llik_QM2, axis=1) - jnp.log(M)
         prob_Q2 = jnp.exp(llik_Q2)
         return prob_Q2
+
+    @staticmethod
+    def load_reward_model(
+        key,
+        cfg: Dict,
+        traj_shape: Tuple[int, ...],
+        ckpt_fp: str,
+    ) -> Callable:
+        """
+        Load reward model from checkpoint.
+        Args:
+            cfg: hydra config
+            traj_shape: (N, D)
+            fp: checkpoint file path, e.g. f'{ckpts_dir}/{task_name}_{alg}_al={is_al}'
+        Returns:
+            reward_fn: reward function
+        """
+
+        ckptr = ocp.PyTreeCheckpointer()
+        sharding = jax.sharding.PositionalSharding(jax.local_devices())
+
+        # * build and load model
+        alg_cfg = cfg["ekf"]
+        model = RewardNet(alg_cfg["hidden_sizes"])
+        key, key_init = jr.split(key)
+        dummy_input = jnp.ones((1, 2, *traj_shape))
+        params = model.init(key_init, dummy_input)["params"]
+        opt = optax.sgd(alg_cfg["learning_rate"], momentum=alg_cfg["momentum"])
+        dummy_ts = TrainState.create(apply_fn=model.apply, params=params, tx=opt)
+
+        full_dim = count_params(dummy_ts.params)
+        sub_dim = alg_cfg["sub_dim"]
+        dummy_item = EKFBeliefState(
+            mean=jnp.zeros((sub_dim,)),
+            cov=jnp.eye(sub_dim),
+            t=0,
+            proj_matrix=jnp.zeros((sub_dim, full_dim)),
+            offset_ts=dummy_ts,
+        )
+        dummy_items = jax.tree.map(lambda x: jax.device_put(x, sharding), dummy_item)
+        restore_kw = {
+            "restore_args": ocp.checkpoint_utils.construct_restore_args(
+                dummy_items, jax.tree.map(lambda _: sharding, dummy_items)
+            )
+        }
+        bel = ckptr.restore(ckpt_fp, item=dummy_items, **restore_kw)
+        ts = bel.offset_ts
+
+        # * sample params from posterior
+        key, key_sample = jr.split(key)
+        distr = distrax.MultivariateNormalFullCovariance(bel.mean, bel.cov)
+        ss_params = distr.sample(seed=key_sample, sample_shape=(alg_cfg["M"],))
+        params_offset_flat, unravel_fn = ravel_pytree(ts.params)
+        proj_type = alg_cfg.get("proj_type", "dense")  # added later on
+        params_flat = jax.vmap(
+            partial(sub2full_params_flat, type=proj_type),
+            in_axes=(0, None, None),
+        )(ss_params, bel.proj_matrix, params_offset_flat)  # (M, full_dim)
+        params = jax.vmap(unravel_fn)(params_flat)
+        params = {"params": params}
+
+        def reward_fn(obs: Float[Array, "T D"]) -> Float[Array, "T"]:
+            # (T,D -> T)
+            apply_fn = partial(ts.apply_fn, method=model.predict_traj_rewards)
+            out_MT = jax.vmap(apply_fn, in_axes=(0, None))(params, obs)
+            return out_MT.mean(axis=0)
+
+        return reward_fn

@@ -1,12 +1,12 @@
 from functools import partial
-from typing import Tuple
+from typing import Callable, Dict, Tuple
 
 import jax
 import jax.numpy as jnp
 import jax.random as jr
 import optax
+import orbax.checkpoint as ocp
 from einops import rearrange
-from flax import linen as nn
 from flax.training.train_state import TrainState
 from jaxtyping import Array, Float, Int, Scalar
 
@@ -32,7 +32,7 @@ class EnsembleBeliefState:
 
 def init_model(
     key,
-    model: nn.Module,
+    model: RewardNet,
     tx: optax.GradientTransformation,
     traj_shape: Tuple[int, ...],  # batch-less shape like (T, D)
 ) -> TrainState:
@@ -252,3 +252,47 @@ class EnsembleAgent(Agent):
         llik_Q2 = jax.nn.logsumexp(llik_QM2, axis=1) - jnp.log(M)
         prob_Q2 = jnp.exp(llik_Q2)
         return prob_Q2
+
+    @staticmethod
+    def load_reward_model(
+        key,
+        cfg: Dict,
+        traj_shape: Tuple[int, ...],
+        ckpt_fp: str,
+    ) -> Callable:
+        """
+        Load reward model from checkpoint.
+        Args:
+            cfg: hydra config
+            traj_shape: (N, D)
+            fp: checkpoint file path, e.g. f'{ckpts_dir}/{task_name}_{alg}_al={is_al}'
+        Returns:
+            reward_fn: reward function
+        """
+
+        ckptr = ocp.PyTreeCheckpointer()
+        sharding = jax.sharding.PositionalSharding(jax.local_devices())
+
+        alg_cfg = cfg["sgd"]
+        model = RewardNet(alg_cfg["hidden_sizes"])
+        key, key_init = jr.split(key)
+        opt = optax.adam(alg_cfg["learning_rate"])
+        dummy_item = jax.vmap(init_model, in_axes=(0, None, None, None))(
+            jr.split(key_init, alg_cfg["M"]), model, opt, traj_shape
+        )
+        dummy_items = jax.tree.map(lambda x: jax.device_put(x, sharding), dummy_item)
+        restore_kw = {
+            "restore_args": ocp.checkpoint_utils.construct_restore_args(
+                dummy_items, jax.tree.map(lambda _: sharding, dummy_items)
+            )
+        }
+        ts = ckptr.restore(ckpt_fp, item=dummy_items, **restore_kw)
+        params = {"params": ts.params}
+
+        def reward_fn(obs: Float[Array, "T D"]) -> Float[Array, "T"]:
+            # (T,D -> T)
+            apply_fn = partial(ts.apply_fn, method=model.predict_traj_rewards)
+            out_MT = jax.vmap(apply_fn, in_axes=(0, None))(params, obs)
+            return out_MT.mean(axis=0)
+
+        return reward_fn

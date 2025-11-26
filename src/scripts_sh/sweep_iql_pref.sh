@@ -23,20 +23,22 @@ TASKS=(
 TASK_LIST=$(IFS=,; echo "${TASKS[*]}")
 
 # * submitit
-python bnn_pref/rl/iql.py \
+python src/bnn_pref/rl/iql.py \
     -m task=$TASK_LIST \
     rl.n_updates=1000000 \
     rl.eval_interval=50000 \
     rl.reward=pref \
-    rl.pref_alg=ekf,sgd,do \
+    rl.pref_alg=ekf,sgd,do,laplace,llmcmc \
     rl.pref_is_al=True,False \
     rl.normalize_reward=True \
     rl.clip_reward=True \
-    rl.run_dir='"/scr/yutaizho/projects/bnn_pref/_runs/pref/20250919_045313_nitersUpdate=-3_lr=0.001_ekfM=100_iekf=5_ekfLr=0.003_ekfDn=0.0001_ekfPn=0.07_ekfOn=0.07_ekfAcq=infogain_acq=infogain"' \
-    wandb.tags=nitersUpdate-3_infogain \
+    rl.run_dir='"/scr/yutaizho/code/p-prefEKF/bnn_pref/_runs/pref/20251125_070829_nitersUpdate=10_lr=0.003_acq=infogain_M=100"' \
+    wandb.tags=lr0.003_nitersUpdate10_infogain \
     rl.use_wandb=True \
     wandb.group=rl_pref_reward_norm_clip \
-    hydra/launcher=slurm 
+    hydra/launcher=slurm \
+    hydra.launcher.gres=shard:12 \
+    hydra.launcher.mem_gb=50
 
 # * local
 # CUDA_VISIBLE_DEVICES=6 python bnn_pref/rl/iql.py \

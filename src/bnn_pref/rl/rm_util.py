@@ -20,6 +20,7 @@ from jax.flatten_util import ravel_pytree
 from jaxtyping import Array, Float, PRNGKeyArray
 from omegaconf import OmegaConf
 
+from bnn_pref.alg import alg_classes
 from bnn_pref.alg.agent_dropout import init_model as init_model_dropout
 from bnn_pref.alg.agent_ekf import EKFBeliefState
 from bnn_pref.alg.agent_ensemble import init_model as init_model_ensemble
@@ -54,6 +55,45 @@ def load_reward_model(
     is_al: bool = False,
     sweeped_rm: bool = True,
     task_choice: str = "cheetahRandom",
+) -> Tuple[Callable, str]:
+    """
+    run_dir: hydra run output directory, e.g. "../results/2025***"
+    key: used for flax.linen.init and EKF subspace parameter sampling
+
+    Assumes ckpts are named as follows, and exists in <run_dir>/ckpts/
+        <run_dir>/ckpts/<task_name>_<alg>_al=<is_al>
+    """
+
+    if sweeped_rm:
+        # find hydra choice override folder path
+        ckpt_fp, cfg_path = find_ckpt_fp(run_dir, task_choice, task_name, alg, is_al)
+        cfg = OmegaConf.load(cfg_path)
+    else:  # deprecated convention
+        ckpts_dir = f"{run_dir}/ckpts"
+        ckpt_fp = f"{ckpts_dir}/{task_name}_{alg}_al={is_al}"
+        cfg = OmegaConf.load(f"{run_dir}/.hydra/config.yaml")
+
+    obs_shape = gym.make(task_name).observation_space.shape
+    traj_shape = (50, *obs_shape)
+
+    alg_class = alg_classes[alg]
+    reward_fn = alg_class.load_reward_model(
+        key=key,
+        cfg=cfg,
+        traj_shape=traj_shape,
+        ckpt_fp=ckpt_fp,
+    )  # Callable: (T,D) -> (T,)
+    return reward_fn, ckpt_fp
+
+
+def load_reward_model_old(
+    key: PRNGKeyArray,
+    run_dir: str,
+    task_name: str = "halfcheetah-random-v2",
+    alg: str = "ekf",
+    is_al: bool = False,
+    sweeped_rm: bool = True,
+    task_choice: str = "cheetahRandom",
 ) -> Tuple[Callable[[Float[Array, "T D"]], Float[Array, "T"]], str]:
     """
     run_dir: hydra run output directory, e.g. "../results/2025***"
@@ -73,7 +113,7 @@ def load_reward_model(
         ckpt_fp = f"{ckpts_dir}/{task_name}_{alg}_al={is_al}"
         cfg = OmegaConf.load(f"{run_dir}/.hydra/config.yaml")
 
-    cktper = ocp.PyTreeCheckpointer()
+    ckptr = ocp.PyTreeCheckpointer()
     sharding = jax.sharding.PositionalSharding(jax.local_devices())
 
     obs_shape = gym.make(task_name).observation_space.shape
@@ -95,7 +135,7 @@ def load_reward_model(
                 dummy_items, jax.tree.map(lambda _: sharding, dummy_items)
             )
         }
-        ts = cktper.restore(ckpt_fp, item=dummy_items, **restore_kw)
+        ts = ckptr.restore(ckpt_fp, item=dummy_items, **restore_kw)
         params = {"params": ts.params}
 
     elif alg == "do":
@@ -115,7 +155,7 @@ def load_reward_model(
                 dummy_items, jax.tree.map(lambda _: sharding, dummy_items)
             )
         }
-        ts = cktper.restore(ckpt_fp, item=dummy_items, **restore_kw)
+        ts = ckptr.restore(ckpt_fp, item=dummy_items, **restore_kw)
         params = {"params": ts.params}
 
         key, *key_dropout = jr.split(key, cfg["do"]["M"] + 1)
@@ -160,9 +200,10 @@ def load_reward_model(
                 dummy_items, jax.tree.map(lambda _: sharding, dummy_items)
             )
         }
-        bel = cktper.restore(ckpt_fp, item=dummy_items, **restore_kw)
+        bel = ckptr.restore(ckpt_fp, item=dummy_items, **restore_kw)
         ts = bel.offset_ts
 
+        # * sample params from posterior
         key, key_sample = jr.split(key)
         distr = distrax.MultivariateNormalFullCovariance(bel.mean, bel.cov)
         ss_params = distr.sample(

@@ -31,7 +31,11 @@ from bnn_pref.rl.common import (
     TanhGaussianActor,
     Transition,
 )
-from bnn_pref.rl.rm_util import load_reward_model, relabel_rewards
+from bnn_pref.rl.rm_util import (
+    load_reward_model,
+    load_reward_model_old,
+    relabel_rewards,
+)
 from bnn_pref.utils.utils import get_random_seed, slurm_auto_scancel
 
 os.environ["XLA_FLAGS"] = "--xla_gpu_triton_gemm_any=True"  # from unifloral
@@ -180,7 +184,7 @@ def run_iql(rng, cfg):
     rl_cfg = cfg["rl"]
     task_cfg = cfg["task"]
     assert rl_cfg["reward"] in ["gt", "pref", "zero"]
-    assert rl_cfg["pref_alg"] in ["ekf", "sgd", "do"]
+    assert rl_cfg["pref_alg"] in ["ekf", "sgd", "do", "laplace", "llmcmc"]
     task_name = task_cfg.name
     task_choice = HydraConfig.get()["runtime"]["choices"]["task"]
 
