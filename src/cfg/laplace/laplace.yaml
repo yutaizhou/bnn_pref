@@ -22,3 +22,4 @@ niters_update: 20 # train sgd longer for better MAP estimate for laplace
 
 # Laplace hyperparameters
 prior_prec: 1000
+curv_type: "full" # "full" or "diagonal"

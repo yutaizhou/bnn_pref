@@ -79,6 +79,7 @@ def laplace_belief_update(
     data: QueryData,  # all queries seen so far
     n_particles: int,
     # * laplace hyperparameter
+    curv_type: str = "full",
     prior_prec: float = 1000.0,
     laplace_bs: int = 32,
 ) -> ParamsDict:  # leading axis is M
@@ -108,7 +109,7 @@ def laplace_belief_update(
             model_fn=model_fn,
             params=params,
             loss_fn="cross_entropy",
-            curv_type="full",
+            curv_type=curv_type,
             vmap_over_data=True,
         )
 
@@ -162,6 +163,7 @@ class LaplaceAgent(Agent):
         niters_init: int = 1,
         niters_update: int = 1,
         prior_prec: float = 0.2,
+        curv_type: str = "full",
         batch_size: int = 32,
         chunk_size: int = 64,
         use_vmap: bool = True,  # for training update_bel in {init,update}_bel
@@ -176,6 +178,7 @@ class LaplaceAgent(Agent):
         self.niters_init = niters_init
         self.niters_update = niters_update
         self.prior_prec = prior_prec
+        self.curv_type = curv_type
         self.batch_size = batch_size
         self.chunk_size = chunk_size
         self.use_vmap = use_vmap
@@ -217,6 +220,7 @@ class LaplaceAgent(Agent):
             # update
             "niters_update": alg_cfg["niters_update"],
             "prior_prec": alg_cfg["prior_prec"],
+            "curv_type": alg_cfg["curv_type"],
             # ensembling
             "n_models": alg_cfg["M"],
             "chunk_size": alg_cfg["chunk_size"],
@@ -259,6 +263,7 @@ class LaplaceAgent(Agent):
             params={"params": warm_ts.params},
             data=warmup_data,
             n_particles=self.n_models,
+            curv_type=self.curv_type,
             prior_prec=self.prior_prec,
         )  # particles["params"]["pw_mlp"]["Dense_0"]
         bel = LaplaceBeliefState(ts=warm_ts, particles=new_particles, t=0)
@@ -293,6 +298,7 @@ class LaplaceAgent(Agent):
             params={"params": new_ts.params},
             data=ds,
             n_particles=self.n_models,
+            curv_type=self.curv_type,
             prior_prec=self.prior_prec,
         )  # particles["params"]["pw_mlp"]["Dense_0"]
         bel = bel.replace(ts=new_ts, particles=new_particles, t=bel.t + 1)
