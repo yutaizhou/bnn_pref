@@ -108,12 +108,25 @@ visual5_tasks = [
     "vwalkerMediumExpert",
 ]
 
+visual9_tasks = [
+    "vcheetahRandom",
+    "vcheetahMediumReplay",
+    "vcheetahMediumExpert",
+    "vhumanoidRandom",
+    "vhumanoidMediumReplay",
+    "vhumanoidMediumExpert",
+    "vwalkerRandom",
+    "vwalkerMediumReplay",
+    "vwalkerMediumExpert",
+]
+
 task_select = {
     "neurips": neurips_tasks,
     "iclr": iclr_tasks,
     "test": test_tasks,
     "visual3": visual3_tasks,
     "visual5": visual5_tasks,
+    "visual9": visual9_tasks,
 }
 
 alg_all = ["ekf", "sgd", "do", "laplace", "llmcmc"]
@@ -124,6 +137,7 @@ alg_select = {
     "test": alg_all,
     "visual3": alg_ekf_only,
     "visual5": alg_ekf_only,
+    "visual9": alg_ekf_only,
 }
 
 
@@ -453,8 +467,21 @@ def plot_logpdf_agg():
 
 
 def plot_logpdf_per_task():
-    fig, axs = plt.subplots(3, 4, figsize=(12, 7.5), sharex=True)
-    # fig, axs = plt.subplots(5, 4, figsize=(12, 15), sharex=True)
+    if n_tasks == 3:
+        n_rows = 1
+        n_cols = 3
+    elif n_tasks == 5:
+        n_rows = 2
+        n_cols = 3
+    elif n_tasks == 9:
+        n_rows = 3
+        n_cols = 3
+    else:
+        n_rows = 3
+        n_cols = 4
+    fig, axs = plt.subplots(
+        n_rows, n_cols, figsize=(4 * n_cols, 4 * n_rows), sharex=True
+    )
     axs = axs.flatten()
 
     for i, task in enumerate(tasks):

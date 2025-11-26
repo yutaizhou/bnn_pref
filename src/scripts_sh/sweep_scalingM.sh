@@ -50,4 +50,4 @@ JAX_PLATFORMS=cpu python src/scripts/run_scaling.py \
     hydra/launcher=slurm \
     hydra.launcher.cpus_per_task=8 \
     hydra.launcher.gres=null \
-    hydra.launcher.mem_gb=120
+    hydra.launcher.mem_gb=100

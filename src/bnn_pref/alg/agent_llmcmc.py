@@ -66,8 +66,6 @@ def mcmc_belief_update(
     # optionally starting mcmc from a given state
     initial_particle: Optional[Float[Array, "llayer_dim"]] = None,
 ) -> ParamsFlat:  # leading axis is M
-    assert n_steps % n_particles == 0
-    thinning = n_steps // n_particles
     fixed_params = LastLayerHelpers.get_frozen_params(params)
     llayer_params = LastLayerHelpers.get_trainable_params(params)
     llayer_params_flat, llayer_unraveler = ravel_pytree(llayer_params)
@@ -120,9 +118,10 @@ def mcmc_belief_update(
     kernel = blackjax.nuts(potential, **parameters).step
     states = inference_loop(key_samples, kernel, state, n_steps)
     sampled_params_flat = states.position  # (n_steps, llayer_dim)
-    subsampled_llayer_flat = sampled_params_flat[::thinning]
+    idxes = jnp.linspace(0, n_steps, n_particles, dtype=jnp.int32)
+    subsampled_params_flat = sampled_params_flat[idxes]
 
-    return subsampled_llayer_flat  # (n_particles, llayer_dim)
+    return subsampled_params_flat  # (n_particles, llayer_dim)
 
 
 class LMCMCAgent(Agent):
