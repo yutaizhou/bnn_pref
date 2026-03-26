@@ -37,8 +37,8 @@ python src/bnn_pref/rl/iql.py \
     rl.use_wandb=True \
     wandb.group=rl_pref_reward_norm_clip \
     hydra/launcher=slurm \
-    hydra.launcher.gres=shard:12 \
-    hydra.launcher.mem_gb=50
+    hydra.launcher.gres=shard:6 \
+    hydra.launcher.mem_gb=30
 
 # * local
 # CUDA_VISIBLE_DEVICES=6 python bnn_pref/rl/iql.py \

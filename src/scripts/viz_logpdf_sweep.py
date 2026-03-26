@@ -35,99 +35,85 @@ from bnn_pref.utils.plotting import (
     smooth,
 )
 
-# neurips tasks
-neurips_tasks = [
-    # # * D4RL
-    # "cheetahRandom",
-    "cheetahMediumReplay",
-    "cheetahMediumExpert",
-    "hopperRandom",
-    "hopperMediumReplay",
-    "hopperMediumExpert",
-    "walkerRandom",
-    "walkerMediumReplay",
-    "walkerMediumExpert",
-    "penHuman",
-    "penExpert",
-    # "penCloned",
-    # "kitchenComplete",
-    # "kitchenPartial",
-    # "kitchenMixed",
-    "mazeUDense",
-    "mazeMediumDense",
-    # "mazeLargeDense",
-]
+task_select = dict(
+    neurips=[
+        # # * D4RL
+        # "cheetahRandom",
+        "cheetahMediumReplay",
+        "cheetahMediumExpert",
+        "hopperRandom",
+        "hopperMediumReplay",
+        "hopperMediumExpert",
+        "walkerRandom",
+        "walkerMediumReplay",
+        "walkerMediumExpert",
+        "penHuman",
+        "penExpert",
+        # "penCloned",
+        # "kitchenComplete",
+        # "kitchenPartial",
+        # "kitchenMixed",
+        "mazeUDense",
+        "mazeMediumDense",
+        # "mazeLargeDense",
+    ],
+    iclr=[
+        # # * D4RL
+        "cheetahRandom",
+        "cheetahMediumReplay",
+        "cheetahMediumExpert",
+        "hopperRandom",
+        "hopperMediumReplay",
+        "hopperMediumExpert",
+        "walkerRandom",
+        "walkerMediumReplay",
+        "walkerMediumExpert",
+        "penHuman",
+        # "penExpert",
+        # "penCloned",
+        # "kitchenComplete",
+        # "kitchenPartial",
+        # "kitchenMixed",
+        # "mazeUDense",
+        "mazeMediumDense",
+        "mazeLargeDense",
+    ],
+    test=[
+        "cheetahMediumReplay",
+        "hopperMediumReplay",
+        "walkerMediumReplay",
+        "penHuman",
+        "mazeMediumDense",
+    ],
+    visual3=[
+        "vcheetahMediumExpert",
+        "vhumanoidMediumExpert",
+        "vwalkerMediumExpert",
+    ],
+    visual5=[
+        # "vcheetahRandom",
+        # "vcheetahMediumReplay",
+        "vcheetahMediumExpert",
+        # "vhumanoidRandom",
+        # "vhumanoidMediumReplay",
+        "vhumanoidMediumExpert",
+        "vwalkerRandom",
+        "vwalkerMediumReplay",
+        "vwalkerMediumExpert",
+    ],
+    visual9=[
+        "vcheetahRandom",
+        "vcheetahMediumReplay",
+        "vcheetahMediumExpert",
+        "vhumanoidRandom",
+        "vhumanoidMediumReplay",
+        "vhumanoidMediumExpert",
+        "vwalkerRandom",
+        "vwalkerMediumReplay",
+        "vwalkerMediumExpert",
+    ],
+)
 
-# iclr tasks
-iclr_tasks = [
-    # # * D4RL
-    "cheetahRandom",
-    "cheetahMediumReplay",
-    "cheetahMediumExpert",
-    "hopperRandom",
-    "hopperMediumReplay",
-    "hopperMediumExpert",
-    "walkerRandom",
-    "walkerMediumReplay",
-    "walkerMediumExpert",
-    "penHuman",
-    # "penExpert",
-    # "penCloned",
-    # "kitchenComplete",
-    # "kitchenPartial",
-    # "kitchenMixed",
-    # "mazeUDense",
-    "mazeMediumDense",
-    "mazeLargeDense",
-]
-
-# test_tasks
-test_tasks = [
-    "cheetahMediumReplay",
-    "hopperMediumReplay",
-    "walkerMediumReplay",
-    "penHuman",
-    "mazeMediumDense",
-]
-
-visual3_tasks = [
-    "vcheetahMediumExpert",
-    "vhumanoidMediumExpert",
-    "vwalkerMediumExpert",
-]
-
-visual5_tasks = [
-    # "vcheetahRandom",
-    # "vcheetahMediumReplay",
-    "vcheetahMediumExpert",
-    # "vhumanoidRandom",
-    # "vhumanoidMediumReplay",
-    "vhumanoidMediumExpert",
-    "vwalkerRandom",
-    "vwalkerMediumReplay",
-    "vwalkerMediumExpert",
-]
-
-visual9_tasks = [
-    "vcheetahRandom",
-    "vcheetahMediumReplay",
-    "vcheetahMediumExpert",
-    "vhumanoidRandom",
-    "vhumanoidMediumReplay",
-    "vhumanoidMediumExpert",
-    "vwalkerRandom",
-    "vwalkerMediumReplay",
-    "vwalkerMediumExpert",
-]
-
-task_select = {
-    "neurips": neurips_tasks,
-    "iclr": iclr_tasks,
-    "test": test_tasks,
-    "visual3": visual3_tasks,
-    "visual5": visual5_tasks,
-    "visual9": visual9_tasks,
-}
 
 alg_all = ["ekf", "sgd", "do", "laplace", "llmcmc"]
 alg_ekf_only = ["ekf"]
@@ -892,7 +878,7 @@ def compute_2sample_t_test():
     """
     import jax
     from prettytable import PrettyTable
-    from scipy.stats import ttest_ind, ttest_rel
+    from scipy.stats import ttest_rel
 
     np.set_printoptions(precision=4)
 
@@ -912,6 +898,12 @@ def compute_2sample_t_test():
         scores[name] = auc_score
         # logpdf_score = (arr[:, -1] - min_logpdf) / (max_logpdf - min_logpdf)  # (s, )
         # scores[name] = 0.9 * auc_score + 0.1 * logpdf_score
+
+    eces = {}
+    for alg, is_al in it.product(algs, is_als):
+        name = f"{alg}_{is_al}"
+        arr = stats_agg["ece"][name]  # (seeds, steps)
+        eces[name] = arr[:, -1]
 
     def cohens_d(arr1, arr2):
         """
@@ -947,7 +939,7 @@ def compute_2sample_t_test():
             effect_size = "large"
         return d, effect_size
 
-    def do_ttest(arr1, arr2):
+    def do_ttest(arr1, arr2, alternative="greater"):
         """
         arr1, arr2: (seeds, )
 
@@ -955,8 +947,7 @@ def compute_2sample_t_test():
         ttest_rel: paired samples (same seeds) -> is the way to go
         """
 
-        # result = ttest_ind(arr1, arr2, equal_var=False, alternative="greater")
-        result = ttest_rel(arr1, arr2, alternative="greater")
+        result = ttest_rel(arr1, arr2, alternative=alternative)
         t_stat = result.statistic
         p_value = result.pvalue
         ci = result.confidence_interval(confidence_level=0.95)
@@ -974,19 +965,21 @@ def compute_2sample_t_test():
     print(
         "\n"
         "================================================================================\n"
-        "2-sample t-test: active vs. random for each algorithm, aggregated over all tasks\n"
+        "t-test: LogPDF active vs. random for each algorithm, aggregated over all tasks\n"
         "================================================================================"
     )
     table = PrettyTable()
     table.field_names = ["Comparison", "t", "p-value", "Cohen's d", "95% CI"]
     table.align["Comparison"] = "l"
-    # * active vs. random for each algorithm
+    # * logpdf: active vs. random for each algorithm
     for alg in algs:
         name_active = f"{alg}_True"
         name_random = f"{alg}_False"
         arr_active = scores[name_active]  # (seeds, )
         arr_random = scores[name_random]  # (seeds, )
-        t_stat, p_value, ci, d, effect_size = do_ttest(arr_active, arr_random)
+        t_stat, p_value, ci, d, effect_size = do_ttest(
+            arr_active, arr_random, alternative="greater"
+        )
         row = [
             f"{table_names[alg]} (A vs. R)",
             f"{t_stat:.2f}",
@@ -996,13 +989,15 @@ def compute_2sample_t_test():
         ]
         table.add_row(row)
 
-    # * Active EKF vs. other active algorithms
+    # * logpdf: Active EKF vs. other active algorithms
     for alg in algs[1:]:
         name_ekf = "ekf_True"
         name_alg = f"{alg}_True"
         arr_ekf = scores[name_ekf]  # (seeds, )
         arr_alg = scores[name_alg]  # (seeds, )
-        t_stat, p_value, ci, d, effect_size = do_ttest(arr_ekf, arr_alg)
+        t_stat, p_value, ci, d, effect_size = do_ttest(
+            arr_ekf, arr_alg, alternative="greater"
+        )
         row = [
             f"EKF vs. {table_names[alg]}",
             f"{t_stat:.2f}",
@@ -1011,6 +1006,53 @@ def compute_2sample_t_test():
             f"({ci.low:.2f}, {ci.high:.2f})",
         ]
         table.add_row(row)
+    print(table)
+
+    print(
+        "\n"
+        "================================================================================\n"
+        "t-test: ECE active vs. random for each algorithm, aggregated over all tasks\n"
+        "================================================================================"
+    )
+    table = PrettyTable()
+    table.field_names = ["Comparison", "t", "p-value", "Cohen's d", "95% CI"]
+    table.align["Comparison"] = "l"
+    # * ECE: active vs. random for each algorithm
+    for alg in algs:
+        name_active = f"{alg}_True"
+        name_random = f"{alg}_False"
+        arr_active = eces[name_active]  # (seeds, )
+        arr_random = eces[name_random]  # (seeds, )
+        t_stat, p_value, ci, d, effect_size = do_ttest(
+            arr_active, arr_random, alternative="less"
+        )
+        row = [
+            f"{table_names[alg]} (A vs. R)",
+            f"{t_stat:.2f}",
+            f"{p_value:.3f}",
+            f"{d:.2f} ({effect_size})",
+            f"({ci.low:.2f}, {ci.high:.2f})",
+        ]
+        table.add_row(row)
+
+    # * ECE: Active EKF vs. other active algorithms
+    for alg in algs[1:]:
+        name_ekf = "ekf_True"
+        name_alg = f"{alg}_True"
+        arr_ekf = eces[name_ekf]  # (seeds, )
+        arr_alg = eces[name_alg]  # (seeds, )
+        t_stat, p_value, ci, d, effect_size = do_ttest(
+            arr_ekf, arr_alg, alternative="less"
+        )
+        row = [
+            f"EKF vs. {table_names[alg]}",
+            f"{t_stat:.2f}",
+            f"{p_value:.3f}",
+            f"{d:.2f} ({effect_size})",
+            f"({ci.low:.2f}, {ci.high:.2f})",
+        ]
+        table.add_row(row)
+
     print(table)
 
     save_path = (

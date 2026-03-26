@@ -39,15 +39,21 @@ nets = [
     "1024x2",
     "1024x3",
 ]
-Ms = [5, 15, 30, 50, 75, 100, 150]
+# Ms = [5, 15, 30, 50, 75, 100, 150]
+Ms = [5, 15, 30, 50, 75, 100]
 # task = "acrobot-swingup-v0"
 task = "walker2d-medium-expert-v2"
+algs = ["ekf", "sgd", "do", "laplace", "llmcmc"]
 algs = ["ekf", "sgd", "do"]
 
+
 # * == change this block ==
-save_dir = "/scr/yutaizho/projects/bnn_pref/_viz/scale"
-M_dirp = "/scr/yutaizho/projects/bnn_pref/_runs/scaling/20250924_050101_M_infogain_cpu_nitersUpdate=-3_iekf=5"
-net_dirp = "/scr/yutaizho/projects/bnn_pref/_runs/scaling/20250924_050125_param_infogain_cpu_nitersUpdate=-3_iekf=5"
+save_dir = "/scr/yutaizho/code/p-prefEKF/bnn_pref/_viz/scale"
+# M_dirp = "/scr/yutaizho/projects/bnn_pref/_runs/scaling/20250924_050101_M_infogain_cpu_nitersUpdate=-3_iekf=5"
+# net_dirp = "/scr/yutaizho/projects/bnn_pref/_runs/scaling/20250924_050125_param_infogain_cpu_nitersUpdate=-3_iekf=5"
+
+M_dirp = "/scr/yutaizho/code/p-prefEKF/bnn_pref/results_sweep/scaling/20251126_001147_M_infogain_cpu_nitersUpdate=10_iekf=5"
+net_dirp = "/scr/yutaizho/code/p-prefEKF/bnn_pref/_runs/scaling/20250924_050125_param_infogain_cpu_nitersUpdate=-3_iekf=5"
 # * == change this block ==
 os.makedirs(f"{save_dir}/{timestamp}", exist_ok=True)
 
@@ -102,7 +108,7 @@ def get_stats(
                 stats = np.load(fp, allow_pickle=True)
                 for alg in algs:
                     res = stats[task].item()[alg]
-                    alg_durations[alg].append(res["duration"])
+                    alg_durations[alg].append(res["train_duration"])
                     alg_logpdfs[alg].append(res["test_logpdf_final"])
 
             # Compute mean and std for each metric per algorithm
@@ -137,7 +143,7 @@ def get_stats(
                 stats = np.load(fp, allow_pickle=True)
                 for alg in algs:
                     res = stats[task].item()[alg]
-                    alg_durations[alg].append(res["duration"])
+                    alg_durations[alg].append(res["duration"])  # todo: train_duration
                     alg_logpdfs[alg].append(res["test_logpdf_final"])
 
             # Store results for each algorithm
@@ -157,26 +163,26 @@ net_res = get_stats(net_dirp, sweep_type="net", fixed_M=fixed_M)
 
 
 def get_label(alg: str) -> str:
-    if alg == "ekf":
-        return "PreferenceEKF"
-    elif alg == "sgd":
-        return "DeepEnsemble"
-    elif alg == "do":
-        return "Dropout"
-    else:
-        raise ValueError(f"Unknown algorithm: {alg}")
+    alg2label = {
+        "ekf": "PreferenceEKF",
+        "sgd": "DeepEnsemble",
+        "do": "Dropout",
+        "laplace": "Laplace",
+        "llmcmc": "LLMCMC",
+    }
+    alg_label = alg2label[alg]
+    return alg_label
 
 
 def get_style(alg: str) -> dict:
-    if alg == "ekf":
-        color = rgb_values["orange"]
-    elif alg == "sgd":
-        color = rgb_values["blue"]
-    elif alg == "do":
-        color = rgb_values["green"]
-    else:
-        raise ValueError(f"Unknown algorithm: {alg}")
-    return {"color": color, "linestyle": "-", "linewidth": 2}
+    alg2color = {
+        "ekf": rgb_values["orange"],
+        "sgd": rgb_values["blue"],
+        "do": rgb_values["green"],
+        "laplace": rgb_values["purple"],
+        "llmcmc": rgb_values["gray"],
+    }
+    return {"color": alg2color[alg], "linestyle": "-", "linewidth": 2}
 
 
 axisLabel_kw = get_font_kw(24)
@@ -222,6 +228,7 @@ plt.close(fig1)
 fig2, ax2 = plt.subplots(figsize=(6, 4))
 invisible_topright_spines(ax2)
 for alg in algs:
+    # for alg in ["ekf", "sgd", "do"]:
     durations = net_res[f"{alg}_duration"]
     mean_durations = np.mean(durations, axis=1)
     std_durations = np.std(durations, axis=1)
@@ -286,6 +293,7 @@ plt.close(fig3)
 fig4, ax4 = plt.subplots(figsize=(6, 4))
 invisible_topright_spines(ax4)
 for alg in algs:
+    # for alg in ["ekf", "sgd", "do"]:
     logpdfs = net_res[f"{alg}_logpdf"]
     mean_logpdfs = np.mean(logpdfs, axis=1, where=np.isfinite(logpdfs))
     std_logpdfs = np.std(logpdfs, axis=1, where=np.isfinite(logpdfs))

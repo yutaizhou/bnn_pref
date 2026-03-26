@@ -2,12 +2,14 @@ import itertools as it
 import os
 from collections import defaultdict
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 
 import ipdb
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.legend_handler import HandlerBase
+from matplotlib.lines import Line2D
 
 from bnn_pref.utils.plotting import (
     get_font_kw,
@@ -46,45 +48,77 @@ tasks = [
     "mazeMediumDense",
     "mazeLargeDense",
 ]
-algs = ["ekf", "sgd", "do"]
+algs = ["ekf", "sgd", "do", "laplace", "llmcmc"]
 is_als = [True, False]
 
 use_stderr = True  # otherwise use stderr
-use_smooth = False  # otherwise no smoothing on eval curves
+use_smooth = True  # otherwise no smoothing on eval curves
 
 # * == change this block ==
-ref_dirp = (
-    "/scr/yutaizho/projects/bnn_pref/_runs/offline_rl/20250501_002013_iql_ref_18tasks"
-)
-
-pref_dirp = "/scr/yutaizho/projects/bnn_pref/_runs/offline_rl/20250924_iql_pref_12tasks_nitersUpdate=-3_acq=infogain"
+ref_dirp = "/scr/yutaizho/code/p-prefEKF/bnn_pref/_runs/offline_rl/20250501_002013_iql_ref_18tasks"
+pref_dirp = "/scr/yutaizho/code/p-prefEKF/bnn_pref/_runs/offline_rl/20251126_iql_pref_12tasks_nitersUpdate=10_acq=infogain"
 # save_dir = "/scr/yutaizho/projects/bnn_pref/_viz/offlineRL"
 save_dir = pref_dirp
 # * == change this block ==
 
 
-def get_label(alg: str, is_al: bool) -> str:
-    if alg == "ekf":
-        return "PreferenceEKF (A)" if is_al else "PreferenceEKF (R)"
-    elif alg == "sgd":
-        return "DeepEnsemble (A)" if is_al else "DeepEnsemble (R)"
-    elif alg == "do":
-        return "Dropout (A)" if is_al else "Dropout (R)"
+def get_label(alg: str, is_active: Optional[bool] = None) -> str:
+    alg2label = {
+        "ekf": "PreferenceEKF",
+        "sgd": "DeepEnsemble",
+        "do": "Dropout",
+        "laplace": "Laplace",
+        "llmcmc": "LLMCMC",
+    }
+    alg_label = alg2label[alg]
+    if is_active is not None:
+        active2label = {True: "A", False: "R"}
+        active_label = active2label[is_active]
+        return f"{alg_label} ({active_label})"
     else:
-        raise ValueError(f"Invalid algorithm: {alg}")
+        return alg_label
 
 
-def get_style(alg: str, is_al: bool) -> dict:
-    if alg == "ekf":
-        color = rgb_values["orange"]
-    elif alg == "sgd":
-        color = rgb_values["blue"]
-    elif alg == "do":
-        color = rgb_values["green"]
-    else:
-        raise ValueError(f"Invalid algorithm: {alg}")
-    linestyle = "-" if is_al else "--"
-    return {"color": color, "linestyle": linestyle}
+def get_style(alg: str, is_active: bool) -> dict:
+    alg2color = {
+        "ekf": rgb_values["orange"],
+        "sgd": rgb_values["blue"],
+        "do": rgb_values["green"],
+        "laplace": rgb_values["purple"],
+        "llmcmc": rgb_values["gray"],
+    }
+    linestyle = "-" if is_active else "--"
+    return {"color": alg2color[alg], "linestyle": linestyle}
+
+
+class DualLineHandler(HandlerBase):
+    """Custom legend handler that creates two lines (solid and dashed) for a single legend entry."""
+
+    def create_artists(
+        self, legend, orig_handle, x0, y0, width, height, fontsize, trans
+    ):
+        # orig_handle is a tuple: (color, label)
+        color, _ = orig_handle
+        common = {"color": color, "linewidth": 2, "transform": trans}
+        # Create two lines: solid on top, dashed below
+        l1 = Line2D(
+            [x0, x0 + width],
+            [0.7 * height, 0.7 * height],
+            linestyle="-",
+            **common,
+        )
+        l2 = Line2D(
+            [x0, x0 + width],
+            [0.3 * height, 0.3 * height],
+            linestyle="--",
+            **common,
+        )
+        return [l1, l2]
+
+
+# Based on matplotlib legend ordering trick: reorder entries row-major (left-to-right).
+def reorder_legend_row_major(lst, n_cols):
+    return sum((lst[i::n_cols] for i in range(n_cols)), [])
 
 
 def main():
@@ -101,8 +135,10 @@ def main():
 
     fig, axs = plt.subplots(3, 4, figsize=(12, 7.5), sharex=True)
     axs = axs.flatten()
-    lines = []  # Store lines for the shared legend
-    labels = []  # Store labels for the shared legend
+    legend_handles = []
+    legend_labels = []
+    handler_map = {tuple: DualLineHandler()}
+    baseline_lines = ()
 
     # * plot scores per task
     for i, task in enumerate(tasks):
@@ -123,10 +159,7 @@ def main():
             std_E = smooth(std_E) if use_smooth else std_E
             label = get_label(alg, is_al)
             style = get_style(alg, is_al)
-            line = ax.plot(mean_E, label=label, **style)[0]
-            if i == 0:  # Only store legend info from first subplot
-                lines.append(line)
-                labels.append(get_label(alg, is_al))
+            ax.plot(mean_E, label=label, **style)
             ax.fill_between(
                 range(len(mean_E)),
                 mean_E - std_E,
@@ -155,8 +188,7 @@ def main():
 
         ax.set_ylim(min_score - 2, max_score + 2)
         if i == 0:  # Only store baseline legend info from first subplot
-            lines.extend([gt_line, zero_line])
-            labels.extend(["GT", "Zero"])
+            baseline_lines = (gt_line, zero_line)
 
         ax.set_title(prettify_title(task), **get_font_kw(14))
 
@@ -172,13 +204,28 @@ def main():
 
     fig.supxlabel("Evaluation Steps", **get_font_kw(16))
     fig.supylabel("Normalized Score", **get_font_kw(16))
+    for alg in algs:
+        alg_color = get_style(alg, True)["color"]
+        alg_label = get_label(alg)
+        legend_handles.append((alg_color, alg_label))
+        legend_labels.append(alg_label)
+
+    legend_handles.extend(baseline_lines)
+    legend_labels.extend(["GT", "Zero"])
+
+    # legend_handles_ordered = legend_handles  # old ordering
+    legend_handles_ordered = reorder_legend_row_major(legend_handles, 4)
+    # legend_labels_ordered = legend_labels  # old ordering
+    legend_labels_ordered = reorder_legend_row_major(legend_labels, 4)
+
     fig.legend(
-        lines,
-        labels,
+        legend_handles_ordered,
+        legend_labels_ordered,
         loc="lower center",
         bbox_to_anchor=(0.5, -0.12),
         ncol=4,
         handlelength=2,
+        handler_map=handler_map,
         **get_legend_kw(16),
     )
     plt.tight_layout(rect=[0, 0.03, 1, 1])
@@ -192,6 +239,8 @@ def main():
     invisible_topright_spines(ax)
     max_score = 0
     min_score = jnp.inf
+    agg_gt = baseline_scores["agg_gt"]
+    agg_zero = baseline_scores["agg_zero"]
     for alg, is_al in it.product(algs, is_als):
         scores = agg_scores[f"{alg}_{is_al}"]  # (n_evals+1, n_pref_dirps)
         mean_E = scores.mean(1)
@@ -215,6 +264,11 @@ def main():
             **style,
         )
 
+    gt_line = ax.axhline(agg_gt, color=rgb_values["gray"], linestyle="-", linewidth=1.0)
+    zero_line = ax.axhline(
+        agg_zero, color=rgb_values["gray"], linestyle="--", linewidth=1.0
+    )
+
     ax.set_xlabel("Evaluation Steps", **get_font_kw(18))
     xticks = ax.get_xticks()
     ax.set_xticks(xticks)
@@ -222,13 +276,36 @@ def main():
     ax.set_xlim(left=0, right=len(mean_E))  # Cut off the graph
 
     ax.set_ylabel("Normalized Score", **get_font_kw(18))
+    # ax.set_ylim(min_score - 3, max_score + 3)
+    ax.set_ylim(20, 60)
     yticks = ax.get_yticks()
     ax.set_yticks(yticks)
     ax.set_yticklabels([f"{y:.0f}" for y in yticks], **get_font_kw(16))
-    ax.set_ylim(min_score - 3, max_score + 3)
+
+    agg_legend_handles = []
+    agg_legend_labels = []
+    agg_handler_map = {tuple: DualLineHandler()}
+    for alg in algs:
+        alg_color = get_style(alg, True)["color"]
+        alg_label = get_label(alg)
+        agg_legend_handles.append((alg_color, alg_label))
+        agg_legend_labels.append(alg_label)
+    agg_legend_handles.extend([gt_line, zero_line])
+    agg_legend_labels.extend(["GT", "Zero"])
+
+    # agg_handles_ordered = agg_legend_handles  # old ordering
+    agg_handles_ordered = reorder_legend_row_major(agg_legend_handles, 4)
+    # agg_labels_ordered = agg_legend_labels  # old ordering
+    agg_labels_ordered = reorder_legend_row_major(agg_legend_labels, 4)
 
     ax.legend(
-        **get_legend_kw(18), loc="upper center", bbox_to_anchor=(0.5, -0.12), ncol=3
+        agg_handles_ordered,
+        agg_labels_ordered,
+        handler_map=agg_handler_map,
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.12),
+        ncol=4,
+        **get_legend_kw(18),
     )
 
     fp = f"{save_dir}/offlineRL_{timestamp}_{aux_fname}_{n_seeds}seeds_agg.png"
@@ -367,6 +444,11 @@ def get_baseline_score(dir_path: str, tasks: List[str]):
                 # print(f"{task} {reward_type} {scores.mean():.2f}")
             except Exception as e:
                 print(f"Error loading npz from {folder}: {e}")
+
+    for reward_type in ["zero", "gt"]:
+        scores_dict[f"agg_{reward_type}"] = np.mean(
+            [scores_dict[task][reward_type] for task in tasks]
+        )
 
     return scores_dict
 

@@ -207,7 +207,12 @@ def run_iql(rng, cfg):
         )
 
     # --- Initialize environment, dataset, reward labeling ---
-    env = gym.vector.make(task_cfg.name, num_envs=rl_cfg.n_eval_workers)
+    if task_cfg.name.startswith("maze2d"):
+        env = gym.vector.make(
+            task_cfg.name, num_envs=rl_cfg.n_eval_workers, asynchronous=False
+        )
+    else:
+        env = gym.vector.make(task_cfg.name, num_envs=rl_cfg.n_eval_workers)
     dataset = d4rl.qlearning_dataset(gym.make(task_cfg.name))
     dataset = Transition(
         obs=jnp.array(dataset["observations"]),

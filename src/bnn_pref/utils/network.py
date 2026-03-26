@@ -155,15 +155,27 @@ class RewardNet(nn.Module):
             encoder_type=self.encoder_type,
         )
 
-    def __call__(self, x, train: bool = False):
+    def __call__(self, x, train: bool = False, freeze_encoder: bool = False):
         """
         Take batches of trajectory pairs, outputs returns for both trajectories, which
         can be then be softmaxed to get Bradley-Terry probabilities.
         (B, T, ...) -> (B, 2)
         """
-        r1 = self.predict_traj_return(x[:, 0], train=train)  # BTD -> B
-        r2 = self.predict_traj_return(x[:, 1], train=train)  # BTD -> B
-        logits = rearrange([r1, r2], "K B -> B K", K=2)  # B 2
+        if not freeze_encoder:
+            r1 = self.predict_traj_return(x[:, 0], train=train)  # BT... -> B
+            r2 = self.predict_traj_return(x[:, 1], train=train)  # BT... -> B
+            logits = rearrange([r1, r2], "K B -> B K", K=2)  # B 2
+        else:
+            # meant to work with resnet encoder
+            e1 = self.compute_embeddings(x[:, 0], train=train, agg=True)  # BT... -> BE
+            e2 = self.compute_embeddings(x[:, 1], train=train, agg=True)  # BT... -> BE
+            r1 = self.compute_return_from_agg_embeddings(
+                jax.lax.stop_gradient(e1), train=train
+            ).squeeze(axis=1)  # (B, E) -> (B,)
+            r2 = self.compute_return_from_agg_embeddings(
+                jax.lax.stop_gradient(e2), train=train
+            ).squeeze(axis=1)  # (B, E) -> (B,)
+            logits = rearrange([r1, r2], "K B -> B K", K=2)  # B 2
         return logits
 
     def predict_traj_return(self, x, train: bool = False):
