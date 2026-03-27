@@ -111,7 +111,7 @@ def make_unirlhf_d4rl_data(key, cfg) -> ArrayDict:
             responses_Q1: (Q, 1)
     """
     task_cfg = cfg["task"]
-    # data_cfg = cfg["data"]
+    data_cfg = cfg["data"]
 
     # load unirlhf data, convert into our format
     pref_dir = task_cfg["dataset_dir"]
@@ -119,14 +119,14 @@ def make_unirlhf_d4rl_data(key, cfg) -> ArrayDict:
     ds = gym.make(task_cfg["name"]).get_dataset()
     sz = task_cfg["segment_size"]
     trajs, queries_Q2, labels_Q1 = unirlhf_converter(ds, queries_bgn_Q2, labels, sz)
-    n_queries = len(queries_Q2)
 
     # split into train/test
-    nq_train = task_cfg["nq_train"]
+    nq = len(queries_Q2)
+    nq_train = int(nq * data_cfg["nq_train_frac"])
     train_trajs, test_trajs = trajs, deepcopy(trajs)
 
     key, key1 = jr.split(key, 2)
-    inds = jr.permutation(key1, jnp.arange(n_queries))
+    inds = jr.permutation(key1, jnp.arange(nq))
     queries_Q2, labels_Q1 = queries_Q2[inds], labels_Q1[inds]
 
     train_queries, train_labels = queries_Q2[:nq_train], labels_Q1[:nq_train]

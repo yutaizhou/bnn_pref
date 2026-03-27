@@ -1,41 +1,41 @@
 #!/bin/bash
 
 # * iclr tasks
-# TASKS=(
-#     "cheetahRandom"
-#     "cheetahMediumReplay"
-#     "cheetahMediumExpert"
-#     "hopperRandom"
-#     "hopperMediumReplay"
-#     "hopperMediumExpert"
-#     "walkerRandom"
-#     "walkerMediumReplay"
-#     "walkerMediumExpert"
-#     "penHuman"
-#     # "penExpert"
-#     # "penCloned"
-#     # "kitchenComplete"
-#     # "kitchenPartial"
-#     # "kitchenMixed"
-#     # "mazeUDense"
-#     "mazeMediumDense"
-#     "mazeLargeDense"
-# )
+TASKS=(
+    "cheetahRandom"
+    "cheetahMediumReplay"
+    "cheetahMediumExpert"
+    "hopperRandom"
+    "hopperMediumReplay"
+    "hopperMediumExpert"
+    "walkerRandom"
+    "walkerMediumReplay"
+    "walkerMediumExpert"
+    "penHuman"
+    # "penExpert"
+    # "penCloned"
+    # "kitchenComplete"
+    # "kitchenPartial"
+    # "kitchenMixed"
+    # "mazeUDense"
+    "mazeMediumDense"
+    "mazeLargeDense"
+)
 
 # * uniRLHF for ICML 2026 rebuttal
-TASKS=(
-    "uniCheetahMedium"
-    "uniCheetahMediumReplay"
-    "uniCheetahMediumExpert"
-    "uniHopperMedium"
-    "uniHopperMediumReplay"
-    "uniHopperMediumExpert"
-    "uniWalkerMedium"
-    "uniWalkerMediumReplay"
-    "uniWalkerMediumExpert"
-    "uniPenHuman"
-    "uniPenCloned"
-)
+# TASKS=(
+#     "uniCheetahMedium"
+#     "uniCheetahMediumReplay"
+#     "uniCheetahMediumExpert"
+#     "uniHopperMedium"
+#     "uniHopperMediumReplay"
+#     "uniHopperMediumExpert"
+#     "uniWalkerMedium"
+#     "uniWalkerMediumReplay"
+#     "uniWalkerMediumExpert"
+#     "uniPenHuman"
+#     "uniPenCloned"
+# )
 
 # * testout state exps
 # TASKS=(
@@ -76,6 +76,9 @@ python src/scripts/run_rm.py \
     learning_rate=0.003 \
     niters_init=420 \
     niters_update=10 \
+    ekf.rnd_proj=False \
+    ekf.niters_init=420 \
+    ekf.sub_dim=200 \
     ekf.learning_rate=0.003 \
     ekf.bs=1 \
     ekf.iekf=5 \

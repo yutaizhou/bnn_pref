@@ -3,6 +3,5 @@ name: walker2d-medium-replay-v2 # gym name
 dataset_dir: ${paths.unirlhf_dir}/${.name}_human_labels
 
 # 2000 queries total
-nq_train: 1800
-nq_test: 200
+nq_train_frac: 0.85
 segment_size: 200
