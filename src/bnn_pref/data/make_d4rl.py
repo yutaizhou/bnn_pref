@@ -62,13 +62,13 @@ def unirlhf_converter(d4rl_ds, queries, labels, sz: int):
         d4rl_ds: (S, D) how d4rl loads the dataset by default
         queries: (Q, 2) query indices, indicates starting index of the query items in the d4rl dataset
         labels: (Q,) preference labels
-            equality pref queries are removed; rest are turned into one-hot
+            equality pref queries are removed
             0: prefer item 1
             1: prefer item 2
             -1: equality pref
         sz: int, how many samples to segment the dataset into
     """
-    # remove quality pref queries
+    # remove equality pref queries
     mask = labels != -1
     queries_bgn_Q2 = queries[mask]  # (Q', 2)
     labels = labels[mask]  # (Q',)
@@ -135,11 +135,14 @@ def make_unirlhf_d4rl_data(key, cfg) -> ArrayDict:
     test_prefs = QueryIndexAndResponses(test_queries, test_labels, 0)
 
     # * normalize observations
+    mean = jnp.mean(ds["observations"], axis=0).reshape(1, 1, -1)
+    std = jnp.std(ds["observations"], axis=0).reshape(1, 1, -1)
+    stats = (mean, std)
     train_trajs.update(
-        {"observations": normalize(train_trajs["observations"], axis=(0, 1))}
+        {"observations": normalize(train_trajs["observations"], stats=stats)}
     )
     test_trajs.update(
-        {"observations": normalize(test_trajs["observations"], axis=(0, 1))}
+        {"observations": normalize(test_trajs["observations"], stats=stats)}
     )
     # elif ds_type == "vd4rl":
     #     train_trajs.update({"observations": scale_image(train_trajs["observations"])})
@@ -217,11 +220,14 @@ def make_d4rl_data(key, cfg) -> ArrayDict:
 
     # * normalize observations
     if ds_type == "d4rl":
+        mean = jnp.mean(ds["observations"], axis=0).reshape(1, 1, -1)
+        std = jnp.std(ds["observations"], axis=0).reshape(1, 1, -1)
+        stats = (mean, std)
         train_trajs.update(
-            {"observations": normalize(train_trajs["observations"], axis=(0, 1))}
+            {"observations": normalize(train_trajs["observations"], stats=stats)}
         )
         test_trajs.update(
-            {"observations": normalize(test_trajs["observations"], axis=(0, 1))}
+            {"observations": normalize(test_trajs["observations"], stats=stats)}
         )
     elif ds_type == "vd4rl":
         train_trajs.update({"observations": scale_image(train_trajs["observations"])})

@@ -268,16 +268,38 @@ def split_subsample_rank_ds(
 # ===============================
 def normalize(
     x: Float[Array, "... D"],
-    axis: Tuple[int, ...],
+    axis: Tuple[int, ...] = None,
+    stats: Tuple[Float[Array, "... D"], Float[Array, "... D"]] = None,
 ) -> Float[Array, "... D"]:
     """
     Designed to work with both trajectoy data (N, T, D) where axis=(0, 1)
     and samples data (N, D) where axis=(0,)
+
+    If stats are provided, they must have the same shape as x. Otherwise, compute stats from x.
+
+    Args:
+        x: (N, T, D) or (N, D)
+        axis: (0, 1) or (0,)
+        stats: (mean, std) each of shape (..., D)
+
+    Returns:
+        normalized x of shape (..., D)
     """
     eps = 1e-8
-    mean = jnp.mean(x, axis=axis, keepdims=True)
-    std = jnp.std(x, axis=axis, keepdims=True)
-    std = jnp.maximum(std, eps)
+
+    if stats is None:  # compute stats from x
+        assert axis is not None, "axis must be provided if stats are not provided"
+        mean = jnp.mean(x, axis=axis, keepdims=True)
+        std = jnp.std(x, axis=axis, keepdims=True)
+        std = jnp.maximum(std, eps)
+    else:  # use provided stats
+        assert axis is None, "axis must be None if stats are provided"
+        mean, std = stats
+        assert mean.ndim == x.ndim and std.ndim == x.ndim, (
+            f"stats must have the same ndim as x, got {mean.ndim} and {std.ndim}"
+        )
+
+        std = jnp.maximum(std, eps)
     return (x - mean) / std
 
 
