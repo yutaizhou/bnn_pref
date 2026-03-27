@@ -18,7 +18,7 @@ from bnn_pref.alg.agent_utils import (
     bt_loss_fn,
     compute_disagreement,
     compute_info_gain,
-    get_sgd_niters,
+    get_sgd_nsteps,
     run_sgd,
 )
 from bnn_pref.alg.data_buffer import QueryBuffer
@@ -222,22 +222,26 @@ class LMCMCAgent(Agent):
         self.param_count = count_params(ts.params)
 
         self.buffer = self.buffer.add_samples(warmup_data)
-        niters = get_sgd_niters(self.niters_init, len(warmup_data))
-        key, key_sgd = jr.split(key, 2)
-        warm_ts, _ = run_sgd(
-            key_sgd,
-            ts,
-            dataset=warmup_data,
-            loss_fn=bt_loss_fn,
-            niters=niters,
-            batch_size=self.batch_size,
-            l2_reg=self.l2_reg,
-            get_param_trace=False,
-            n_models=1,
-            use_dropout=False,
-            use_vmap=self.use_vmap,
-            verbose=self.verbose,
-        )
+        niters = get_sgd_nsteps(self.niters_init, len(warmup_data))
+        if niters > 0:
+            key, key_sgd = jr.split(key, 2)
+            warm_ts, _ = run_sgd(
+                key_sgd,
+                ts,
+                dataset=warmup_data,
+                loss_fn=bt_loss_fn,
+                niters=niters,
+                batch_size=self.batch_size,
+                l2_reg=self.l2_reg,
+                get_param_trace=False,
+                n_models=1,
+                use_dropout=False,
+                use_vmap=self.use_vmap,
+                verbose=self.verbose,
+            )
+        else:
+            warm_ts = ts
+
         self.fixed_params = LastLayerHelpers.get_frozen_params(
             {"params": warm_ts.params}
         )

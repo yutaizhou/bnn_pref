@@ -19,6 +19,7 @@ from bnn_pref.alg.agent_utils import (
     bt_loss_fn,
     compute_disagreement,
     compute_info_gain,
+    get_sgd_nsteps,
     run_sgd,
 )
 from bnn_pref.alg.pca_jax import JaxPCA
@@ -106,6 +107,9 @@ class EKFAgent(Agent):
         assert acq in ["infogain", "disagreement"]
         self.acq = acq
 
+        if not rnd_proj:
+            assert self.niters_init > 0, "SVD subspaces requires niters_init > 0"
+
     @staticmethod
     def get_hydra_config(alg_cfg):
         # follow ekf.yaml config
@@ -175,24 +179,28 @@ class EKFAgent(Agent):
 
         # * run SGD on warmup data: always trains whole model
         # * EKF maybe be done only on submodel, e.g. MLP not ResNet encoder
-        key, key_sgd = jr.split(key, 2)
-        warm_ts, warm_metrics = run_sgd(
-            key_sgd,
-            ts,
-            dataset=warmup_data,
-            loss_fn=bt_loss_fn,
-            niters=self.niters_init,
-            batch_size=self.batch_size,
-            l2_reg=self.l2_reg,
-            get_param_trace=not self.rnd_proj,
-            n_models=1,
-            split_datastream=False,
-            use_dropout=False,
-            use_batch_norm=self.is_pixel,  # only image experiments using BN
-            use_vmap=self.use_vmap,
-            verbose=self.verbose,
-        )
-        self.batch_stats = warm_ts.batch_stats if self.is_pixel else None
+        nsteps = get_sgd_nsteps(self.niters_init, len(warmup_data))
+        if nsteps > 0:
+            key, key_sgd = jr.split(key, 2)
+            warm_ts, warm_metrics = run_sgd(
+                key_sgd,
+                ts,
+                dataset=warmup_data,
+                loss_fn=bt_loss_fn,
+                niters=nsteps,
+                batch_size=self.batch_size,
+                l2_reg=self.l2_reg,
+                get_param_trace=not self.rnd_proj,
+                n_models=1,
+                split_datastream=False,
+                use_dropout=False,
+                use_batch_norm=self.is_pixel,  # only image experiments using BN
+                use_vmap=self.use_vmap,
+                verbose=self.verbose,
+            )
+            self.batch_stats = warm_ts.batch_stats if self.is_pixel else None
+        else:
+            warm_ts = ts
 
         if not self.is_pixel:
             self.param_count = count_params(warm_ts.params)

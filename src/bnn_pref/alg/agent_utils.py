@@ -327,10 +327,23 @@ def get_batch_iter(
     return iterate_over_batches()
 
 
-def get_sgd_niters(niters: int, n: int) -> int:
+def get_sgd_nsteps(niters: int, n: int) -> int:
     """
+    For getting the number of SGD steps to run, specifiable as either iters or epochs
+    but both are converted to steps (nonnegative).
+
+    Args:
+        niters (int): number of SGD iters or epochs
+        n (int): number of data points
+
     For getting the number of SGD steps to run.
-        if niters > 0: run for niters steps
-        if niters < 0: run for abs(niters) epochs
+        if niters > 0: run for `niters` steps
+        if niters < 0: run for `abs(niters)` epochs
     """
-    return niters if niters > 0 else int(n * jnp.abs(niters))
+    if niters > 0:  # steps
+        return niters
+    elif niters < 0:  # epochs
+        n_epochs = jnp.abs(niters)
+        return int(n * n_epochs)
+    else:
+        return 0

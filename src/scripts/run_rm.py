@@ -42,6 +42,7 @@ def main(cfg):
     key = jr.key(seed)
 
     algs = ["ekf", "sgd", "do", "laplace", "llmcmc"]
+    # algs = ["laplace", "llmcmc"]
     # algs = ["ekf"]
 
     is_als = [False, True]

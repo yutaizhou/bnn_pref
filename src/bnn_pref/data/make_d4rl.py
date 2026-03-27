@@ -131,8 +131,8 @@ def make_unirlhf_d4rl_data(key, cfg) -> ArrayDict:
 
     train_queries, train_labels = queries_Q2[:nq_train], labels_Q1[:nq_train]
     test_queries, test_labels = queries_Q2[nq_train:], labels_Q1[nq_train:]
-    train_prefs = QueryIndexAndResponses(train_queries, train_labels, 0, 0)
-    test_prefs = QueryIndexAndResponses(test_queries, test_labels, 0, 0)
+    train_prefs = QueryIndexAndResponses(train_queries, train_labels, 0)
+    test_prefs = QueryIndexAndResponses(test_queries, test_labels, 0)
 
     # * normalize observations
     train_trajs.update(

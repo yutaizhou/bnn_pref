@@ -15,7 +15,7 @@ from bnn_pref.alg.agent_utils import (
     bt_loss_fn,
     compute_disagreement,
     compute_info_gain,
-    get_sgd_niters,
+    get_sgd_nsteps,
     run_sgd,
 )
 from bnn_pref.alg.data_buffer import QueryBuffer
@@ -133,23 +133,26 @@ class DropoutAgent(Agent):
         self.param_count = self.ensemble_param_count
 
         self.buffer = self.buffer.add_samples(warmup_data)
-        niters = get_sgd_niters(self.niters_init, len(warmup_data))
+        niters = get_sgd_nsteps(self.niters_init, len(warmup_data))
 
-        key, key_sgd = jr.split(key, 2)
-        warm_ts, _ = run_sgd(
-            key_sgd,
-            ts,
-            dataset=warmup_data,
-            loss_fn=bt_loss_fn,
-            niters=niters,
-            batch_size=self.batch_size,
-            l2_reg=self.l2_reg,
-            get_param_trace=False,
-            n_models=1,
-            use_dropout=True,
-            use_vmap=self.use_vmap,
-            verbose=self.verbose,
-        )
+        if niters > 0:
+            key, key_sgd = jr.split(key, 2)
+            warm_ts, _ = run_sgd(
+                key_sgd,
+                ts,
+                dataset=warmup_data,
+                loss_fn=bt_loss_fn,
+                niters=niters,
+                batch_size=self.batch_size,
+                l2_reg=self.l2_reg,
+                get_param_trace=False,
+                n_models=1,
+                use_dropout=True,
+                use_vmap=self.use_vmap,
+                verbose=self.verbose,
+            )
+        else:
+            warm_ts = ts
 
         bel = DropoutBeliefState(ts=warm_ts, t=0)
         return bel
@@ -161,7 +164,7 @@ class DropoutAgent(Agent):
         self.buffer = self.buffer.add_samples(batch)
 
         ds = self.buffer.get_all()
-        niters = get_sgd_niters(self.niters_update, len(ds))
+        niters = get_sgd_nsteps(self.niters_update, len(ds))
         key, key_sgd = jr.split(key, 2)
         new_ts, _ = run_sgd(
             key_sgd,
