@@ -1,5 +1,7 @@
 import os
+import re
 import warnings
+from copy import deepcopy
 from pathlib import Path
 from typing import Dict
 
@@ -32,6 +34,125 @@ from bnn_pref.data.traj_utils import (
 from bnn_pref.utils.type import ArrayDict
 
 
+def load_unirlhf_data(pref_dir: Path) -> ArrayDict:
+    """
+    Load unirlhf data from directory.
+    Outputs:
+        inds: (Q, 2) query indices: where in d4rl dataset the query items are located
+        y: (Q,) preference labels
+    """
+    dirp = Path(pref_dir)
+    y_fp = [p for p in dirp.iterdir() if p.is_file() and "human_label" in p.name][0]
+    y_Q = np.load(y_fp, allow_pickle=True)  # (Q,)
+
+    inds1_fp = [p for p in dirp.iterdir() if p.is_file() and "indices_1" in p.name][0]
+    inds1 = np.load(inds1_fp, allow_pickle=True)  # (Q,)
+    inds2_fp = [p for p in dirp.iterdir() if p.is_file() and "indices_2" in p.name][0]
+    inds2 = np.load(inds2_fp, allow_pickle=True)  # (Q,)
+    inds_Q2 = np.stack([inds1, inds2], axis=-1)  # (Q, 2)
+
+    return inds_Q2, y_Q
+
+
+def unirlhf_converter(d4rl_ds, queries, labels, sz: int):
+    """
+    convert unirlhf (d4rl) dataset to format for PreferenceEnv
+
+    Args:
+        d4rl_ds: (S, D) how d4rl loads the dataset by default
+        queries: (Q, 2) query indices, indicates starting index of the query items in the d4rl dataset
+        labels: (Q,) preference labels
+            equality pref queries are removed; rest are turned into one-hot
+            0: prefer item 1
+            1: prefer item 2
+            -1: equality pref
+        sz: int, how many samples to segment the dataset into
+    """
+    # remove quality pref queries
+    mask = labels != -1
+    queries_bgn_Q2 = queries[mask]  # (Q', 2)
+    labels = labels[mask]  # (Q',)
+
+    # construct item mapping
+    bgns = jnp.unique(queries_bgn_Q2)  # (N,) unique item indices
+    q2b = {q: b.item() for q, b in enumerate(bgns)}  # (0, ..., N-1) -> (bgn_0...)
+    b2q = {b: q for q, b in q2b.items()}  # (bgn_0...) -> (0, ..., N-1)
+
+    item_inds = jnp.array([jnp.arange(b, b + sz) for b in bgns])  # (N, T)
+    trajs = {
+        "observations": d4rl_ds["observations"][item_inds],  # (N, T, D)
+        "rewards": d4rl_ds["rewards"][item_inds],  # (N, T)
+        "returns": d4rl_ds["rewards"][item_inds].sum(axis=1),  # (N,)
+    }
+
+    query_Q2 = jnp.array([[b2q[b] for b in bgns_2] for bgns_2 in queries_bgn_Q2])
+    labels_Q1 = jnp.expand_dims(labels, 1)
+
+    return trajs, query_Q2, labels_Q1
+
+
+def make_unirlhf_d4rl_data(key, cfg) -> ArrayDict:
+    """
+    d4rl returns dict with keys, where S = num_transitions
+        observations: (S, O) or (S, H, W, C)
+        actions: (S, A)
+        next_observations: (S, O)
+        rewards: (S,)
+        terminals: (S,)
+        timeouts: (S,)
+
+    output:
+        train_trajs / test_trajs:
+            observations: (N, T, D)
+            rewards: (N, T)
+            returns: (N,)
+        train_prefs / test_prefs:
+            queries_Q2: (Q, 2)
+            responses_Q1: (Q, 1)
+    """
+    task_cfg = cfg["task"]
+    # data_cfg = cfg["data"]
+
+    # load unirlhf data, convert into our format
+    pref_dir = task_cfg["dataset_dir"]
+    queries_bgn_Q2, labels = load_unirlhf_data(pref_dir)
+    ds = gym.make(task_cfg["name"]).get_dataset()
+    sz = task_cfg["segment_size"]
+    trajs, queries_Q2, labels_Q1 = unirlhf_converter(ds, queries_bgn_Q2, labels, sz)
+    n_queries = len(queries_Q2)
+
+    # split into train/test
+    nq_train = task_cfg["nq_train"]
+    train_trajs, test_trajs = trajs, deepcopy(trajs)
+
+    key, key1 = jr.split(key, 2)
+    inds = jr.permutation(key1, jnp.arange(n_queries))
+    queries_Q2, labels_Q1 = queries_Q2[inds], labels_Q1[inds]
+
+    train_queries, train_labels = queries_Q2[:nq_train], labels_Q1[:nq_train]
+    test_queries, test_labels = queries_Q2[nq_train:], labels_Q1[nq_train:]
+    train_prefs = QueryIndexAndResponses(train_queries, train_labels, 0, 0)
+    test_prefs = QueryIndexAndResponses(test_queries, test_labels, 0, 0)
+
+    # * normalize observations
+    train_trajs.update(
+        {"observations": normalize(train_trajs["observations"], axis=(0, 1))}
+    )
+    test_trajs.update(
+        {"observations": normalize(test_trajs["observations"], axis=(0, 1))}
+    )
+    # elif ds_type == "vd4rl":
+    #     train_trajs.update({"observations": scale_image(train_trajs["observations"])})
+    #     test_trajs.update({"observations": scale_image(test_trajs["observations"])})
+
+    return {
+        "train_trajs": train_trajs,
+        "train_prefs": train_prefs,
+        "test_trajs": test_trajs,
+        "test_prefs": test_prefs,
+    }
+
+
 def make_d4rl_data(key, cfg) -> ArrayDict:
     """
     d4rl returns dict with keys, where S = num_transitions
@@ -43,10 +164,13 @@ def make_d4rl_data(key, cfg) -> ArrayDict:
         timeouts: (S,)
 
     output:
-        observations: (N, T, D) or (N, T, H, W, C)
-        rewards: (N, T)
-        masks: (N, T)
-        returns: (N,)
+        train_trajs / test_trajs:
+            observations: (N, T, D)
+            rewards: (N, T)
+            returns: (N,)
+        train_prefs / test_prefs:
+            queries_Q2: (Q, 2)
+            responses_Q1: (Q, 1)
     """
     task_cfg = cfg["task"]
     data_cfg = cfg["data"]

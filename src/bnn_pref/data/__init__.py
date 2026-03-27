@@ -1,4 +1,4 @@
-from .make_d4rl import make_d4rl_data
+from .make_d4rl import make_d4rl_data, make_unirlhf_d4rl_data
 from .make_prefcc import make_prefcc_data
 from .make_synthetic import make_synthetic_data
 
@@ -16,5 +16,6 @@ dataset_creators = {
     "prefcc": make_prefcc_data,
     "synthetic": make_synthetic_data,
     "d4rl": make_d4rl_data,
+    "unirlhf_d4rl": make_unirlhf_d4rl_data,
     "vd4rl": make_d4rl_data,
 }

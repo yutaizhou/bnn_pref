@@ -1,3 +1,0 @@
-ds_type: prefcc
-name: cheetah-run-v0
-tensordict_path: ${paths.prefcc.data_dir}/${.name}.pt

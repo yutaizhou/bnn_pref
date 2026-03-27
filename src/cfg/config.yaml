@@ -40,6 +40,7 @@ paths:
   prefcc:
     data_dir: ${paths.prefcc_dir}
   vd4rl_dir: /scr/shared/datasets/vd4rl
+  unirlhf_dir: /scr/yutaizho/code/p-prefEKF/bnn_pref/unirlhf_crowdsource_human_labels
 
 
 seed: -1 # for jr.key() - initial random seeding

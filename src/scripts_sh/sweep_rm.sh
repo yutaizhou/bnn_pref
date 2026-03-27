@@ -1,25 +1,40 @@
 #!/bin/bash
 
 # * iclr tasks
+# TASKS=(
+#     "cheetahRandom"
+#     "cheetahMediumReplay"
+#     "cheetahMediumExpert"
+#     "hopperRandom"
+#     "hopperMediumReplay"
+#     "hopperMediumExpert"
+#     "walkerRandom"
+#     "walkerMediumReplay"
+#     "walkerMediumExpert"
+#     "penHuman"
+#     # "penExpert"
+#     # "penCloned"
+#     # "kitchenComplete"
+#     # "kitchenPartial"
+#     # "kitchenMixed"
+#     # "mazeUDense"
+#     "mazeMediumDense"
+#     "mazeLargeDense"
+# )
+
+# * uniRLHF for ICML 2026 rebuttal
 TASKS=(
-    "cheetahRandom"
-    "cheetahMediumReplay"
-    "cheetahMediumExpert"
-    "hopperRandom"
-    "hopperMediumReplay"
-    "hopperMediumExpert"
-    "walkerRandom"
-    "walkerMediumReplay"
-    "walkerMediumExpert"
-    "penHuman"
-    # "penExpert"
-    # "penCloned"
-    # "kitchenComplete"
-    # "kitchenPartial"
-    # "kitchenMixed"
-    # "mazeUDense"
-    "mazeMediumDense"
-    "mazeLargeDense"
+    "uniCheetahMedium"
+    "uniCheetahMediumReplay"
+    "uniCheetahMediumExpert"
+    "uniHopperMedium"
+    "uniHopperMediumReplay"
+    "uniHopperMediumExpert"
+    "uniWalkerMedium"
+    "uniWalkerMediumReplay"
+    "uniWalkerMediumExpert"
+    "uniPenHuman"
+    "uniPenCloned"
 )
 
 # * testout state exps
