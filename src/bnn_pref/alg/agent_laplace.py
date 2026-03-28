@@ -18,6 +18,7 @@ from bnn_pref.alg.agent_utils import (
     Agent,
     bt_loss_fn,
     compute_disagreement,
+    compute_entropy_acq,
     compute_info_gain,
     get_sgd_nsteps,
     run_sgd,
@@ -183,7 +184,7 @@ class LaplaceAgent(Agent):
         self.chunk_size = chunk_size
         self.use_vmap = use_vmap
         self.max_buffer_size = max_buffer_size
-        assert acq in ["disagreement", "infogain"]
+        assert acq in ["disagreement", "infogain", "entropy"]
         self.acq = acq
         self.buffer: QueryBuffer = QueryBuffer.create(
             self.max_buffer_size, self.traj_shape
@@ -349,6 +350,8 @@ class LaplaceAgent(Agent):
                 value = compute_info_gain(logprobs_M2)
             elif self.acq == "disagreement":
                 value = compute_disagreement(logprobs_M2)
+            elif self.acq == "entropy":
+                value = compute_entropy_acq(logprobs_M2)
             return value
 
         values_Q = jax.lax.map(map_step, pool_idxes_Q, batch_size=self.chunk_size)

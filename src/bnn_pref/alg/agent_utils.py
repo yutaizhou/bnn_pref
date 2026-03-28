@@ -91,6 +91,21 @@ def compute_disagreement(logprobs_M2) -> Float[Array, " "]:
     return value
 
 
+def compute_entropy_acq(logprobs_M2: Float[Array, "M 2"]) -> Float[Array, " "]:
+    """
+    Shannon entropy (nats) of the mean predictive distribution over M models.
+    logprobs_M2: (M, 2) per-model log-softmax for the binary preference query.
+    High when the averaged belief over trajectories A vs B is uncertain.
+    """
+    # probs_M2: (M, 2) — per-model class probs; p_bar: (2,) — mean predictive
+    probs_M2 = jnp.exp(logprobs_M2)
+    p_bar = jnp.mean(probs_M2, axis=0)
+    p_bar = jnp.clip(p_bar, 1e-12, 1.0)
+    p_bar = p_bar / jnp.sum(p_bar)
+    value = -jnp.sum(p_bar * jnp.log(p_bar))
+    return value
+
+
 def run_sgd(
     key,
     ts: TrainState,

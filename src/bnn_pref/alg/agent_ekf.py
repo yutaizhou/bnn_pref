@@ -18,6 +18,7 @@ from bnn_pref.alg.agent_utils import (
     BatchNormTrainState,
     bt_loss_fn,
     compute_disagreement,
+    compute_entropy_acq,
     compute_info_gain,
     get_sgd_nsteps,
     run_sgd,
@@ -104,7 +105,7 @@ class EKFAgent(Agent):
             if n_eff_iterates < sub_dim:
                 self.niters_init = sub_dim * thinning + warm_burns
 
-        assert acq in ["infogain", "disagreement"]
+        assert acq in ["infogain", "disagreement", "entropy"]
         self.acq = acq
 
         if not rnd_proj:
@@ -415,6 +416,8 @@ class EKFAgent(Agent):
                 value = compute_info_gain(logprobs_M2)
             elif self.acq == "disagreement":
                 value = compute_disagreement(logprobs_M2)
+            elif self.acq == "entropy":
+                value = compute_entropy_acq(logprobs_M2)
             return value
 
         values_Q = jax.lax.map(map_step, pool_idxes_Q, batch_size=self.chunk_size)
