@@ -909,7 +909,7 @@ def _duration_per_seed_s(task_stats: dict, alg: str, is_active: bool) -> np.ndar
     return arr  # (S,)
 
 
-def plot_train_duration_bars() -> None:
+def plot_train_duration_bars(include_llmcmc: bool = True) -> None:
     """
     Grouped bar chart: x = one tick per algorithm; two bars per group (active vs random).
     Heights: mean training duration (seconds), mean over tasks then mean over seeds; error bars
@@ -921,7 +921,11 @@ def plot_train_duration_bars() -> None:
     errs_active: list[float] = []
     errs_random: list[float] = []
 
-    for alg in algs:
+    nalgs = algs
+    nalgs = [alg for alg in nalgs if alg != "llmcmc" or include_llmcmc]
+    for alg in nalgs:
+        if alg == "llmcmc" and not include_llmcmc:
+            continue
         # D_true: (T, S) — T tasks, S seeds; seconds per run
         D_true = np.stack(
             [_duration_per_seed_s(data[task], alg, True) for task in tasks],
@@ -941,16 +945,17 @@ def plot_train_duration_bars() -> None:
         errs_random.append(_stderr_of_mean_1d(per_seed_r))
 
     # N_alg: number of algorithms in this sweep
-    N_alg = len(algs)
+    N_alg = len(nalgs)
     x = np.arange(N_alg, dtype=float)
     width = 0.36
 
     fig, ax = plt.subplots(figsize=(10, 6))
     invisible_topright_spines(ax)
 
-    # hatch for random bars: same facecolor as active; '/' is sparser than '///' (repeats = denser)
     hatch_random = "/"
-    for i, alg in enumerate(algs):
+    for i, alg in enumerate(nalgs):
+        if alg == "llmcmc" and not include_llmcmc:
+            continue
         color = get_style(alg, True)["color"]
         ax.bar(
             x[i] - width / 2,
@@ -961,7 +966,6 @@ def plot_train_duration_bars() -> None:
             capsize=3,
             error_kw={"linewidth": 1.2},
         )
-        # ax.bar(..., alpha=0.45)  # old: faded random; replaced by hatched same color
         ax.bar(
             x[i] + width / 2,
             means_random[i],
@@ -976,7 +980,8 @@ def plot_train_duration_bars() -> None:
         )
 
     ax.set_xticks(x)
-    ax.set_xticklabels([get_label(alg) for alg in algs], rotation=18, ha="right")
+    labels = [get_label(alg) for alg in nalgs]
+    ax.set_xticklabels(labels, rotation=18, ha="right")
     ax.set_ylabel("Training duration (s)", **get_font_kw(18))
     ax.set_xlabel("Algorithm", **get_font_kw(18))
     yticks = ax.get_yticks()
@@ -993,21 +998,16 @@ def plot_train_duration_bars() -> None:
             label="Random",
         ),
     ]
-    # merge: get_legend_kw sets frameon=False; we need frameon=True without duplicate kwargs
-    leg_kw = {
+    ax.legend(
+        handles=legend_handles,
         **get_legend_kw(16),
-        "loc": "upper left",
-        "bbox_to_anchor": (0.02, 0.98),
-        "frameon": True,
-        "fancybox": True,
-        "facecolor": "white",
-        "edgecolor": "0.75",
-    }
-    ax.legend(handles=legend_handles, **leg_kw)
+        loc="upper left",
+        bbox_to_anchor=(0.02, 0.98),
+    )
 
     save_path = (
         args.dirp
-        / f"{timestamp}_6_train_duration_nTasks={n_tasks}_agg_Q={args.query_budget}.png"
+        / f"{timestamp}_6_train_duration_nTasks={n_tasks}_agg_Q={args.query_budget}_mcmc={include_llmcmc}.png"
     )
     plt.savefig(save_path, bbox_inches="tight", dpi=300)
     plt.close()
@@ -1216,5 +1216,6 @@ plot_logpdf_per_task()
 plot_ece_brier_agg()
 plot_all_metrics_agg()
 plot_reliability_diagram()
-plot_train_duration_bars()
 compute_2sample_t_test()
+plot_train_duration_bars(include_llmcmc=True)
+plot_train_duration_bars(include_llmcmc=False)
