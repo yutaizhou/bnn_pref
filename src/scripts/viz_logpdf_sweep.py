@@ -5,6 +5,7 @@ For aggregated logpdf plots over all tasks and seeds, per each algorithm variant
 import itertools as it
 import logging
 import os
+import re
 import sys
 from collections import defaultdict
 from dataclasses import dataclass
@@ -78,6 +79,19 @@ task_select = dict(
         "mazeMediumDense",
         "mazeLargeDense",
     ],
+    unirlhf=[
+        "uniCheetahMedium",
+        "uniCheetahMediumReplay",
+        "uniCheetahMediumExpert",
+        "uniHopperMedium",
+        "uniHopperMediumReplay",
+        "uniHopperMediumExpert",
+        "uniWalkerMedium",
+        "uniWalkerMediumReplay",
+        "uniWalkerMediumExpert",
+        "uniPenHuman",
+        "uniPenCloned",
+    ],
     test=[
         "cheetahMediumReplay",
         "hopperMediumReplay",
@@ -120,6 +134,7 @@ alg_ekf_only = ["ekf"]
 alg_select = {
     "neurips": alg_all,
     "iclr": alg_all,
+    "unirlhf": alg_all,
     "test": alg_all,
     "visual3": alg_ekf_only,
     "visual5": alg_ekf_only,
@@ -130,7 +145,7 @@ alg_select = {
 @dataclass
 class Args:
     dirp: Path  # for both loading and saving
-    task_set: str  # e.g., "neurips", "iclr", "test", "visual3", "visual5"
+    task_set: str  # e.g., "neurips", "iclr", "unirlhf", "test", "visual3", "visual5"
     query_budget: int = -1
     use_stderr: bool = True
     use_smooth: bool = True
@@ -208,7 +223,8 @@ def sterr(arr, axis, nan=False, nan_mask=False):
 data = {}
 for task in tasks:
     for folder in os.listdir(args.dirp):
-        if f"task={task}" in folder:
+        # if f"task={task}" in folder:
+        if re.search(rf"task={re.escape(task)}(?![A-Za-z0-9])", folder):
             path = args.dirp / folder / "stats.npz"
             data[task] = np.load(path, allow_pickle=True)[task].item()
 

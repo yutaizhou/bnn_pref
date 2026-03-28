@@ -1,5 +1,6 @@
 import glob
 import os
+import re
 import sys
 
 import numpy as np
@@ -38,7 +39,8 @@ for task in tasks:
     found_task = False
     found_stats = False
     for folder in os.listdir(dirp):
-        if f"task={task}" in folder:
+        # if f"task={task}" in folder:
+        if re.search(rf"task={re.escape(task)}(?![A-Za-z0-9])", folder):
             found_task = True
             if os.path.exists(os.path.join(dirp, folder, "stats.npz")):
                 found_stats = True

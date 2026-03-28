@@ -1,4 +1,5 @@
 import os
+import re
 import warnings
 from typing import Callable, Tuple
 
@@ -29,7 +30,8 @@ def find_ckpt_fp(
     only used for finding ckpts of slurm sweeped RM
     """
     for dirname in os.listdir(run_dir):
-        if f"task={task_choice}" in dirname:
+        # if f"task={task_choice}" in dirname:
+        if re.search(rf"task={re.escape(task_choice)}(?![A-Za-z0-9])", dirname):
             subdir = f"{run_dir}/{dirname}"
             ckpt_fp = f"{subdir}/ckpts/{task_name}_{alg}_al={is_al}"
             cfg_path = f"{subdir}/.hydra/config.yaml"
