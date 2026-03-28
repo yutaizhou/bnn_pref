@@ -56,5 +56,5 @@ l2_reg: 0.0
 
 # make sure to adjust `learning_rate` according to update strategy
 # niters_{init,update} notation: >0 for num minibatches, -1 for 1 epoch, -2 for 2 epochs, etc
-niters_init: 420 # number of GD steps on init_belief()
+niters_init: 420 # number of GD steps on init_belief(); 0 amounts to not using warmup data
 niters_update: 10 # number of GD steps on update_belief()

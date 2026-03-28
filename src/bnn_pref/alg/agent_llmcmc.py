@@ -29,6 +29,7 @@ from bnn_pref.utils.network import (
     ParamsFlat,
     RewardNet,
     count_params,
+    perturb_params,
 )
 from bnn_pref.utils.type import QueryData, unpackable_dataclass
 
@@ -221,9 +222,9 @@ class LMCMCAgent(Agent):
         self.last_layer_param_count = count_params(last_params)
         self.param_count = count_params(ts.params)
 
-        self.buffer = self.buffer.add_samples(warmup_data)
         niters = get_sgd_nsteps(self.niters_init, len(warmup_data))
         if niters > 0:
+            self.buffer = self.buffer.add_samples(warmup_data)
             key, key_sgd = jr.split(key, 2)
             warm_ts, _ = run_sgd(
                 key_sgd,
@@ -239,24 +240,33 @@ class LMCMCAgent(Agent):
                 use_vmap=self.use_vmap,
                 verbose=self.verbose,
             )
+
+            key, key_mcmc = jr.split(key, 2)
+            new_particles = mcmc_belief_update(
+                key=key_mcmc,
+                model=self.model,
+                params={"params": warm_ts.params},
+                data=warmup_data,
+                n_particles=self.n_models,
+                n_warmups=self.mcmc_warmups_init,
+                n_steps=self.mcmc_steps,
+                initial_particle=None,
+            )  # (M, llayer_dim)
         else:
             warm_ts = ts
+
+            key, key_perturb = jr.split(key, 2)
+            llparams = LastLayerHelpers.get_trainable_params({"params": warm_ts.params})
+            _, new_particles = perturb_params(
+                key=key_perturb,
+                params={"params": llparams},
+                perturb_std=0.1,
+                n_particles=self.n_models,
+            )  # (M, llayer_dim)
 
         self.fixed_params = LastLayerHelpers.get_frozen_params(
             {"params": warm_ts.params}
         )
-
-        key, key_mcmc = jr.split(key, 2)
-        new_particles = mcmc_belief_update(
-            key=key_mcmc,
-            model=self.model,
-            params={"params": warm_ts.params},
-            data=warmup_data,
-            n_particles=self.n_models,
-            n_warmups=self.mcmc_warmups_init,
-            n_steps=self.mcmc_steps,
-            initial_particle=None,
-        )  # (M, llayer_dim)
 
         bel = LMCMCBeliefState(ts=warm_ts, particles=new_particles, t=0)
         return bel
@@ -266,13 +276,15 @@ class LMCMCAgent(Agent):
     ) -> LMCMCBeliefState:
         """Train on all queries in the buffer."""
         self.buffer = self.buffer.add_samples(batch)
+        ds = self.buffer.get_all()
 
         key, key_mcmc = jr.split(key, 2)
+        bs = min(self.batch_size, len(ds))
         new_particles = mcmc_belief_update(
             key=key_mcmc,
             model=self.model,
             params={"params": bel.ts.params},
-            data=self.buffer.get_all(),
+            data=ds,
             n_particles=self.n_models,
             n_warmups=self.mcmc_warmups_update,
             n_steps=self.mcmc_steps,

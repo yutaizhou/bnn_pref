@@ -24,7 +24,7 @@ from bnn_pref.alg.agent_utils import (
 )
 from bnn_pref.alg.data_buffer import QueryBuffer
 from bnn_pref.data.data_env import PreferenceEnv
-from bnn_pref.utils.network import ParamsDict, RewardNet, count_params
+from bnn_pref.utils.network import ParamsDict, RewardNet, count_params, perturb_params
 from bnn_pref.utils.type import QueryData, unpackable_dataclass
 
 logger.remove()
@@ -238,10 +238,10 @@ class LaplaceAgent(Agent):
         key, key_model = jr.split(key)
         ts = init_model(key_model, self.model, self.opt, self.traj_shape)
         self.param_count = count_params(ts.params)
-        self.buffer = self.buffer.add_samples(warmup_data)
 
         niters = get_sgd_nsteps(self.niters_init, len(warmup_data))
         if niters > 0:
+            self.buffer = self.buffer.add_samples(warmup_data)
             key, key_sgd = jr.split(key, 2)
             warm_ts, _ = run_sgd(
                 key_sgd,
@@ -257,19 +257,26 @@ class LaplaceAgent(Agent):
                 use_vmap=self.use_vmap,
                 verbose=self.verbose,
             )
+
+            key, key_laplace = jr.split(key, 2)
+            new_particles = laplace_belief_update(
+                key=key_laplace,
+                model_def=self.model,
+                params={"params": warm_ts.params},
+                data=warmup_data,
+                n_particles=self.n_models,
+                curv_type=self.curv_type,
+                prior_prec=self.prior_prec,
+            )  # particles["params"]["pw_mlp"]["Dense_0"]
         else:
             warm_ts = ts
-
-        key, key_laplace = jr.split(key, 2)
-        new_particles = laplace_belief_update(
-            key=key_laplace,
-            model_def=self.model,
-            params={"params": warm_ts.params},
-            data=warmup_data,
-            n_particles=self.n_models,
-            curv_type=self.curv_type,
-            prior_prec=self.prior_prec,
-        )  # particles["params"]["pw_mlp"]["Dense_0"]
+            key, key_perturb = jr.split(key, 2)
+            new_particles, _ = perturb_params(
+                key=key_perturb,
+                params={"params": warm_ts.params},
+                perturb_std=0.1,
+                n_particles=self.n_models,
+            )
         bel = LaplaceBeliefState(ts=warm_ts, particles=new_particles, t=0)
         return bel
 
@@ -279,16 +286,17 @@ class LaplaceAgent(Agent):
         """Train on all queries in the buffer."""
         key, key_sgd, key_laplace = jr.split(key, 3)
         self.buffer = self.buffer.add_samples(batch)
-
         ds = self.buffer.get_all()
+
         niters = get_sgd_nsteps(self.niters_update, len(ds))
+        bs = min(self.batch_size, len(ds))
         new_ts, _ = run_sgd(
             key_sgd,
             bel.ts,
             dataset=ds,
             loss_fn=bt_loss_fn,
             niters=niters,
-            batch_size=self.batch_size,
+            batch_size=bs,
             l2_reg=self.l2_reg,
             get_param_trace=False,
             n_models=1,

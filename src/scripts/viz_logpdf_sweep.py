@@ -36,7 +36,7 @@ from bnn_pref.utils.plotting import (
     smooth,
 )
 
-task_select = dict(
+task_sets = dict(
     neurips=[
         # # * D4RL
         # "cheetahRandom",
@@ -129,16 +129,9 @@ task_select = dict(
 )
 
 
-alg_all = ["ekf", "sgd", "do", "laplace", "llmcmc"]
-alg_ekf_only = ["ekf"]
-alg_select = {
-    "neurips": alg_all,
-    "iclr": alg_all,
-    "unirlhf": alg_all,
-    "test": alg_all,
-    "visual3": alg_ekf_only,
-    "visual5": alg_ekf_only,
-    "visual9": alg_ekf_only,
+alg_sets = {
+    "all": ["ekf", "sgd", "do", "laplace", "llmcmc"],
+    "ekf": ["ekf"],
 }
 
 
@@ -146,6 +139,7 @@ alg_select = {
 class Args:
     dirp: Path  # for both loading and saving
     task_set: str  # e.g., "neurips", "iclr", "unirlhf", "test", "visual3", "visual5"
+    alg_set: str  # e.g., "all", "ekf"
     query_budget: int = -1
     use_stderr: bool = True
     use_smooth: bool = True
@@ -155,9 +149,9 @@ class Args:
 
 args = tyro.cli(Args)
 metric_names = ["logpdf", "acc", "ece", "brier", "coverage", "sharpness"]
-tasks = task_select[args.task_set]
+tasks = task_sets[args.task_set]
 n_tasks = len(tasks)
-algs = alg_select[args.task_set]
+algs = alg_sets[args.alg_set]
 is_als = [True, False]
 LEGEND_NCOL = 3 if len(algs) == 5 else 1
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

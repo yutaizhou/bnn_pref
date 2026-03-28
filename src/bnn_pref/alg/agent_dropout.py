@@ -132,10 +132,9 @@ class DropoutAgent(Agent):
         self.ensemble_param_count = count_params(ts.params)
         self.param_count = self.ensemble_param_count
 
-        self.buffer = self.buffer.add_samples(warmup_data)
         niters = get_sgd_nsteps(self.niters_init, len(warmup_data))
-
         if niters > 0:
+            self.buffer = self.buffer.add_samples(warmup_data)
             key, key_sgd = jr.split(key, 2)
             warm_ts, _ = run_sgd(
                 key_sgd,
@@ -162,9 +161,10 @@ class DropoutAgent(Agent):
     ) -> DropoutBeliefState:
         """Train on all queries in the buffer."""
         self.buffer = self.buffer.add_samples(batch)
-
         ds = self.buffer.get_all()
+
         niters = get_sgd_nsteps(self.niters_update, len(ds))
+        bs = min(self.batch_size, len(ds))
         key, key_sgd = jr.split(key, 2)
         new_ts, _ = run_sgd(
             key_sgd,
@@ -172,7 +172,7 @@ class DropoutAgent(Agent):
             dataset=ds,
             loss_fn=bt_loss_fn,
             niters=niters,
-            batch_size=self.batch_size,
+            batch_size=bs,
             l2_reg=self.l2_reg,
             get_param_trace=False,
             n_models=1,

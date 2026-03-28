@@ -198,9 +198,9 @@ class EKFAgent(Agent):
                 use_vmap=self.use_vmap,
                 verbose=self.verbose,
             )
-            self.batch_stats = warm_ts.batch_stats if self.is_pixel else None
         else:
             warm_ts = ts
+        self.batch_stats = warm_ts.batch_stats if self.is_pixel else None
 
         if not self.is_pixel:
             self.param_count = count_params(warm_ts.params)

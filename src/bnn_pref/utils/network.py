@@ -4,7 +4,9 @@ import flax.linen as nn
 import ipdb
 import jax
 import jax.numpy as jnp
+import jax.random as jr
 from einops import rearrange
+from jax.flatten_util import ravel_pytree
 
 # from flaxmodels import ResNet18 as FMResNet18
 from jaxtyping import Array, Float
@@ -42,6 +44,32 @@ def isfinite_param_pytree(param):
 
 def isfinite_param(param):
     return jnp.isfinite(param).all()
+
+
+def perturb_params(key, params: ParamsDict, perturb_std: float, n_particles: int):
+    """
+    Perturb the parameters of the model by a small amount. Used for Laplace and LLMCMC as
+    alternative to sampling from posterior.
+
+    paramDict for a single model -> paramDict with leading axis P
+
+
+    Args:
+        key: PRNGKey
+        params: ParamsDict
+        perturb_std: float = standard deviation of the perturbation
+        n_particles: int = number of particles to perturb
+    Returns:
+        perturbed_pdict: ParamsDict = perturbed parameters with leading axis P
+        perturbed_pflat: ParamsFlat (P, D) flattened perturbed parameters
+
+    """
+    key, perturb_key = jr.split(key)
+    flat, unravel = ravel_pytree(params)  # (D,)
+    noise = jr.normal(perturb_key, (n_particles, flat.shape[0]))  # (P, D)
+    perturbed_flat = flat + perturb_std * noise  # (P, D)
+    perturbed_pdict = jax.vmap(unravel)(perturbed_flat)  # dict with leading axis P
+    return perturbed_pdict, perturbed_flat
 
 
 default_init = nn.initializers.xavier_uniform

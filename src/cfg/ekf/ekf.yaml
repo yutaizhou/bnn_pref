@@ -40,5 +40,5 @@ iekf: 2 # iterated EKF: multiple linearization of measurement model around curre
 
 # prior/obs:
 # strong: 0.1 / 0.03
-# neurips: 0.07 / 0.07
+# standard: 0.07 / 0.07
 # weak: 0.03 / 0.1
