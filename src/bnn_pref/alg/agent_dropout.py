@@ -290,7 +290,8 @@ class DropoutAgent(Agent):
 
         key, *key_dropout = jr.split(key, cfg["do"]["M"] + 1)
 
-        def reward_fn(obs: Float[Array, "T D"]) -> Float[Array, "T"]:
+        def reward_fn(obs: Float[Array, "T D"]) -> Float[Array, "M T"]:
+            # (T,D -> M,T)
             obs = rearrange(obs, "T D -> 1 T D")
             apply_fn = lambda key, obs: ts.apply_fn(
                 {"params": ts.params},
@@ -299,7 +300,7 @@ class DropoutAgent(Agent):
                 train=True,
                 rngs={"dropout": key},
             )
-            out_MT = jax.vmap(apply_fn, in_axes=(0, None))(jnp.array(key_dropout), obs)
-            return out_MT.mean(axis=0).squeeze(0)
+            out_M1T = jax.vmap(apply_fn, in_axes=(0, None))(jnp.array(key_dropout), obs)
+            return out_M1T.squeeze(1)
 
         return reward_fn

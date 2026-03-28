@@ -31,11 +31,7 @@ from bnn_pref.rl.common import (
     TanhGaussianActor,
     Transition,
 )
-from bnn_pref.rl.rm_util import (
-    load_reward_model,
-    load_reward_model_old,
-    relabel_rewards,
-)
+from bnn_pref.rl.rm_util import load_reward_model, relabel_rewards
 from bnn_pref.utils.utils import get_random_seed, slurm_auto_scancel
 
 os.environ["XLA_FLAGS"] = "--xla_gpu_triton_gemm_any=True"  # from unifloral
@@ -224,8 +220,15 @@ def run_iql(rng, cfg):
 
     reward_src = None
     if rl_cfg["reward"] == "gt":
+        # don't modify dataset rewards
         reward_src = "gt"
+    elif rl_cfg["reward"] == "zero":
+        # set dataset rewards to zeros
+        reward_src = "zeros"
+        rhat = jnp.zeros_like(dataset.reward)
+        dataset = dataset._replace(reward=rhat)
     elif rl_cfg["reward"] == "pref":
+        # relabel dataset rewards using reward model
         rng, rng_reward = jr.split(rng)
         reward_fn, ckpt_fp = load_reward_model(
             key=rng_reward,
@@ -235,15 +238,12 @@ def run_iql(rng, cfg):
             is_al=rl_cfg["pref_is_al"],
             sweeped_rm=True,
             task_choice=task_choice,
+            agg_type=rl_cfg["agg_type"],
         )
         reward_src = ckpt_fp
         obs = normalize(dataset.obs, axis=(0,))  # (N, obsDim)
         rhat = relabel_rewards(reward_fn, obs)  # (N,)
         rhat = process_rewards(rhat, rl_cfg["normalize_reward"], rl_cfg["clip_reward"])
-        dataset = dataset._replace(reward=rhat)
-    elif rl_cfg["reward"] == "zero":
-        reward_src = "zeros"
-        rhat = jnp.zeros_like(dataset.reward)
         dataset = dataset._replace(reward=rhat)
 
     # --- Initialize agent and value networks ---

@@ -32,6 +32,7 @@ python src/bnn_pref/rl/iql.py \
     rl.pref_is_al=True,False \
     rl.normalize_reward=True \
     rl.clip_reward=True \
+    rl.agg_type=mean \
     rl.run_dir='"/scr/yutaizho/code/p-prefEKF/bnn_pref/_runs/pref/20251125_070829_nitersUpdate=10_lr=0.003_acq=infogain_M=100"' \
     wandb.tags=lr0.003_nitersUpdate10_infogain \
     rl.use_wandb=True \

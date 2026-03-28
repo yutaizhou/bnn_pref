@@ -7,6 +7,7 @@ task_name: "${task.name}" # set via CLI override or compose API
 pref_alg: ekf # ekf, sgd, do
 pref_is_al: True # True, False
 # reward processing: below two are for learned reward relabeling only, not GT
+agg_type: mean # mean, median, std_penalty
 normalize_reward: True 
 clip_reward: True # clip reward magnitude to [-10,10], applied post normalization
 

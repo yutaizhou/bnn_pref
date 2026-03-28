@@ -422,10 +422,11 @@ class LaplaceAgent(Agent):
         ts = bel.ts
         params = bel.particles  # ParamsDict with leading axis M
 
-        def reward_fn(obs: Float[Array, "T D"]) -> Float[Array, "T"]:
-            # (T,D -> T)
+        def reward_fn(obs: Float[Array, "T D"]) -> Float[Array, "M T"]:
+            # (T,D -> M,T)
             apply_fn = partial(ts.apply_fn, method=model.predict_traj_rewards)
             out_MT = jax.vmap(apply_fn, in_axes=(0, None))(params, obs)
-            return out_MT.mean(axis=0)
+            # return out_MT.mean(axis=0)
+            return out_MT
 
         return reward_fn
