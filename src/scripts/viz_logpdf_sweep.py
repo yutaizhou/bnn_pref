@@ -20,6 +20,7 @@ os.environ["JAX_PLATFORM_NAME"] = "cpu"
 logging.getLogger("absl").setLevel(logging.WARNING)
 
 import ipdb
+import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
 import tyro
@@ -876,6 +877,143 @@ def plot_reliability_diagram(n_bins: int = 10):
     print("Saved reliability diagram")
 
 
+def _stderr_of_mean_1d(a: np.ndarray) -> float:
+    """Standard error of the mean for samples along the only axis; a has shape (S,)."""
+    a = np.asarray(a, dtype=np.float64).reshape(-1)
+    n = a.shape[0]
+    if n <= 1:
+        return 0.0
+    return float(np.std(a, ddof=1) / np.sqrt(n))
+
+
+def _duration_per_seed_s(task_stats: dict, alg: str, is_active: bool) -> np.ndarray:
+    """
+    Per-seed training time in seconds for one task and algorithm variant.
+    run_rm saves `duration` (from trainer `train_duration`); older runs may use `train_duration`.
+    Returns (S,) with S = number of seeds.
+    """
+    res = task_stats[alg][is_active]
+    if isinstance(res, np.ndarray) and res.dtype == object:
+        res = res.item()
+    if isinstance(res, dict):
+        raw = res.get("duration")
+        if raw is None:
+            raw = res.get("train_duration")
+    else:
+        raw = None
+    if raw is None:
+        raise KeyError(
+            f"Missing duration/train_duration for alg={alg}, is_active={is_active}"
+        )
+    arr = np.asarray(raw, dtype=np.float64).reshape(-1)
+    return arr  # (S,)
+
+
+def plot_train_duration_bars() -> None:
+    """
+    Grouped bar chart: x = one tick per algorithm; two bars per group (active vs random).
+    Heights: mean training duration (seconds), mean over tasks then mean over seeds; error bars
+    are stderr over seeds of the task-averaged duration (same convention as line-plot stderr).
+    """
+    # (N_alg,) — one mean height per algorithm for active / random
+    means_active: list[float] = []
+    means_random: list[float] = []
+    errs_active: list[float] = []
+    errs_random: list[float] = []
+
+    for alg in algs:
+        # D_true: (T, S) — T tasks, S seeds; seconds per run
+        D_true = np.stack(
+            [_duration_per_seed_s(data[task], alg, True) for task in tasks],
+            axis=0,
+        )
+        D_false = np.stack(
+            [_duration_per_seed_s(data[task], alg, False) for task in tasks],
+            axis=0,
+        )
+        # Per-seed mean over tasks: (S,)
+        per_seed_a = np.mean(D_true, axis=0)
+        per_seed_r = np.mean(D_false, axis=0)
+        means_active.append(float(np.mean(per_seed_a)))
+        means_random.append(float(np.mean(per_seed_r)))
+        # stderr of mean over seeds: std(S) / sqrt(S); (S,) -> scalar
+        errs_active.append(_stderr_of_mean_1d(per_seed_a))
+        errs_random.append(_stderr_of_mean_1d(per_seed_r))
+
+    # N_alg: number of algorithms in this sweep
+    N_alg = len(algs)
+    x = np.arange(N_alg, dtype=float)
+    width = 0.36
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    invisible_topright_spines(ax)
+
+    # hatch for random bars: same facecolor as active; '/' is sparser than '///' (repeats = denser)
+    hatch_random = "/"
+    for i, alg in enumerate(algs):
+        color = get_style(alg, True)["color"]
+        ax.bar(
+            x[i] - width / 2,
+            means_active[i],
+            width,
+            color=color,
+            yerr=errs_active[i],
+            capsize=3,
+            error_kw={"linewidth": 1.2},
+        )
+        # ax.bar(..., alpha=0.45)  # old: faded random; replaced by hatched same color
+        ax.bar(
+            x[i] + width / 2,
+            means_random[i],
+            width,
+            facecolor=color,
+            hatch=hatch_random,
+            edgecolor="black",
+            linewidth=0.6,
+            yerr=errs_random[i],
+            capsize=3,
+            error_kw={"linewidth": 1.2},
+        )
+
+    ax.set_xticks(x)
+    ax.set_xticklabels([get_label(alg) for alg in algs], rotation=18, ha="right")
+    ax.set_ylabel("Training duration (s)", **get_font_kw(18))
+    ax.set_xlabel("Algorithm", **get_font_kw(18))
+    yticks = ax.get_yticks()
+    ax.set_yticks(yticks)
+    ax.set_yticklabels([f"{y:.0f}" for y in yticks], **get_font_kw(16))
+
+    legend_handles = [
+        mpatches.Patch(facecolor="#666666", edgecolor="none", label="Active"),
+        mpatches.Patch(
+            facecolor="#666666",
+            edgecolor="black",
+            linewidth=0.6,
+            hatch=hatch_random,
+            label="Random",
+        ),
+    ]
+    # merge: get_legend_kw sets frameon=False; we need frameon=True without duplicate kwargs
+    leg_kw = {
+        **get_legend_kw(16),
+        "loc": "upper left",
+        "bbox_to_anchor": (0.02, 0.98),
+        "frameon": True,
+        "fancybox": True,
+        "facecolor": "white",
+        "edgecolor": "0.75",
+    }
+    ax.legend(handles=legend_handles, **leg_kw)
+
+    save_path = (
+        args.dirp
+        / f"{timestamp}_6_train_duration_nTasks={n_tasks}_agg_Q={args.query_budget}.png"
+    )
+    plt.savefig(save_path, bbox_inches="tight", dpi=300)
+    plt.close()
+    print("Saved train duration bar plot")
+
+
 def compute_2sample_t_test():
     """
     stats["logpdf"]["laplace_True"] = array(n_tasks, seeds, steps)
@@ -1078,4 +1216,5 @@ plot_logpdf_per_task()
 plot_ece_brier_agg()
 plot_all_metrics_agg()
 plot_reliability_diagram()
+plot_train_duration_bars()
 compute_2sample_t_test()
