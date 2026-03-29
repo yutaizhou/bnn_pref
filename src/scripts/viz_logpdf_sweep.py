@@ -1007,7 +1007,7 @@ def plot_train_duration_bars(include_llmcmc: bool = True) -> None:
 
     save_path = (
         args.dirp
-        / f"{timestamp}_6_train_duration_nTasks={n_tasks}_agg_Q={args.query_budget}_mcmc={include_llmcmc}.png"
+        / f"{timestamp}_5_train_duration_nTasks={n_tasks}_agg_Q={args.query_budget}_mcmc={include_llmcmc}.png"
     )
     plt.savefig(save_path, bbox_inches="tight", dpi=300)
     plt.close()
@@ -1044,8 +1044,6 @@ def compute_2sample_t_test():
 
         auc_score = np.trapz(arr - min_logpdf, axis=1) / max_auc  # (seeds, )
         scores[name] = auc_score
-        # logpdf_score = (arr[:, -1] - min_logpdf) / (max_logpdf - min_logpdf)  # (s, )
-        # scores[name] = 0.9 * auc_score + 0.1 * logpdf_score
 
     eces = {}
     for alg, is_al in it.product(algs, is_als):
@@ -1116,9 +1114,9 @@ def compute_2sample_t_test():
         "t-test: LogPDF active vs. random for each algorithm, aggregated over all tasks\n"
         "================================================================================"
     )
-    table = PrettyTable()
-    table.field_names = ["Comparison", "t", "p-value", "Cohen's d", "95% CI"]
-    table.align["Comparison"] = "l"
+    table1 = PrettyTable()
+    table1.field_names = ["Comparison", "t", "p-value", "Cohen's d", "95% CI"]
+    table1.align["Comparison"] = "l"
     # * logpdf: active vs. random for each algorithm
     for alg in algs:
         name_active = f"{alg}_True"
@@ -1135,7 +1133,7 @@ def compute_2sample_t_test():
             f"{d:.2f} ({effect_size})",
             f"({ci.low:.2f}, {ci.high:.2f})",
         ]
-        table.add_row(row)
+        table1.add_row(row)
 
     # * logpdf: Active EKF vs. other active algorithms
     for alg in algs[1:]:
@@ -1153,8 +1151,15 @@ def compute_2sample_t_test():
             f"{d:.2f} ({effect_size})",
             f"({ci.low:.2f}, {ci.high:.2f})",
         ]
-        table.add_row(row)
-    print(table)
+        table1.add_row(row)
+    print(table1)
+
+    save_path = (
+        args.dirp
+        / f"{timestamp}_ttest0_logpdf_nTasks={n_tasks}_agg_Q={args.query_budget}.txt"
+    )
+    with open(save_path, "w") as f:
+        f.write(table1.get_string())
 
     print(
         "\n"
@@ -1162,9 +1167,9 @@ def compute_2sample_t_test():
         "t-test: ECE active vs. random for each algorithm, aggregated over all tasks\n"
         "================================================================================"
     )
-    table = PrettyTable()
-    table.field_names = ["Comparison", "t", "p-value", "Cohen's d", "95% CI"]
-    table.align["Comparison"] = "l"
+    table2 = PrettyTable()
+    table2.field_names = ["Comparison", "t", "p-value", "Cohen's d", "95% CI"]
+    table2.align["Comparison"] = "l"
     # * ECE: active vs. random for each algorithm
     for alg in algs:
         name_active = f"{alg}_True"
@@ -1181,7 +1186,7 @@ def compute_2sample_t_test():
             f"{d:.2f} ({effect_size})",
             f"({ci.low:.2f}, {ci.high:.2f})",
         ]
-        table.add_row(row)
+        table2.add_row(row)
 
     # * ECE: Active EKF vs. other active algorithms
     for alg in algs[1:]:
@@ -1199,16 +1204,16 @@ def compute_2sample_t_test():
             f"{d:.2f} ({effect_size})",
             f"({ci.low:.2f}, {ci.high:.2f})",
         ]
-        table.add_row(row)
+        table2.add_row(row)
 
-    print(table)
+    print(table2)
 
     save_path = (
         args.dirp
-        / f"{timestamp}_5_ttest_nTasks={n_tasks}_agg_Q={args.query_budget}.txt"
+        / f"{timestamp}_ttest1_ece_nTasks={n_tasks}_agg_Q={args.query_budget}.txt"
     )
     with open(save_path, "w") as f:
-        f.write(table.get_string())
+        f.write(table2.get_string())
 
 
 plot_logpdf_agg()
