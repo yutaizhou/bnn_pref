@@ -1,13 +1,16 @@
 import itertools as it
 import os
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import List, Optional
 
 import ipdb
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
+import tyro
 from matplotlib.legend_handler import HandlerBase
 from matplotlib.lines import Line2D
 
@@ -20,46 +23,32 @@ from bnn_pref.utils.plotting import (
     set_xlim_offset,
     smooth,
 )
+from bnn_pref.utils.task_sets import alg_sets, task_sets
+
+pref_dirp = "/scr/yutaizho/code/p-prefEKF/bnn_pref/_runs/offline_rl/20251126_iql_pref_12tasks_nitersUpdate=10_acq=infogain"
+ref_dirp = "/scr/yutaizho/code/p-prefEKF/bnn_pref/_runs/offline_rl/20250501_002013_iql_ref_18tasks"
+
+
+@dataclass
+class Args:
+    pref_dirp: Path = Path(pref_dirp)
+    ref_dirp: Path = Path(ref_dirp)
+    task_set: str = "iclr"
+    alg_set: str = "all"
+    use_stderr: bool = True
+    use_smooth: bool = True
+
+
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+args = tyro.cli(Args)
+tasks = task_sets[args.task_set]
+algs = alg_sets[args.alg_set]
+is_als = [True, False]
+save_dir = args.pref_dirp
 
 
 def defaultdict2dict(dd):
     return {k: defaultdict2dict(v) if isinstance(v, dict) else v for k, v in dd.items()}
-
-
-timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-tasks = [
-    # # * D4RL
-    "cheetahRandom",
-    "cheetahMediumReplay",
-    "cheetahMediumExpert",
-    "hopperRandom",
-    "hopperMediumReplay",
-    "hopperMediumExpert",
-    "walkerRandom",
-    "walkerMediumReplay",
-    "walkerMediumExpert",
-    "penHuman",
-    # "penExpert",
-    # "penCloned",
-    # "kitchenComplete",
-    # "kitchenPartial",
-    # "kitchenMixed",
-    # "mazeUDense",
-    "mazeMediumDense",
-    "mazeLargeDense",
-]
-algs = ["ekf", "sgd", "do", "laplace", "llmcmc"]
-is_als = [True, False]
-
-use_stderr = True  # otherwise use stderr
-use_smooth = True  # otherwise no smoothing on eval curves
-
-# * == change this block ==
-ref_dirp = "/scr/yutaizho/code/p-prefEKF/bnn_pref/_runs/offline_rl/20250501_002013_iql_ref_18tasks"
-pref_dirp = "/scr/yutaizho/code/p-prefEKF/bnn_pref/_runs/offline_rl/20251126_iql_pref_12tasks_nitersUpdate=10_acq=infogain"
-# save_dir = "/scr/yutaizho/projects/bnn_pref/_viz/offlineRL"
-save_dir = pref_dirp
-# * == change this block ==
 
 
 def get_label(alg: str, is_active: Optional[bool] = None) -> str:
@@ -122,14 +111,14 @@ def reorder_legend_row_major(lst, n_cols):
 
 
 def main():
-    baseline_scores = get_baseline_score(ref_dirp, tasks)  # d[task]["zero", "gt"]
+    baseline_scores = get_baseline_score(args.ref_dirp, tasks)  # d[task]["zero", "gt"]
 
-    dir_name = pref_dirp.split("/")[-1]  # "iql_pref_18tasks_nq60_5seed"
+    dir_name = args.pref_dirp.name  # "iql_pref_18tasks_nq60_5seed"
     aux_fname = dir_name.split("iql_pref_12tasks_")[-1]  # gets "_nq60_5seed"
 
     # pref_scores[task][ekf_False] # (n_evals+1, n_pref_dirps)
     # agg_scores[ekf_False] # (n_evals+1, n_pref_dirps)
-    pref_scores = combine_pref_scores(pref_dirp)
+    pref_scores = combine_pref_scores(args.pref_dirp)
     agg_scores = aggregate_scores_task(pref_scores)
     n_seeds = agg_scores[f"{algs[0]}_{is_als[0]}"].shape[1]
 
@@ -152,11 +141,11 @@ def main():
             mean_E = scores.mean(1)
             std_E = (
                 scores.std(1)
-                if not use_stderr
+                if not args.use_stderr
                 else scores.std(1) / jnp.sqrt(scores.shape[1])
             )
-            mean_E = smooth(mean_E) if use_smooth else mean_E
-            std_E = smooth(std_E) if use_smooth else std_E
+            mean_E = smooth(mean_E) if args.use_smooth else mean_E
+            std_E = smooth(std_E) if args.use_smooth else std_E
             label = get_label(alg, is_al)
             style = get_style(alg, is_al)
             ax.plot(mean_E, label=label, **style)
@@ -246,11 +235,11 @@ def main():
         mean_E = scores.mean(1)
         std_E = (
             scores.std(1)
-            if not use_stderr
+            if not args.use_stderr
             else scores.std(1) / jnp.sqrt(scores.shape[1])
         )
-        mean_E = smooth(mean_E) if use_smooth else mean_E
-        std_E = smooth(std_E) if use_smooth else std_E
+        mean_E = smooth(mean_E) if args.use_smooth else mean_E
+        std_E = smooth(std_E) if args.use_smooth else std_E
         max_score = max(max_score, mean_E.max())
         min_score = min(min_score, mean_E.min())
         label = get_label(alg, is_al)

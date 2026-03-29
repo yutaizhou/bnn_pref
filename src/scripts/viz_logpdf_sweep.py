@@ -35,104 +35,7 @@ from bnn_pref.utils.plotting import (
     set_xlim_offset,
     smooth,
 )
-
-task_sets = dict(
-    neurips=[
-        # # * D4RL
-        # "cheetahRandom",
-        "cheetahMediumReplay",
-        "cheetahMediumExpert",
-        "hopperRandom",
-        "hopperMediumReplay",
-        "hopperMediumExpert",
-        "walkerRandom",
-        "walkerMediumReplay",
-        "walkerMediumExpert",
-        "penHuman",
-        "penExpert",
-        # "penCloned",
-        # "kitchenComplete",
-        # "kitchenPartial",
-        # "kitchenMixed",
-        "mazeUDense",
-        "mazeMediumDense",
-        # "mazeLargeDense",
-    ],
-    iclr=[
-        # # * D4RL
-        "cheetahRandom",
-        "cheetahMediumReplay",
-        "cheetahMediumExpert",
-        "hopperRandom",
-        "hopperMediumReplay",
-        "hopperMediumExpert",
-        "walkerRandom",
-        "walkerMediumReplay",
-        "walkerMediumExpert",
-        "penHuman",
-        # "penExpert",
-        # "penCloned",
-        # "kitchenComplete",
-        # "kitchenPartial",
-        # "kitchenMixed",
-        # "mazeUDense",
-        "mazeMediumDense",
-        "mazeLargeDense",
-    ],
-    unirlhf=[
-        "uniCheetahMedium",
-        "uniCheetahMediumReplay",
-        "uniCheetahMediumExpert",
-        "uniHopperMedium",
-        "uniHopperMediumReplay",
-        "uniHopperMediumExpert",
-        "uniWalkerMedium",
-        "uniWalkerMediumReplay",
-        "uniWalkerMediumExpert",
-        "uniPenHuman",
-        "uniPenCloned",
-    ],
-    test=[
-        "cheetahMediumReplay",
-        "hopperMediumReplay",
-        "walkerMediumReplay",
-        "penHuman",
-        "mazeMediumDense",
-    ],
-    visual3=[
-        "vcheetahMediumExpert",
-        "vhumanoidMediumExpert",
-        "vwalkerMediumExpert",
-    ],
-    visual5=[
-        # "vcheetahRandom",
-        # "vcheetahMediumReplay",
-        "vcheetahMediumExpert",
-        # "vhumanoidRandom",
-        # "vhumanoidMediumReplay",
-        "vhumanoidMediumExpert",
-        "vwalkerRandom",
-        "vwalkerMediumReplay",
-        "vwalkerMediumExpert",
-    ],
-    visual9=[
-        "vcheetahRandom",
-        "vcheetahMediumReplay",
-        "vcheetahMediumExpert",
-        "vhumanoidRandom",
-        "vhumanoidMediumReplay",
-        "vhumanoidMediumExpert",
-        "vwalkerRandom",
-        "vwalkerMediumReplay",
-        "vwalkerMediumExpert",
-    ],
-)
-
-
-alg_sets = {
-    "all": ["ekf", "sgd", "do", "laplace", "llmcmc"],
-    "ekf": ["ekf"],
-}
+from bnn_pref.utils.task_sets import alg_sets, task_sets
 
 
 @dataclass
@@ -148,12 +51,12 @@ class Args:
 
 
 args = tyro.cli(Args)
-metric_names = ["logpdf", "acc", "ece", "brier", "coverage", "sharpness"]
 tasks = task_sets[args.task_set]
-n_tasks = len(tasks)
 algs = alg_sets[args.alg_set]
 is_als = [True, False]
+n_tasks = len(tasks)
 LEGEND_NCOL = 3 if len(algs) == 5 else 1
+metric_names = ["logpdf", "acc", "ece", "brier", "coverage", "sharpness"]
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
 print(
