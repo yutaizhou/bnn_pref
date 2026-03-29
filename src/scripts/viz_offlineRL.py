@@ -8,11 +8,13 @@ from typing import List, Optional
 
 import ipdb
 import jax.numpy as jnp
+import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
 import tyro
 from matplotlib.legend_handler import HandlerBase
 from matplotlib.lines import Line2D
+from prettytable import PrettyTable
 
 from bnn_pref.utils.plotting import (
     get_font_kw,
@@ -110,6 +112,274 @@ def reorder_legend_row_major(lst, n_cols):
     return sum((lst[i::n_cols] for i in range(n_cols)), [])
 
 
+def col_name_alg(alg: str) -> str:
+    """Short column header for each preference-learning method (active variant)."""
+    return {
+        "ekf": "EKF",
+        "sgd": "Ensemble",
+        "do": "Dropout",
+        "laplace": "Laplace",
+        "llmcmc": "LLMCMC",
+    }[alg]
+
+
+def build_final_eval_table(
+    pref_scores: dict,
+    baseline_scores: dict,
+    tasks: List[str],
+    algs: List[str],
+) -> PrettyTable:
+    """
+    Rows: one per task + mean over tasks.
+    Columns: each algorithm (active only), GT, Zero Policy.
+    Entries: mean over seeds of normalized score at the final evaluation step.
+    pref_scores[task][alg_True]: (n_evals+1, n_seeds)
+    """
+    table = PrettyTable()
+    field_names = ["Task"] + [col_name_alg(a) for a in algs] + ["GT", "Zero"]
+    table.field_names = field_names
+    table.align = "r"
+    table.align["Task"] = "l"
+
+    # last eval step: pref_scores[task][alg_True] has shape (n_evals+1, n_seeds); use row -1
+    final_rows: List[List[float]] = []
+    for task in tasks:
+        vals: List[float] = []
+        for alg in algs:
+            arr = pref_scores[task][f"{alg}_True"]  # (n_evals+1, n_seeds)
+            vals.append(float(np.mean(arr[-1, :])))  # mean over seeds at final step
+        vals.append(float(baseline_scores[task]["gt"]))
+        vals.append(float(baseline_scores[task]["zero"]))
+        final_rows.append(vals)
+        table.add_row([prettify_title(task)] + [f"{v:.2f}" for v in vals])
+
+    mean_vals = np.mean(np.array(final_rows, dtype=np.float64), axis=0)
+    mean_row = ["Mean"] + [f"{v:.2f}" for v in mean_vals]
+    table.add_row(mean_row)
+
+    return table
+
+
+def _stderr_of_mean_1d(a: np.ndarray) -> float:
+    """SEM over seeds; a has shape (S,)."""
+    a = np.asarray(a, dtype=np.float64).reshape(-1)
+    n = a.shape[0]
+    if n <= 1:
+        return 0.0
+    return float(np.std(a, ddof=1) / np.sqrt(n))
+
+
+def _final_step_stats(arr: np.ndarray, use_stderr: bool) -> tuple[float, float]:
+    """
+    arr: (n_evals+1, n_seeds) — mean over seeds at final eval row; optional stderr of mean.
+    """
+    last = arr[-1, :]  # (S,)
+    m = float(np.mean(last))
+    e = _stderr_of_mean_1d(last) if use_stderr else float(np.std(last, ddof=1))
+    return m, e
+
+
+def _draw_grouped_method_bars(
+    ax,
+    algs: List[str],
+    means_active: List[float],
+    means_random: List[float],
+    errs_active: List[float],
+    errs_random: List[float],
+    gt: Optional[float],
+    zero: Optional[float],
+    ylabel: str,
+    title: Optional[str],
+    hatch_random: str = "/",
+) -> None:
+    """One grouped bar chart: x = method, two bars (active / random) per method."""
+    N_alg = len(algs)
+    x = np.arange(N_alg, dtype=float)
+    width = 0.36
+    invisible_topright_spines(ax)
+    for i, alg in enumerate(algs):
+        color = get_style(alg, True)["color"]
+        ax.bar(
+            x[i] - width / 2,
+            means_active[i],
+            width,
+            color=color,
+            yerr=errs_active[i],
+            capsize=3,
+            error_kw={"linewidth": 1.0},
+        )
+        ax.bar(
+            x[i] + width / 2,
+            means_random[i],
+            width,
+            facecolor=color,
+            hatch=hatch_random,
+            edgecolor="black",
+            linewidth=0.5,
+            yerr=errs_random[i],
+            capsize=3,
+            error_kw={"linewidth": 1.0},
+        )
+    if gt is not None:
+        ax.axhline(gt, color=rgb_values["gray"], linestyle="-", linewidth=1.0)
+    if zero is not None:
+        ax.axhline(zero, color=rgb_values["gray"], linestyle="--", linewidth=1.0)
+    ax.set_xticks(x)
+    ax.set_xticklabels([col_name_alg(a) for a in algs], rotation=18, ha="right")
+    ax.set_ylabel(ylabel, **get_font_kw(16))
+    if title:
+        ax.set_title(title, **get_font_kw(14))
+    yticks = ax.get_yticks()
+    ax.set_yticks(yticks)
+    ax.set_yticklabels([f"{y:.0f}" for y in yticks], **get_font_kw(12))
+
+
+def plot_offline_rl_bar_figures(
+    pref_scores: dict,
+    agg_scores: dict,
+    baseline_scores: dict,
+    tasks: List[str],
+    algs: List[str],
+    *,
+    save_dir: Path,
+    timestamp: str,
+    aux_fname: str,
+    n_seeds: int,
+    use_stderr: bool,
+) -> None:
+    """
+    Final eval-step normalized score: (1) task-aggregate grouped bars + GT/Zero lines;
+    (2) grid of per-task grouped bar subplots.
+    """
+    hatch_r = "/"
+    # --- aggregate ---
+    ma, mr, ea, er = [], [], [], []
+    for alg in algs:
+        m_a, e_a = _final_step_stats(agg_scores[f"{alg}_True"], use_stderr)
+        m_r, e_r = _final_step_stats(agg_scores[f"{alg}_False"], use_stderr)
+        ma.append(m_a)
+        mr.append(m_r)
+        ea.append(e_a)
+        er.append(e_r)
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    _draw_grouped_method_bars(
+        ax,
+        algs,
+        ma,
+        mr,
+        ea,
+        er,
+        baseline_scores["agg_gt"],
+        baseline_scores["agg_zero"],
+        "Normalized score (final eval step)",
+        None,
+        hatch_random=hatch_r,
+    )
+    leg_handles = [
+        mpatches.Patch(facecolor="#666666", edgecolor="none", label="Active"),
+        mpatches.Patch(
+            facecolor="#666666",
+            edgecolor="black",
+            linewidth=0.5,
+            hatch=hatch_r,
+            label="Random",
+        ),
+        Line2D(
+            [0], [0], color=rgb_values["gray"], linestyle="-", linewidth=1.0, label="GT"
+        ),
+        Line2D(
+            [0],
+            [0],
+            color=rgb_values["gray"],
+            linestyle="--",
+            linewidth=1.0,
+            label="Zero",
+        ),
+    ]
+    ax.legend(handles=leg_handles, **get_legend_kw(14), loc="upper right")
+    plt.tight_layout()
+    fp_agg = f"{save_dir}/offlineRL_{timestamp}_{aux_fname}_{n_seeds}seeds_bars_agg.png"
+    plt.savefig(fp_agg, bbox_inches="tight", dpi=300)
+    plt.close()
+    print(f"Saved to {fp_agg}")
+
+    # --- per-task subfigures ---
+    n_tasks = len(tasks)
+    if n_tasks <= 4:
+        n_rows, n_cols = 1, n_tasks
+    elif n_tasks <= 6:
+        n_rows, n_cols = 2, 3
+    elif n_tasks <= 9:
+        n_rows, n_cols = 3, 3
+    else:
+        n_rows, n_cols = 3, 4
+    fig, axs = plt.subplots(n_rows, n_cols, figsize=(4 * n_cols, 3.2 * n_rows))
+    axs = np.atleast_1d(axs).flatten()
+    for i, task in enumerate(tasks):
+        ax = axs[i]
+        ma_t, mr_t, ea_t, er_t = [], [], [], []
+        for alg in algs:
+            m_a, e_a = _final_step_stats(pref_scores[task][f"{alg}_True"], use_stderr)
+            m_r, e_r = _final_step_stats(pref_scores[task][f"{alg}_False"], use_stderr)
+            ma_t.append(m_a)
+            mr_t.append(m_r)
+            ea_t.append(e_a)
+            er_t.append(e_r)
+        _draw_grouped_method_bars(
+            ax,
+            algs,
+            ma_t,
+            mr_t,
+            ea_t,
+            er_t,
+            baseline_scores[task]["gt"],
+            baseline_scores[task]["zero"],
+            "Score",
+            prettify_title(task),
+            hatch_random=hatch_r,
+        )
+    for j in range(i + 1, len(axs)):
+        axs[j].set_visible(False)
+    # shared legend on figure
+    leg_handles = [
+        mpatches.Patch(facecolor="#666666", edgecolor="none", label="Active"),
+        mpatches.Patch(
+            facecolor="#666666",
+            edgecolor="black",
+            linewidth=0.5,
+            hatch=hatch_r,
+            label="Random",
+        ),
+        Line2D(
+            [0], [0], color=rgb_values["gray"], linestyle="-", linewidth=1.0, label="GT"
+        ),
+        Line2D(
+            [0],
+            [0],
+            color=rgb_values["gray"],
+            linestyle="--",
+            linewidth=1.0,
+            label="Zero",
+        ),
+    ]
+    fig.legend(
+        handles=leg_handles,
+        **get_legend_kw(14),
+        loc="lower center",
+        bbox_to_anchor=(0.5, -0.02),
+        ncol=4,
+    )
+    fig.supxlabel("Method", **get_font_kw(14))
+    plt.tight_layout(rect=[0, 0.06, 1, 1])
+    fp_tasks = (
+        f"{save_dir}/offlineRL_{timestamp}_{aux_fname}_{n_seeds}seeds_bars_per_task.png"
+    )
+    plt.savefig(fp_tasks, bbox_inches="tight", dpi=300)
+    plt.close()
+    print(f"Saved to {fp_tasks}")
+
+
 def main():
     baseline_scores = get_baseline_score(args.ref_dirp, tasks)  # d[task]["zero", "gt"]
 
@@ -121,6 +391,15 @@ def main():
     pref_scores = combine_pref_scores(args.pref_dirp)
     agg_scores = aggregate_scores_task(pref_scores)
     n_seeds = agg_scores[f"{algs[0]}_{is_als[0]}"].shape[1]
+
+    final_table = build_final_eval_table(pref_scores, baseline_scores, tasks, algs)
+    table_fp = (
+        f"{save_dir}/offlineRL_{timestamp}_{aux_fname}_{n_seeds}seeds_final_eval.txt"
+    )
+    with open(table_fp, "w") as f:
+        f.write(final_table.get_string())
+    print(f"Saved final-eval table to {table_fp}")
+    print(final_table)
 
     fig, axs = plt.subplots(3, 4, figsize=(12, 7.5), sharex=True)
     axs = axs.flatten()
@@ -300,6 +579,19 @@ def main():
     fp = f"{save_dir}/offlineRL_{timestamp}_{aux_fname}_{n_seeds}seeds_agg.png"
     plt.savefig(fp, bbox_inches="tight", dpi=300)
     print(f"Saved to {fp}")
+
+    plot_offline_rl_bar_figures(
+        pref_scores,
+        agg_scores,
+        baseline_scores,
+        tasks,
+        algs,
+        save_dir=save_dir,
+        timestamp=timestamp,
+        aux_fname=aux_fname,
+        n_seeds=n_seeds,
+        use_stderr=args.use_stderr,
+    )
 
 
 def combine_pref_scores(parent_dir: str):
