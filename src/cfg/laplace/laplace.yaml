@@ -18,7 +18,7 @@ bs: ${..bs}
 l2_reg: ${..l2_reg}
 learning_rate: ${..learning_rate}
 niters_init: ${..niters_init}  # Total number of GD steps on warmup data
-niters_update: 20 # train sgd longer for better MAP estimate for laplace
+niters_update: ${..niters_update} # train sgd longer for better MAP estimate for laplace
 
 # Laplace hyperparameters
 prior_prec: 1000

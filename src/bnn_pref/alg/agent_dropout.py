@@ -13,9 +13,7 @@ from bnn_pref.alg.agent_utils import (
     Agent,
     DropoutTrainState,
     bt_loss_fn,
-    compute_disagreement,
-    compute_entropy_acq,
-    compute_info_gain,
+    compute_acq_value,
     get_sgd_nsteps,
     run_sgd,
 )
@@ -213,12 +211,7 @@ class DropoutAgent(Agent):
             inds_2 = env.get_pref_indices(idx)
             logits_M2 = rearrange(logits_NM[inds_2], "K M -> M K", K=2)
             logprobs_M2 = jax.nn.log_softmax(logits_M2, axis=1)
-            if self.acq == "infogain":
-                value = compute_info_gain(logprobs_M2)
-            elif self.acq == "disagreement":
-                value = compute_disagreement(logprobs_M2)
-            elif self.acq == "entropy":
-                value = compute_entropy_acq(logprobs_M2)
+            value = compute_acq_value(logprobs_M2, self.acq)  # scalar
             return value
 
         values_Q = jax.lax.map(map_step, pool_idxes_Q, batch_size=self.chunk_size)

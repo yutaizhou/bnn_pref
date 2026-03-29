@@ -7,7 +7,7 @@ import jax.random as jr
 import optax
 from flax.training.train_state import TrainState
 from jax.flatten_util import ravel_pytree
-from jaxtyping import Array, Float, Int
+from jaxtyping import Array, Float, Int, Scalar
 from tqdm import tqdm
 
 from bnn_pref.data.data_env import PreferenceEnv, retrieve
@@ -60,7 +60,24 @@ def bt_loss_fn(params, logits_B2, labels_B2, l2_reg: float = 0.0):
     return loss + l2_loss, logits_B2
 
 
-def compute_info_gain(logprobs_M2) -> Float[Array, " "]:
+def compute_acq_value(logprobs_M2: Float[Array, "M 2"], acq_fn: str) -> Scalar:
+    """
+    Takes logprobs_M2 (M, 2) for a single query, containing binary logprob from each model sample,
+    and computes the value of the chosen acquisition function.
+
+    """
+    assert acq_fn in ["infogain", "disagreement", "entropy"], "Invalid acq_fn"
+    if acq_fn == "infogain":
+        return compute_infogain_acq(logprobs_M2)
+    elif acq_fn == "disagreement":
+        return compute_disagreement_acq(logprobs_M2)
+    elif acq_fn == "entropy":
+        return compute_entropy_acq(logprobs_M2)
+    else:
+        raise ValueError(f"Invalid acq_fn: {acq_fn}")
+
+
+def compute_infogain_acq(logprobs_M2) -> Scalar:
     """
     Compute InfoGain for a single query, given binary logprob from each model of ensemble
     work in logspace for numerical stability
@@ -81,7 +98,7 @@ def compute_info_gain(logprobs_M2) -> Float[Array, " "]:
 #     return value
 
 
-def compute_disagreement(logprobs_M2) -> Float[Array, " "]:
+def compute_disagreement_acq(logprobs_M2) -> Scalar:
     """
     Compute disagreement for a single query, given binary logprob from each model of ensemble
     """
@@ -91,7 +108,7 @@ def compute_disagreement(logprobs_M2) -> Float[Array, " "]:
     return value
 
 
-def compute_entropy_acq(logprobs_M2: Float[Array, "M 2"]) -> Float[Array, " "]:
+def compute_entropy_acq(logprobs_M2: Float[Array, "M 2"]) -> Scalar:
     """
     Shannon entropy (nats) of the mean predictive distribution over M models.
     logprobs_M2: (M, 2) per-model log-softmax for the binary preference query.

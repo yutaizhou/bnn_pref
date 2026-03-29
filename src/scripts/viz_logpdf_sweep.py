@@ -11,7 +11,6 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from pprint import pprint
 from typing import Optional
 
 os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
@@ -981,7 +980,7 @@ def plot_train_duration_bars(include_llmcmc: bool = True) -> None:
 
     ax.set_xticks(x)
     labels = [get_label(alg) for alg in nalgs]
-    ax.set_xticklabels(labels, rotation=18, ha="right")
+    ax.set_xticklabels(labels)
     ax.set_ylabel("Training duration (s)", **get_font_kw(18))
     ax.set_xlabel("Algorithm", **get_font_kw(18))
     yticks = ax.get_yticks()

@@ -16,9 +16,7 @@ from jaxtyping import Array, Float, Int, Scalar
 from bnn_pref.alg.agent_utils import (
     Agent,
     bt_loss_fn,
-    compute_disagreement,
-    compute_entropy_acq,
-    compute_info_gain,
+    compute_acq_value,
     get_sgd_nsteps,
     run_sgd,
 )
@@ -61,7 +59,7 @@ def mcmc_belief_update(
     model: RewardNet,
     params: ParamsDict,
     data: QueryData,
-    n_particles: int,  # ensemble size
+    n_particles: int,  # ensemble size; to subsample from converged MCMC samples
     # mcmc hyperparameters
     n_warmups: int,
     n_steps: int,
@@ -105,8 +103,8 @@ def mcmc_belief_update(
 
         return states
 
+    # * run MCMC chain including warmup
     key, key_warmup, key_samples = jr.split(key, 3)
-
     potential = partial(
         bnn_logjoint_lastlayer,
         fixed_params=fixed_params,
@@ -120,9 +118,10 @@ def mcmc_belief_update(
     kernel = blackjax.nuts(potential, **parameters).step
     states = inference_loop(key_samples, kernel, state, n_steps)
     sampled_params_flat = states.position  # (n_steps, llayer_dim)
-    idxes = jnp.linspace(0, n_steps, n_particles, dtype=jnp.int32)
-    subsampled_params_flat = sampled_params_flat[idxes]
 
+    # * subsample from converged MCMC samples
+    idxes = jnp.linspace(0, n_steps, n_particles, dtype=jnp.int32)  # (M,)
+    subsampled_params_flat = sampled_params_flat[idxes]
     return subsampled_params_flat  # (n_particles, llayer_dim)
 
 
@@ -159,6 +158,12 @@ class LMCMCAgent(Agent):
         self.mcmc_warmups_init = mcmc_warmups_init
         self.mcmc_warmups_update = mcmc_warmups_update
         self.mcmc_steps = mcmc_steps
+
+        assert n_models <= mcmc_steps, (
+            "n_models must be less than or equal to mcmc_steps"
+        )
+
+        # SGD hyperparameters
         self.chunk_size = chunk_size
         self.use_vmap = use_vmap
         self.max_buffer_size = max_buffer_size
@@ -327,12 +332,7 @@ class LMCMCAgent(Agent):
             inds_2 = env.get_pref_indices(idx)
             logits_M2 = rearrange(logits_NM[inds_2], "K M -> M K", K=2)
             logprobs_M2 = jax.nn.log_softmax(logits_M2, axis=1)
-            if self.acq == "infogain":
-                value = compute_info_gain(logprobs_M2)
-            elif self.acq == "disagreement":
-                value = compute_disagreement(logprobs_M2)
-            elif self.acq == "entropy":
-                value = compute_entropy_acq(logprobs_M2)
+            value = compute_acq_value(logprobs_M2, self.acq)  # scalar
             return value
 
         values_Q = jax.lax.map(map_step, pool_idxes_Q, batch_size=self.chunk_size)
