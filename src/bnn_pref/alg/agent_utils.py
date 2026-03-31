@@ -116,7 +116,7 @@ def compute_entropy_acq(logprobs_M2: Float[Array, "M 2"]) -> Scalar:
     """
     # probs_M2: (M, 2) — per-model class probs; p_bar: (2,) — mean predictive
     probs_M2 = jnp.exp(logprobs_M2)
-    p_bar = jnp.mean(probs_M2, axis=0)
+    p_bar = jnp.mean(probs_M2, axis=0)  # (2,)
     p_bar = jnp.clip(p_bar, 1e-12, 1.0)
     p_bar = p_bar / jnp.sum(p_bar)
     value = -jnp.sum(p_bar * jnp.log(p_bar))

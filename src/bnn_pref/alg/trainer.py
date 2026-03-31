@@ -178,6 +178,7 @@ def alg_pipeline(
     key_reliability = jr.fold_in(key_eval, n_steps)
     reliability_results = eval_reliability(key_reliability, bel)
     timer.tock("total")
+
     # * aggregate results
     # eval_results: concatenated to form array of (1 + nq_updates, )
     eval_results = jax.tree.map(lambda *xs: jnp.stack(xs), *eval_results)
