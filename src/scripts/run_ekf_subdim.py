@@ -42,7 +42,7 @@ def main(cfg):
 
     print(
         f"Run:\n"
-        f"  Seed: {seed} x {cfg['seeds']} (seed_vmap={cfg['seed_vmap']})\n"
+        f"  Seed: {seed} x {cfg['seeds']}\n"
         f"  Sanity: {cfg['sanity']} ({cfg['sanity_frac']} real frac)\n"
         f"  Network: {cfg['network']['hidden_sizes']}\n"
         f"Data:\n"
@@ -95,11 +95,7 @@ def main(cfg):
         run_fn = partial(run_alg, alg_name=alg, cfg=cfg, data_dict=data_dict, env=env)
         start = datetime.now()
 
-        res_m = (
-            jax.block_until_ready(jax.vmap(run_fn)(seeds))
-            if cfg["seed_vmap"]
-            else jax.block_until_ready(jax.lax.map(run_fn, seeds))
-        )
+        res_m = jax.block_until_ready(jax.lax.map(run_fn, seeds))
 
         duration = (datetime.now() - start).total_seconds()
         # (1 + nq_update)

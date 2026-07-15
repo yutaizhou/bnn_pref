@@ -12,5 +12,5 @@ hydra:
 
   sweep:
     # dir: ${paths.sweep_dir}/${now:%Y%m%d_%H%M%S}_nitersUpdate=${niters_update}_lr=${learning_rate}_ekfM=${ekf.M}_iekf=${ekf.iekf}_ekfLr=${ekf.learning_rate}_ekfDn=${ekf.dynamics_noise}_ekfPn=${ekf.prior_noise}_ekfOn=${ekf.obs_noise}_ekfAcq=${ekf.acq}_acq=${acq}
-    dir: ${paths.sweep_dir}/${now:%Y%m%d_%H%M%S}_nitersUpdate=${niters_update}_lr=${learning_rate}_acq=${acq}_M=${M}
+    dir: ${paths.sweep_dir}/${now:%Y%m%d_%H%M%S}_nitersUpdate=${niters_update}_lr=${learning_rate}_acq=${acq}_M=${M}_${dir_extra}
     subdir: ${hydra.job.num}_task=${hydra.runtime.choices.task}

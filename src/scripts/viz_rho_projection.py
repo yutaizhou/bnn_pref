@@ -85,7 +85,7 @@ def main(cfg):
 
     print(
         f"Run:\n"
-        f"  Seed: {seed} x {cfg['seeds']} (seed_vmap={cfg['seed_vmap']})\n"
+        f"  Seed: {seed} x {cfg['seeds']}\n"
         f"  Sanity: {cfg['sanity']} ({cfg['sanity_frac']} real frac)\n"
         f"  Network: {cfg['network']['hidden_sizes']}\n"
         f"Data:\n"

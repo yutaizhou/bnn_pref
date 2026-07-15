@@ -15,6 +15,13 @@ defaults:
 # - optional run: debug
 - hydra: default
 
+algs:
+  - ekf
+  - sgd
+  - do
+  - laplace
+  - llmcmc
+
 verbose: True # for tqdm in belief updates and SGD steps
 fhat: linear # only used for synthetic tasks
 M: 100 # number of models / samples for ensembling / EKF sampling
@@ -22,7 +29,6 @@ active: False # active vs. random querying
 acq: "infogain" # "infogain" or "disagreement"
 use_vmap: True # whether to use vmap for algorithm components, keep in mind ensemble size `M`
 chunk_size: 128 # for jax.lax.map()
-seed_vmap: True # whether to use vmap to parallelize run seeds. good for 3 seeds or under
 coverage_alpha: 0.95 # prediction coverage alpha for evaluation
 
 dir_extra: null # extra str to append to a hydra directory

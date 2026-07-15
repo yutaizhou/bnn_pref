@@ -24,7 +24,7 @@ M_LIST=$(IFS=,; echo "${Ms[*]}")
 
 # JAX_DISABLE_JIT=1 
 JAX_PLATFORMS=cpu python src/scripts/run_scaling.py \
-    -m seed=-1 seeds=1,1,1 seed_vmap=False \
+    -m seed=-1 seeds=1,1,1 \
     task=walkerMediumExpert \
     active=True \
     data.nq_train=100000 \

@@ -23,7 +23,7 @@ CUDA_VISIBLE_DEVICES=0 python src/scripts/run_rm.py \
 
 # test out scaling M 
 JAX_PLATFORMS=cpu python src/scripts/run_scaling.py \
-    -m seed=-1 seeds=1 seed_vmap=False \
+    -m seed=-1 seeds=1 \
     task=walkerMediumExpert \
     active=True \
     data.nq_train=50000 \

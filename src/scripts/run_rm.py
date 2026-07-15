@@ -19,6 +19,7 @@ import orbax.checkpoint as ocp
 from flax.training import orbax_utils
 from hydra.core.hydra_config import HydraConfig
 
+from bnn_pref.alg import alg_classes
 from bnn_pref.alg.trainer import run_alg
 from bnn_pref.data import dataset_creators
 from bnn_pref.data.data_env import PreferenceEnv
@@ -41,14 +42,12 @@ def main(cfg):
     seed = get_random_seed(cfg["seed"])
     key = jr.key(seed)
 
-    algs = ["ekf", "sgd", "do", "laplace", "llmcmc"]
-    # algs = ["laplace", "llmcmc"]
-    # algs = ["laplace"]
-    # algs = ["llmcmc"]
-    # algs = ["ekf"]
+    algs = cfg.algs
+    for alg in algs:
+        assert alg in alg_classes, f"unknown alg={alg}, choices={list(alg_classes)}"
 
     is_als = [False, True]
-    # is_als = [False]
+    # is_als = [True]
 
     task_cfg = cfg["task"]
     data_cfg = cfg["data"]

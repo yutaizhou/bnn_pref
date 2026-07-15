@@ -1,5 +1,5 @@
 ds_type: vd4rl
 task_name: walker_walk
-dataset_name: medium_expert
+dataset_name: medium_replay
 dataset_dir: ${paths.vd4rl_dir}/main/${.task_name}/${.dataset_name}/84px
-name: vwalker_walk_medium_expert
+name: vwalker_walk_medium_replay

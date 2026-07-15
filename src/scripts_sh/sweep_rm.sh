@@ -60,12 +60,15 @@ TASKS=(
 # )
 
 TASK_LIST=$(IFS=,; echo "${TASKS[*]}")
+ALG_LIST="ekf,sgd,do,laplace,llmcmc"
+
+DIR_EXTRA="tmlr_seeds=12"
 
 
 # this runs through product (alg, is_al) in sequence, for each task
-# lr=0.0001 for update_all=True, lr=0.001 for update_all=False
 python src/scripts/run_rm.py \
-    -m seed=-1 seeds=5 \
+    -m seed=-1 seeds=12 \
+    "algs=[${ALG_LIST}]" \
     task=$TASK_LIST \
     data.nq_init=8 \
     data.nq_update=60 \
@@ -86,9 +89,11 @@ python src/scripts/run_rm.py \
     ekf.iekf=5 \
     sgd.split_datastream=True \
     laplace.prior_prec=1000 \
+    laplace.curv_type=full \
     llmcmc.mcmc_warmups_init=500 \
     llmcmc.mcmc_warmups_update=20 \
     llmcmc.mcmc_steps=1000 \
+    dir_extra="'${DIR_EXTRA}'" \
     hydra/launcher=slurm \
     hydra.launcher.gres=shard:12 \
     hydra.launcher.mem_gb=50
