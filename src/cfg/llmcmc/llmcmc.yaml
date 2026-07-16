@@ -21,6 +21,8 @@ niters_init: ${..niters_init}  # Total number of GD steps on warmup data
 niters_update: ${..niters_update}
 
 # mcmc hyperparameters: belief_update() starts from current belief's last particle, so mcmc warmups need fewer steps
+# init: warmups_init -> steps
+# update: warmups_update -> steps
 mcmc_warmups_init: 500
 mcmc_warmups_update: 20
 mcmc_steps: 1000

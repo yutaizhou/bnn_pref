@@ -11,7 +11,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
 os.environ["DISABLE_CODESIGN_WARNING"] = "1"
@@ -44,7 +44,7 @@ class Args:
     task_set: str  # e.g., "neurips", "iclr", "unirlhf", "test", "visual3", "visual5"
     alg_set: str  # e.g., "all", "ekf"
     query_budget: int = -1
-    use_stderr: bool = True
+    errbar: Literal["std", "ste", "bootstrap"] = "ste"
     use_smooth: bool = True
     handle_nan: bool = False
     nan_mask: bool = False
@@ -55,17 +55,23 @@ tasks = task_sets[args.task_set]
 algs = alg_sets[args.alg_set]
 is_als = [True, False]
 n_tasks = len(tasks)
-LEGEND_NCOL = 3 if len(algs) == 5 else 1
+LEGEND_NCOL = len(algs)
+LEGEND_FONTSIZE = 13 if len(algs) >= 5 else 15
 metric_names = ["logpdf", "acc", "ece", "brier", "coverage", "sharpness"]
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+eval_dir = (
+    args.dirp / "evals" / f"{timestamp}_Q={args.query_budget}_errbar={args.errbar}"
+)
+eval_dir.mkdir(parents=True, exist_ok=True)
 
 print(
     "=====================================================\n"
     f"query_budget: {args.query_budget}\n"
     f"task_set: {args.task_set}\n"
     f"algs: {algs}\n"
-    f"load/save dir: {'/'.join(args.dirp.parts[-2:])}\n"
-    f"timestamp: {timestamp}\n"
+    f"errbar: {args.errbar}\n"
+    f"load dir: {'/'.join(args.dirp.parts[-2:])}\n"
+    f"eval dir: {'/'.join(eval_dir.parts[-3:])}\n"
     "=====================================================\n"
 )
 
@@ -113,6 +119,59 @@ def sterr(arr, axis, nan=False, nan_mask=False):
             return np.nanstd(arr, axis=0) / np.sqrt(nonnans_per_step)
     else:
         return np.std(arr, axis=axis) / np.sqrt(arr.shape[0])
+
+
+def bootstrap_ci(
+    arr: np.ndarray,
+    *,
+    axis: int = 0,
+    confidence_level: float = 0.95,
+    n_resamples: int = 9999,
+    random_state: int = 0,
+    nan: bool = False,
+    nan_mask: bool = False,
+) -> tuple[np.ndarray, np.ndarray]:
+    from scipy import stats
+
+    if nan and nan_mask:
+        row_mask = np.isfinite(arr).all(
+            axis=tuple(i for i in range(arr.ndim) if i != axis)
+        )
+        arr = arr[row_mask]
+    statistic = np.nanmean if nan else np.mean
+    res = stats.bootstrap(
+        (arr,),
+        statistic=statistic,
+        axis=axis,
+        confidence_level=confidence_level,
+        n_resamples=n_resamples,
+        random_state=random_state,
+        method="percentile",
+    )
+    return res.confidence_interval.low, res.confidence_interval.high
+
+
+def get_fill_bounds(
+    arr: np.ndarray,
+    *,
+    axis: int = 0,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Return (mean, lower, upper) for error-band plotting."""
+    data_mean = mean(arr, axis=axis, nan=args.handle_nan, nan_mask=args.nan_mask)
+    if args.errbar == "std":
+        err = std(arr, axis=axis, nan=args.handle_nan, nan_mask=args.nan_mask)
+        return data_mean, data_mean - err, data_mean + err
+    if args.errbar == "ste":
+        err = sterr(arr, axis=axis, nan=args.handle_nan, nan_mask=args.nan_mask)
+        return data_mean, data_mean - err, data_mean + err
+    assert args.errbar == "bootstrap"
+    ci_low, ci_high = bootstrap_ci(
+        arr,
+        axis=axis,
+        nan=args.handle_nan,
+        nan_mask=args.nan_mask,
+    )
+    return data_mean, ci_low, ci_high
 
 
 # *load data from stats.npz -> stats[metric][alg_is_al] = array(n_tasks, seeds, steps)
@@ -239,25 +298,31 @@ class DualLineHandler(HandlerBase):
 reorder_legend_row_major = lambda lst, nc: sum((lst[i::nc] for i in range(nc)), [])
 
 
+def get_alg_legend_kw(*, anchor_y: float = -0.12) -> dict:
+    return {
+        **get_legend_kw(LEGEND_FONTSIZE),
+        "loc": "upper center",
+        "bbox_to_anchor": (0.5, anchor_y),
+        "ncol": LEGEND_NCOL,
+        "handlelength": 1.8,
+        "columnspacing": 0.8,
+    }
+
+
 def plot_logpdf_agg():
     fig, ax = plt.subplots(figsize=(10, 6))
     invisible_topright_spines(ax)
     for alg, is_al in it.product(algs, is_als):
         alg_isactive = f"{alg}_{is_al}"
         arr = stats_agg["logpdf"][alg_isactive]  # (seeds, steps)
-        data_mean = mean(arr, axis=0, nan=args.handle_nan)
-        data_std = (
-            std(arr, axis=0, nan=args.handle_nan)
-            if not args.use_stderr
-            else sterr(arr, axis=0, nan=args.handle_nan)
-        )
+        data_mean, data_low, data_high = get_fill_bounds(arr, axis=0)
         label = get_label(alg, is_al)
         style = get_style(alg, is_al)
         ax.plot(data_mean, label=label, **style, linewidth=2)
         ax.fill_between(
             range(len(data_mean)),
-            data_mean - data_std,
-            data_mean + data_std,
+            data_low,
+            data_high,
             alpha=0.2,
             **style,
         )
@@ -350,15 +415,9 @@ def plot_logpdf_agg():
         handles=legend_handles,
         labels=legend_labels,
         handler_map=handler_map,
-        **get_legend_kw(18),
-        loc="upper center",
-        bbox_to_anchor=(0.5, -0.12),
-        ncol=LEGEND_NCOL,
+        **get_alg_legend_kw(anchor_y=-0.14),
     )
-    save_path = (
-        args.dirp
-        / f"{timestamp}_0_logpdf_nTasks={n_tasks}_agg_Q={args.query_budget}.png"
-    )
+    save_path = eval_dir / f"0_logpdf_nTasks={n_tasks}_agg.png"
     plt.savefig(save_path, bbox_inches="tight", dpi=300)
     plt.close()
 
@@ -391,21 +450,18 @@ def plot_logpdf_per_task():
         for alg, is_al in it.product(algs, is_als):
             arr = stats["logpdf"][f"{alg}_{is_al}"]  # (tasks, seeds, steps)
             arr_task = arr[i, :, :]  # (seeds, steps)
-            mean_E = mean(arr_task, axis=0, nan=args.handle_nan)  # (steps, )
-            std_E = (
-                std(arr_task, axis=0, nan=args.handle_nan)
-                if not args.use_stderr
-                else sterr(arr_task, axis=0, nan=args.handle_nan)
-            )  # (steps, )
-            mean_E = smooth(mean_E) if args.use_smooth else mean_E
-            std_E = smooth(std_E) if args.use_smooth else std_E
+            mean_E, low_E, high_E = get_fill_bounds(arr_task, axis=0)
+            if args.use_smooth:
+                mean_E = smooth(mean_E)
+                low_E = smooth(low_E)
+                high_E = smooth(high_E)
             label = get_label(alg, is_al)
             style = get_style(alg, is_al)
             ax.plot(mean_E, label=label, **style)
             ax.fill_between(
                 range(len(mean_E)),
-                mean_E - std_E,
-                mean_E + std_E,
+                low_E,
+                high_E,
                 alpha=0.2,
                 **style,
             )
@@ -450,16 +506,10 @@ def plot_logpdf_per_task():
         handles=legend_handles,
         labels=legend_labels,
         handler_map=handler_map,
-        loc="lower center",
-        bbox_to_anchor=(0.5, -0.12),
-        ncol=LEGEND_NCOL,
-        handlelength=2,
-        **get_legend_kw(16),
+        **get_alg_legend_kw(anchor_y=-0.08),
     )
-    plt.tight_layout(rect=[0, 0.05, 1, 1])
-    save_path = (
-        args.dirp / f"{timestamp}_1_logpdf_nTasks={n_tasks}_Q={args.query_budget}.png"
-    )
+    plt.tight_layout(rect=[0, 0.06, 1, 1])
+    save_path = eval_dir / f"1_logpdf_nTasks={n_tasks}.png"
     plt.savefig(save_path, bbox_inches="tight", dpi=300)
     plt.close()
     print("Saved logpdf per task")
@@ -475,19 +525,14 @@ def plot_ece_brier_agg():
         for alg, is_al in it.product(algs, is_als):
             alg_isactive = f"{alg}_{is_al}"
             arr = stats_agg[metric][alg_isactive]  # (seeds, steps)
-            data_mean = mean(arr, axis=0, nan=args.handle_nan)  # (steps, )
-            data_std = (
-                std(arr, axis=0, nan=args.handle_nan)
-                if not args.use_stderr
-                else sterr(arr, axis=0, nan=args.handle_nan)
-            )
+            data_mean, data_low, data_high = get_fill_bounds(arr, axis=0)
             label = get_label(alg, is_al)
             style = get_style(alg, is_al)
             ax.plot(data_mean, label=label, **style, linewidth=2)
             ax.fill_between(
                 range(len(data_mean)),
-                data_mean - data_std,
-                data_mean + data_std,
+                data_low,
+                data_high,
                 alpha=0.2,
                 **style,
             )
@@ -518,16 +563,10 @@ def plot_ece_brier_agg():
         handles=legend_handles,
         labels=legend_labels,
         handler_map=handler_map,
-        loc="lower center",
-        bbox_to_anchor=(0.5, -0.1),
-        ncol=LEGEND_NCOL,
-        handlelength=2,
-        **get_legend_kw(16),
+        **get_alg_legend_kw(anchor_y=-0.06),
     )
-    save_path = (
-        args.dirp
-        / f"{timestamp}_2_ECEBrier_nTasks={n_tasks}_agg_Q={args.query_budget}.png"
-    )
+    plt.tight_layout(rect=[0, 0.04, 1, 1])
+    save_path = eval_dir / f"2_ECEBrier_nTasks={n_tasks}_agg.png"
     plt.savefig(save_path, bbox_inches="tight", dpi=300)
     plt.close()
     print("Saved ECE/Brier agg")
@@ -543,19 +582,14 @@ def plot_all_metrics_agg():
         for alg, is_al in it.product(algs, is_als):
             alg_isactive = f"{alg}_{is_al}"
             arr = stats_agg[metric][alg_isactive]  # (seeds, steps)
-            data_mean = mean(arr, axis=0, nan=args.handle_nan)  # (steps, )
-            data_std = (
-                std(arr, axis=0, nan=args.handle_nan)
-                if not args.use_stderr
-                else sterr(arr, axis=0, nan=args.handle_nan)
-            )
+            data_mean, data_low, data_high = get_fill_bounds(arr, axis=0)
             label = get_label(alg, is_al)
             style = get_style(alg, is_al)
             ax.plot(data_mean, label=label, **style, linewidth=2)
             ax.fill_between(
                 range(len(data_mean)),
-                data_mean - data_std,
-                data_mean + data_std,
+                data_low,
+                data_high,
                 alpha=0.2,
                 **style,
             )
@@ -587,10 +621,7 @@ def plot_all_metrics_agg():
         handlelength=2,
         **get_legend_kw(16),
     )
-    save_path = (
-        args.dirp
-        / f"{timestamp}_3_metrics_nTasks={n_tasks}_agg_Q={args.query_budget}.png"
-    )
+    save_path = eval_dir / f"3_metrics_nTasks={n_tasks}_agg.png"
     plt.savefig(save_path, bbox_inches="tight", dpi=300)
     plt.close()
     print("Saved all metrics agg")
@@ -770,10 +801,7 @@ def plot_reliability_diagram(n_bins: int = 10):
 
     # Adjust spacing to fix gap issue
     plt.tight_layout(pad=1.0, w_pad=0.5, h_pad=0.8)
-    save_path = (
-        args.dirp
-        / f"{timestamp}_4_reliability_nTasks={n_tasks}_agg_Q={args.query_budget}.png"
-    )
+    save_path = eval_dir / f"4_reliability_nTasks={n_tasks}_agg.png"
     plt.savefig(save_path, bbox_inches="tight", dpi=300)
     plt.close()
     print("Saved reliability diagram")
@@ -908,8 +936,7 @@ def plot_train_duration_bars(include_llmcmc: bool = True) -> None:
     )
 
     save_path = (
-        args.dirp
-        / f"{timestamp}_5_train_duration_nTasks={n_tasks}_agg_Q={args.query_budget}_mcmc={include_llmcmc}.png"
+        eval_dir / f"5_train_duration_nTasks={n_tasks}_agg_mcmc={include_llmcmc}.png"
     )
     plt.savefig(save_path, bbox_inches="tight", dpi=300)
     plt.close()
@@ -928,6 +955,7 @@ def compute_2sample_t_test():
     """
     import jax
     from prettytable import PrettyTable
+    from scipy import stats
     from scipy.stats import ttest_rel
 
     np.set_printoptions(precision=4)
@@ -972,7 +1000,7 @@ def compute_2sample_t_test():
         pooled_std = np.sqrt(((n1 - 1) * std1**2 + (n2 - 1) * std2**2) / (n1 + n2 - 2))
 
         if pooled_std == 0:
-            return 0.0
+            return 0.0, "negligible"
 
         d = (mean1 - mean2) / pooled_std
 
@@ -1002,6 +1030,29 @@ def compute_2sample_t_test():
         d, effect_size = cohens_d(arr1, arr2)
         return t_stat, p_value, ci, d, effect_size
 
+    def do_bootstrap_test(arr1, arr2, alternative="greater"):
+        """One-sided paired bootstrap test on arr1 - arr2."""
+        diff = arr1 - arr2  # (seeds, )
+        observed = float(np.mean(diff))
+        res = stats.bootstrap(
+            (diff,),
+            statistic=np.mean,
+            axis=0,
+            confidence_level=0.95,
+            alternative=alternative,
+            n_resamples=9999,
+            random_state=0,
+            method="percentile",
+        )
+        boot_means = res.bootstrap_distribution
+        if alternative == "greater":
+            p_value = float((np.sum(boot_means <= 0) + 1) / (len(boot_means) + 1))
+        else:
+            p_value = float((np.sum(boot_means >= 0) + 1) / (len(boot_means) + 1))
+        ci = res.confidence_interval
+        d, effect_size = cohens_d(arr1, arr2)
+        return observed, p_value, ci, d, effect_size
+
     table_names = {
         "ekf": "EKF",
         "sgd": "Ensemble",
@@ -1010,58 +1061,97 @@ def compute_2sample_t_test():
         "llmcmc": "LLMCMC",
     }
 
+    def format_row(comparison: str, stat, p_value, ci, d, effect_size):
+        def fmt_ci_bound(x: float) -> str:
+            if np.isinf(x):
+                return "inf" if x > 0 else "-inf"
+            return f"{x:.2f}"
+
+        return [
+            comparison,
+            f"{stat:.2f}",
+            f"{p_value:.3f}",
+            f"{d:.2f} ({effect_size})",
+            f"({fmt_ci_bound(ci.low)}, {fmt_ci_bound(ci.high)})",
+        ]
+
+    def build_comparison_table(
+        metric_scores: dict[str, np.ndarray],
+        *,
+        alternative: str,
+        test_fn,
+        stat_name: str,
+    ) -> PrettyTable:
+        table = PrettyTable()
+        table.field_names = ["Comparison", stat_name, "p-value", "Cohen's d", "95% CI"]
+        table.align["Comparison"] = "l"
+        for alg in algs:
+            name_active = f"{alg}_True"
+            name_random = f"{alg}_False"
+            stat, p_value, ci, d, effect_size = test_fn(
+                metric_scores[name_active],
+                metric_scores[name_random],
+                alternative=alternative,
+            )
+            table.add_row(
+                format_row(
+                    f"{table_names[alg]} (A vs. R)",
+                    stat,
+                    p_value,
+                    ci,
+                    d,
+                    effect_size,
+                )
+            )
+        for alg in algs[1:]:
+            name_ekf = "ekf_True"
+            name_alg = f"{alg}_True"
+            stat, p_value, ci, d, effect_size = test_fn(
+                metric_scores[name_ekf],
+                metric_scores[name_alg],
+                alternative=alternative,
+            )
+            table.add_row(
+                format_row(
+                    f"EKF vs. {table_names[alg]}",
+                    stat,
+                    p_value,
+                    ci,
+                    d,
+                    effect_size,
+                )
+            )
+        return table
+
     print(
         "\n"
         "================================================================================\n"
         "t-test: LogPDF active vs. random for each algorithm, aggregated over all tasks\n"
         "================================================================================"
     )
-    table1 = PrettyTable()
-    table1.field_names = ["Comparison", "t", "p-value", "Cohen's d", "95% CI"]
-    table1.align["Comparison"] = "l"
-    # * logpdf: active vs. random for each algorithm
-    for alg in algs:
-        name_active = f"{alg}_True"
-        name_random = f"{alg}_False"
-        arr_active = scores[name_active]  # (seeds, )
-        arr_random = scores[name_random]  # (seeds, )
-        t_stat, p_value, ci, d, effect_size = do_ttest(
-            arr_active, arr_random, alternative="greater"
-        )
-        row = [
-            f"{table_names[alg]} (A vs. R)",
-            f"{t_stat:.2f}",
-            f"{p_value:.3f}",
-            f"{d:.2f} ({effect_size})",
-            f"({ci.low:.2f}, {ci.high:.2f})",
-        ]
-        table1.add_row(row)
-
-    # * logpdf: Active EKF vs. other active algorithms
-    for alg in algs[1:]:
-        name_ekf = "ekf_True"
-        name_alg = f"{alg}_True"
-        arr_ekf = scores[name_ekf]  # (seeds, )
-        arr_alg = scores[name_alg]  # (seeds, )
-        t_stat, p_value, ci, d, effect_size = do_ttest(
-            arr_ekf, arr_alg, alternative="greater"
-        )
-        row = [
-            f"EKF vs. {table_names[alg]}",
-            f"{t_stat:.2f}",
-            f"{p_value:.3f}",
-            f"{d:.2f} ({effect_size})",
-            f"({ci.low:.2f}, {ci.high:.2f})",
-        ]
-        table1.add_row(row)
+    table1 = build_comparison_table(
+        scores, alternative="greater", test_fn=do_ttest, stat_name="t"
+    )
     print(table1)
 
-    save_path = (
-        args.dirp
-        / f"{timestamp}_ttest0_logpdf_nTasks={n_tasks}_agg_Q={args.query_budget}.txt"
-    )
+    save_path = eval_dir / f"ttest0_logpdf_nTasks={n_tasks}_agg.txt"
     with open(save_path, "w") as f:
         f.write(table1.get_string())
+
+    print(
+        "\n"
+        "================================================================================\n"
+        "bootstrap: LogPDF active vs. random for each algorithm, aggregated over all tasks\n"
+        "================================================================================"
+    )
+    btable1 = build_comparison_table(
+        scores, alternative="greater", test_fn=do_bootstrap_test, stat_name="mean diff"
+    )
+    print(btable1)
+
+    save_path = eval_dir / f"btest0_logpdf_nTasks={n_tasks}_agg.txt"
+    with open(save_path, "w") as f:
+        f.write(btable1.get_string())
 
     print(
         "\n"
@@ -1069,53 +1159,29 @@ def compute_2sample_t_test():
         "t-test: ECE active vs. random for each algorithm, aggregated over all tasks\n"
         "================================================================================"
     )
-    table2 = PrettyTable()
-    table2.field_names = ["Comparison", "t", "p-value", "Cohen's d", "95% CI"]
-    table2.align["Comparison"] = "l"
-    # * ECE: active vs. random for each algorithm
-    for alg in algs:
-        name_active = f"{alg}_True"
-        name_random = f"{alg}_False"
-        arr_active = eces[name_active]  # (seeds, )
-        arr_random = eces[name_random]  # (seeds, )
-        t_stat, p_value, ci, d, effect_size = do_ttest(
-            arr_active, arr_random, alternative="less"
-        )
-        row = [
-            f"{table_names[alg]} (A vs. R)",
-            f"{t_stat:.2f}",
-            f"{p_value:.3f}",
-            f"{d:.2f} ({effect_size})",
-            f"({ci.low:.2f}, {ci.high:.2f})",
-        ]
-        table2.add_row(row)
-
-    # * ECE: Active EKF vs. other active algorithms
-    for alg in algs[1:]:
-        name_ekf = "ekf_True"
-        name_alg = f"{alg}_True"
-        arr_ekf = eces[name_ekf]  # (seeds, )
-        arr_alg = eces[name_alg]  # (seeds, )
-        t_stat, p_value, ci, d, effect_size = do_ttest(
-            arr_ekf, arr_alg, alternative="less"
-        )
-        row = [
-            f"EKF vs. {table_names[alg]}",
-            f"{t_stat:.2f}",
-            f"{p_value:.3f}",
-            f"{d:.2f} ({effect_size})",
-            f"({ci.low:.2f}, {ci.high:.2f})",
-        ]
-        table2.add_row(row)
-
+    table2 = build_comparison_table(
+        eces, alternative="less", test_fn=do_ttest, stat_name="t"
+    )
     print(table2)
 
-    save_path = (
-        args.dirp
-        / f"{timestamp}_ttest1_ece_nTasks={n_tasks}_agg_Q={args.query_budget}.txt"
-    )
+    save_path = eval_dir / f"ttest1_ece_nTasks={n_tasks}_agg.txt"
     with open(save_path, "w") as f:
         f.write(table2.get_string())
+
+    print(
+        "\n"
+        "================================================================================\n"
+        "bootstrap: ECE active vs. random for each algorithm, aggregated over all tasks\n"
+        "================================================================================"
+    )
+    btable2 = build_comparison_table(
+        eces, alternative="less", test_fn=do_bootstrap_test, stat_name="mean diff"
+    )
+    print(btable2)
+
+    save_path = eval_dir / f"btest1_ece_nTasks={n_tasks}_agg.txt"
+    with open(save_path, "w") as f:
+        f.write(btable2.get_string())
 
 
 plot_logpdf_agg()

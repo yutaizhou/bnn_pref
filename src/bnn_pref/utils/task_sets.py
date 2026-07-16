@@ -1,6 +1,7 @@
 alg_sets = dict(
     all=["ekf", "sgd", "do", "laplace", "llmcmc"],
     ekf=["ekf"],
+    visual3=["ekf", "sgd", "do"],
 )
 task_sets = dict(
     neurips=[
