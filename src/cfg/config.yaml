@@ -1,7 +1,7 @@
 defaults:
 - _self_ # non-defaults are loaded first for this config
-- task: synthetic
 - data: base
+- task: synthetic
 - network: 64x2
 # algs: mcmc, ekf, sgd, do
 - mcmc: mh
@@ -45,6 +45,9 @@ paths:
 
   prefcc:
     data_dir: ${paths.prefcc_dir}
+  soar:
+    raw_dir: ${paths.root_dir}/data/soar/soar-dataset-local
+    pref_proprio_dir: ${paths.root_dir}/data/soar/soar_pref_proprio
   vd4rl_dir: /scr/shared/datasets/vd4rl
   unirlhf_dir: ${paths.root_dir}/data/unirlhf_crowdsource_human_labels
 

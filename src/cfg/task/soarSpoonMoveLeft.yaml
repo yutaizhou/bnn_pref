@@ -1,0 +1,14 @@
+# @package _global_
+
+defaults:
+  - override /data: soar
+  - _self_
+
+task:
+  ds_type: soar
+  name: soar_spoon_move_left
+  scene_slug: scene_07_mushroom_green_spoon_metal_pot
+  task_slug: move_the_green_spoon_to_the_left
+  pref_proprio_dir: ${paths.soar.pref_proprio_dir}
+  n_proprio: 7
+  traj_len: 100

@@ -117,6 +117,7 @@ def create_pref_data_loop(
     delta_reward: float = 0,
     noisy_label: bool = False,  # if False, equivalent to beta=inf in BT Likelihood
     bt_beta: float = 1.0,
+    cross_outcome_only: bool = False,
     # mistake_prob: float = 0.0,  # label flip mistake (not rly used)
 ) -> QueryIndexAndResponses:
     """
@@ -151,6 +152,10 @@ def create_pref_data_loop(
 
         # * skip if both are bad
         if max(ranked_returns[ti], ranked_returns[tj]) < skip_threshold:
+            continue
+
+        # * skip same-outcome pairs (e.g. failure vs failure)
+        if cross_outcome_only and ranked_returns[tj] <= ranked_returns[ti]:
             continue
 
         # * skip if tj is not better than ti by delta_rank or delta_reward
@@ -196,6 +201,7 @@ def create_pref_data_vectorized(
     delta_reward: float = 0,
     noisy_label: bool = False,  # if False, equivalent to beta=inf in BT Likelihood
     bt_beta: float = 1.0,
+    cross_outcome_only: bool = False,
     # mistake_prob: float = 0.0,  # label flip mistake (not rly used)
 ) -> QueryIndexAndResponses:
     """
@@ -224,6 +230,13 @@ def create_pref_data_vectorized(
     q_returns = ranked_returns[queries]  # (n_queries, 2)
     mask = jnp.max(q_returns, axis=1) >= skip_threshold
     queries, labels = queries[mask], labels[mask]
+
+    # * skip same-outcome pairs (e.g. failure vs failure)
+    if cross_outcome_only:
+        qi, qj = queries[:, 0], queries[:, 1]
+        ri, rj = ranked_returns[qi], ranked_returns[qj]  # (n_pairs,), (n_pairs,)
+        mask = rj > ri
+        queries, labels = queries[mask], labels[mask]
 
     # * skip if tj is not better than ti by delta_rank or delta_reward
     if use_delta:

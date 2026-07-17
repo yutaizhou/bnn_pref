@@ -42,7 +42,7 @@ from bnn_pref.utils.task_sets import alg_sets, task_sets
 class Args:
     dirp: Path  # for both loading and saving
     task_set: str  # e.g., "neurips", "iclr", "unirlhf", "test", "visual3", "visual5"
-    alg_set: str  # e.g., "all", "ekf"
+    alg_set: str  # e.g., "all", "ekf", "visual3"
     query_budget: int = -1
     errbar: Literal["std", "ste", "bootstrap"] = "ste"
     use_smooth: bool = True

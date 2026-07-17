@@ -1,0 +1,14 @@
+# @package _global_
+
+defaults:
+  - override /data: soar
+  - _self_
+
+task:
+  ds_type: soar
+  name: soar_mushroom_remove
+  scene_slug: scene_06_mushroom_blue_bowl
+  task_slug: remove_the_mushroom_from_inside_the_blue_bowl_and_put_it_on_the_table
+  pref_proprio_dir: ${paths.soar.pref_proprio_dir}
+  n_proprio: 7
+  traj_len: 100

@@ -5,6 +5,8 @@ results*/
 *.npz
 _runs/
 _viz/
+data/soar/
+
 
 
 # Byte-compiled / optimized / DLL files

@@ -1,0 +1,11 @@
+defaults:
+  - base
+
+segment_size: -1 # -1: full 100-step trajs; >0: non-overlapping sub-traj windows (e.g. 50)
+tokeep: 1000
+n_segments_train: 500
+n_segments_test: 150
+nq_train: 50000
+nq_test: 2000
+noisy_label: False # binary success/failure labels
+cross_outcome_only: True # only failure vs success pairs

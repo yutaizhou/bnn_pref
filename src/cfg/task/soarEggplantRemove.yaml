@@ -1,0 +1,14 @@
+# @package _global_
+
+defaults:
+  - override /data: soar
+  - _self_
+
+task:
+  ds_type: soar
+  name: soar_eggplant_remove
+  scene_slug: scene_08_carrot_eggplant_lemon_blue_plate
+  task_slug: remove_the_purple_eggplant_from_the_blue_plate_and_put_it_on_the_table
+  pref_proprio_dir: ${paths.soar.pref_proprio_dir}
+  n_proprio: 7
+  traj_len: 100

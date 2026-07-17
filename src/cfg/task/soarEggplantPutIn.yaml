@@ -1,0 +1,14 @@
+# @package _global_
+
+defaults:
+  - override /data: soar
+  - _self_
+
+task:
+  ds_type: soar
+  name: soar_eggplant_put_in
+  scene_slug: scene_02_eggplant_wooden_bowl
+  task_slug: put_the_purple_eggplant_in_the_brown_bowl
+  pref_proprio_dir: ${paths.soar.pref_proprio_dir}
+  n_proprio: 7
+  traj_len: 100
