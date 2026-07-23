@@ -48,6 +48,8 @@ class Args:
     use_smooth: bool = True
     handle_nan: bool = False
     nan_mask: bool = False
+    fewer_vis: bool = False
+    """Draw ~x% fewer samples annotation on agg logpdf plot (EKF active only)."""
 
 
 args = tyro.cli(Args)
@@ -55,12 +57,14 @@ tasks = task_sets[args.task_set]
 algs = alg_sets[args.alg_set]
 is_als = [True, False]
 n_tasks = len(tasks)
-LEGEND_NCOL = len(algs)
-LEGEND_FONTSIZE = 13 if len(algs) >= 5 else 15
+LEGEND_NCOL = min(3, len(algs))
+LEGEND_FONTSIZE = 18
 metric_names = ["logpdf", "acc", "ece", "brier", "coverage", "sharpness"]
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 eval_dir = (
-    args.dirp / "evals" / f"{timestamp}_Q={args.query_budget}_errbar={args.errbar}"
+    args.dirp
+    / "evals"
+    / f"{timestamp}_ntasks={n_tasks}_Q={args.query_budget}_errbar={args.errbar}"
 )
 eval_dir.mkdir(parents=True, exist_ok=True)
 
@@ -70,6 +74,7 @@ print(
     f"task_set: {args.task_set}\n"
     f"algs: {algs}\n"
     f"errbar: {args.errbar}\n"
+    f"fewer_vis: {args.fewer_vis}\n"
     f"load dir: {'/'.join(args.dirp.parts[-2:])}\n"
     f"eval dir: {'/'.join(eval_dir.parts[-3:])}\n"
     "=====================================================\n"
@@ -298,15 +303,41 @@ class DualLineHandler(HandlerBase):
 reorder_legend_row_major = lambda lst, nc: sum((lst[i::nc] for i in range(nc)), [])
 
 
-def get_alg_legend_kw(*, anchor_y: float = -0.12) -> dict:
-    return {
+def get_alg_legend_kw(
+    *,
+    anchor_y: float | None = None,
+    ax: plt.Axes | None = None,
+    fig: plt.Figure | None = None,
+    axs: list | np.ndarray | None = None,
+) -> dict:
+    n_rows = (len(algs) + LEGEND_NCOL - 1) // LEGEND_NCOL
+    legend_h = 0.05 + 0.045 * n_rows
+    if anchor_y is None:
+        # bbox upper edge = anchor_y + legend_h; sit just below x-axis label
+        legend_top = -0.13 - 0.02 * (n_rows - 1)
+        anchor_y = legend_top - legend_h
+    kw = {
         **get_legend_kw(LEGEND_FONTSIZE),
         "loc": "upper center",
-        "bbox_to_anchor": (0.5, anchor_y),
         "ncol": LEGEND_NCOL,
         "handlelength": 1.8,
-        "columnspacing": 0.8,
+        "borderaxespad": 0.0,
+        "mode": "expand",
     }
+    if ax is not None:
+        kw["bbox_to_anchor"] = (0.0, anchor_y, 1.0, legend_h)
+        kw["bbox_transform"] = ax.transAxes
+    elif fig is not None and axs is not None:
+        axs_flat = np.asarray(axs).flatten().tolist()
+        x0 = min(a.get_position().x0 for a in axs_flat)
+        x1 = max(a.get_position().x1 for a in axs_flat)
+        kw["bbox_to_anchor"] = (x0, anchor_y, x1 - x0, legend_h)
+        kw["bbox_transform"] = fig.transFigure
+    else:
+        kw["bbox_to_anchor"] = (0.5, anchor_y)
+        kw.pop("mode")
+        kw["columnspacing"] = 0.8
+    return kw
 
 
 def plot_logpdf_agg():
@@ -328,8 +359,7 @@ def plot_logpdf_agg():
         )
 
     # --- Add "x% fewer samples" annotation between EKF (Active) and EKF (Random) ---
-    # only do so if EKF active outperforms EKF random
-    if "ekf" in algs:
+    if args.fewer_vis and "ekf" in algs:
         ekf_active_mean_T = mean(
             stats_agg["logpdf"]["ekf_True"], axis=0, nan=args.handle_nan
         )
@@ -411,11 +441,13 @@ def plot_logpdf_agg():
     legend_handles = reorder_legend_row_major(legend_handles, LEGEND_NCOL)
     legend_labels = reorder_legend_row_major(legend_labels, LEGEND_NCOL)
 
+    n_legend_rows = (len(algs) + LEGEND_NCOL - 1) // LEGEND_NCOL
+    fig.subplots_adjust(bottom=0.08 + 0.035 * n_legend_rows)
     ax.legend(
         handles=legend_handles,
         labels=legend_labels,
         handler_map=handler_map,
-        **get_alg_legend_kw(anchor_y=-0.14),
+        **get_alg_legend_kw(ax=ax),
     )
     save_path = eval_dir / f"0_logpdf_nTasks={n_tasks}_agg.png"
     plt.savefig(save_path, bbox_inches="tight", dpi=300)
@@ -465,8 +497,8 @@ def plot_logpdf_per_task():
                 alpha=0.2,
                 **style,
             )
-        if "v" in task:  # vwalkerMediumExpert -> walkerMediumExpert
-            task = task.replace("v", "")
+        if task.startswith("v"):  # vwalkerMediumExpert -> walkerMediumExpert
+            task = task[1:]
         ax.set_title(prettify_title(task), **get_font_kw(14))
 
         y_all = np.concatenate([line.get_ydata() for line in ax.get_lines()])
@@ -502,13 +534,13 @@ def plot_logpdf_per_task():
 
     fig.supxlabel("Number of Queries", **get_font_kw(16))
     fig.supylabel("Test Log-Likelihood", **get_font_kw(16))
+    plt.tight_layout(rect=[0, 0.08, 1, 1])
     fig.legend(
         handles=legend_handles,
         labels=legend_labels,
         handler_map=handler_map,
-        **get_alg_legend_kw(anchor_y=-0.08),
+        **get_alg_legend_kw(fig=fig, axs=axs),
     )
-    plt.tight_layout(rect=[0, 0.06, 1, 1])
     save_path = eval_dir / f"1_logpdf_nTasks={n_tasks}.png"
     plt.savefig(save_path, bbox_inches="tight", dpi=300)
     plt.close()
@@ -559,13 +591,13 @@ def plot_ece_brier_agg():
     legend_handles = reorder_legend_row_major(legend_handles, LEGEND_NCOL)
     legend_labels = reorder_legend_row_major(legend_labels, LEGEND_NCOL)
 
+    plt.tight_layout(rect=[0, 0.06, 1, 1])
     fig.legend(
         handles=legend_handles,
         labels=legend_labels,
         handler_map=handler_map,
-        **get_alg_legend_kw(anchor_y=-0.06),
+        **get_alg_legend_kw(fig=fig, axs=axes),
     )
-    plt.tight_layout(rect=[0, 0.04, 1, 1])
     save_path = eval_dir / f"2_ECEBrier_nTasks={n_tasks}_agg.png"
     plt.savefig(save_path, bbox_inches="tight", dpi=300)
     plt.close()
@@ -611,15 +643,12 @@ def plot_all_metrics_agg():
     legend_handles = reorder_legend_row_major(legend_handles, LEGEND_NCOL)
     legend_labels = reorder_legend_row_major(legend_labels, LEGEND_NCOL)
 
+    plt.tight_layout(rect=[0, 0.06, 1, 1])
     fig.legend(
         handles=legend_handles,
         labels=legend_labels,
         handler_map=handler_map,
-        loc="lower center",
-        bbox_to_anchor=(0.5, -0.08),
-        ncol=LEGEND_NCOL,
-        handlelength=2,
-        **get_legend_kw(16),
+        **get_alg_legend_kw(fig=fig, axs=axes),
     )
     save_path = eval_dir / f"3_metrics_nTasks={n_tasks}_agg.png"
     plt.savefig(save_path, bbox_inches="tight", dpi=300)

@@ -18,7 +18,10 @@ from bnn_pref.alg.agent_utils import (
     bt_loss_fn,
     compute_acq_value,
     get_sgd_nsteps,
+    init_reward_train_state,
+    params_apply_variables,
     run_sgd,
+    ts_apply_variables,
 )
 from bnn_pref.alg.data_buffer import QueryBuffer
 from bnn_pref.data.data_env import PreferenceEnv
@@ -47,11 +50,13 @@ def init_model(
     traj_shape: Tuple[int, ...],  # batch-less shape like (T, D)
 ) -> TrainState:
     """create trainstate for a single model"""
-    dummy_input = jnp.ones((1, 2, *traj_shape))
     key, param_key = jr.split(key, 2)
-    params = model.init(param_key, dummy_input, train=False)["params"]
-    ts = TrainState.create(apply_fn=model.apply, params=params, tx=tx)
-    return ts
+    return init_reward_train_state(
+        key=param_key,
+        model=model,
+        tx=tx,
+        traj_shape=traj_shape,
+    )
 
 
 def mcmc_belief_update(
@@ -63,6 +68,7 @@ def mcmc_belief_update(
     # mcmc hyperparameters
     n_warmups: int,
     n_steps: int,
+    batch_stats: Optional[jax.Array] = None,
     # optionally starting mcmc from a given state
     initial_particle: Optional[Float[Array, "llayer_dim"]] = None,
 ) -> ParamsFlat:  # leading axis is M
@@ -84,7 +90,11 @@ def mcmc_belief_update(
         params = LastLayerHelpers.recombine_params(
             llayer_flat, fixed_params, llayer_unraveler
         )
-        logits = model.apply(params, x, train=False)  # (B, 2)
+        variables = params_apply_variables(
+            params=params,
+            batch_stats=batch_stats,
+        )
+        logits = model.apply(variables, x, train=False)  # (B, 2)
         y = jnp.argmax(y, axis=1)  # (B,), y can't be 1-hot for distrax
 
         logprior = dtx.Normal(0.0, 1.0).log_prob(llayer_flat).sum()
@@ -180,9 +190,13 @@ class LMCMCAgent(Agent):
             x: Float[Array, "T D"],
             train: bool = False,
         ) -> Scalar:
-            x = rearrange(x, "T D -> 1 T D")
+            x = jnp.expand_dims(x, axis=0)  # (T, ...) -> (1, T, ...)
+            variables = params_apply_variables(
+                params=params,
+                batch_stats=self.batch_stats,
+            )
             ret = self.model.apply(
-                params,
+                variables,
                 x,
                 method=self.model.predict_traj_return,
                 train=train,
@@ -223,6 +237,7 @@ class LMCMCAgent(Agent):
     def init_bel(self, key, warmup_data: QueryData) -> LMCMCBeliefState:
         key, key_model = jr.split(key)
         ts = init_model(key_model, self.model, self.opt, self.traj_shape)
+        self.batch_stats = getattr(ts, "batch_stats", None)
         last_params = LastLayerHelpers.get_trainable_params({"params": ts.params})
         _, self.last_params_unraveler = ravel_pytree(last_params)
         self.last_layer_param_count = count_params(last_params)
@@ -254,6 +269,7 @@ class LMCMCAgent(Agent):
                 params={"params": warm_ts.params},
                 data=warmup_data,
                 n_particles=self.n_models,
+                batch_stats=self.batch_stats,
                 n_warmups=self.mcmc_warmups_init,
                 n_steps=self.mcmc_steps,
                 initial_particle=None,
@@ -292,6 +308,7 @@ class LMCMCAgent(Agent):
             params={"params": bel.ts.params},
             data=ds,
             n_particles=self.n_models,
+            batch_stats=self.batch_stats,
             n_warmups=self.mcmc_warmups_update,
             n_steps=self.mcmc_steps,
             initial_particle=bel.particles[-1],
@@ -428,8 +445,19 @@ class LMCMCAgent(Agent):
 
         def reward_fn(obs: Float[Array, "T D"]) -> Float[Array, "M T"]:
             # (T,D -> M,T)
-            apply_fn = partial(ts.apply_fn, method=model.predict_traj_rewards)
-            out_MT = jax.vmap(apply_fn, in_axes=(0, None))(params, obs)
+            def apply_particle(param: ParamsDict, obs: Float[Array, "T D"]):
+                variables = params_apply_variables(
+                    params=param,
+                    batch_stats=getattr(ts, "batch_stats", None),
+                )
+                return ts.apply_fn(
+                    variables,
+                    obs,
+                    method=model.predict_traj_rewards,
+                    train=False,
+                )
+
+            out_MT = jax.vmap(apply_particle, in_axes=(0, None))(params, obs)
             # return out_MT.mean(axis=0)
             return out_MT
 

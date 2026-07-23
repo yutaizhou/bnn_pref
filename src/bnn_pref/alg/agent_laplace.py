@@ -19,11 +19,21 @@ from bnn_pref.alg.agent_utils import (
     bt_loss_fn,
     compute_acq_value,
     get_sgd_nsteps,
+    init_reward_train_state,
+    is_pixel_traj,
+    params_apply_variables,
     run_sgd,
+    ts_apply_variables,
 )
 from bnn_pref.alg.data_buffer import QueryBuffer
 from bnn_pref.data.data_env import PreferenceEnv
-from bnn_pref.utils.network import ParamsDict, RewardNet, count_params, perturb_params
+from bnn_pref.utils.network import (
+    ParamsDict,
+    ResNetHelpers,
+    RewardNet,
+    count_params,
+    perturb_params,
+)
 from bnn_pref.utils.type import QueryData, unpackable_dataclass
 
 logger.remove()
@@ -44,11 +54,13 @@ def init_model(
     traj_shape: Tuple[int, ...],  # batch-less shape like (T, D)
 ) -> TrainState:
     """create trainstate for a single model"""
-    dummy_input = jnp.ones((1, 2, *traj_shape))
     key, param_key = jr.split(key, 2)
-    params = model.init(param_key, dummy_input, train=False)["params"]
-    ts = TrainState.create(apply_fn=model.apply, params=params, tx=tx)
-    return ts
+    return init_reward_train_state(
+        key=param_key,
+        model=model,
+        tx=tx,
+        traj_shape=traj_shape,
+    )
 
 
 class BatchedLoader:
@@ -77,11 +89,18 @@ def laplace_belief_update(
     params: ParamsDict,  # {"params": actual_params}
     data: QueryData,  # all queries seen so far
     n_particles: int,
+    batch_stats: jax.Array | None = None,
+    fixed_params: ParamsDict | None = None,
     # * laplace hyperparameter
     curv_type: str = "full",
     prior_prec: float = 1000.0,
     laplace_bs: int = 32,
 ) -> ParamsDict:  # leading axis is M
+    laplace_params = params
+    if fixed_params is not None:
+        trainable = ResNetHelpers.get_trainable_params(params)
+        laplace_params = {"params": {"pw_encoder": trainable}}
+
     def model_fn(input, params):
         """
         vmap_over_data=True,
@@ -91,9 +110,18 @@ def laplace_belief_update(
 
         output logits: (2,)
         """
+        if fixed_params is not None:
+            params = ResNetHelpers.recombine_params(
+                trainable_params=params["params"]["pw_encoder"],
+                fixed_params=fixed_params,
+            )
         input = jnp.expand_dims(input, axis=0)  # (2,T,D) -> (1, 2, T, D)
+        variables = params_apply_variables(
+            params=params,
+            batch_stats=batch_stats,
+        )
         logits = model_def.apply(
-            params,
+            variables,
             input,
             train=False,
         )  # (1, 2)
@@ -106,7 +134,7 @@ def laplace_belief_update(
         laplace_fn = partial(
             laplace,
             model_fn=model_fn,
-            params=params,
+            params=laplace_params,
             loss_fn="cross_entropy",
             curv_type=curv_type,
             vmap_over_data=True,
@@ -132,7 +160,7 @@ def laplace_belief_update(
 
     key, key_particles = jr.split(key, 2)
     dist_state = get_dist_state(
-        mean_params=params,
+        mean_params=laplace_params,
         model_fn=model_fn,
         posterior_state=posterior_fn(prior_arguments, loss_scaling_factor=1.0),
         linearized=False,
@@ -147,7 +175,13 @@ def laplace_belief_update(
     particles = jax.tree_util.tree_map(
         lambda *x: jnp.stack(x, axis=0), *particles
     )  # dict of arrays with leading axis (M, param)
-    return particles  # particles["params"]["pw_mlp"]["Dense_0"]
+    if fixed_params is not None:
+        trainable_m = particles["params"]["pw_encoder"]
+        particles = jax.vmap(
+            partial(ResNetHelpers.recombine_params, fixed_params=fixed_params),
+            in_axes=0,
+        )(trainable_m)
+    return particles  # particles["params"]["pw_encoder"]["mlp"]["Dense_0"]
 
 
 class LaplaceAgent(Agent):
@@ -170,6 +204,10 @@ class LaplaceAgent(Agent):
         verbose: bool = False,
     ):
         self.traj_shape = traj_shape
+        self.is_pixel = is_pixel_traj(traj_shape)
+        self.fixed_params = None
+        self.frozen_encoder = None
+        self.frozen_batch_stats = None
         self.n_models = n_models
         self.model = model
         self.opt = optax.adam(learning_rate)
@@ -196,8 +234,12 @@ class LaplaceAgent(Agent):
             train: bool = False,
         ) -> Scalar:
             x = jnp.expand_dims(x, axis=0)
+            variables = params_apply_variables(
+                params=params,
+                batch_stats=self.batch_stats,
+            )
             ret = self.model.apply(
-                params,
+                variables,
                 x,
                 method=self.model.predict_traj_return,
                 train=train,
@@ -236,7 +278,7 @@ class LaplaceAgent(Agent):
     def init_bel(self, key, warmup_data: QueryData) -> LaplaceBeliefState:
         key, key_model = jr.split(key)
         ts = init_model(key_model, self.model, self.opt, self.traj_shape)
-        self.param_count = count_params(ts.params)
+        self.batch_stats = getattr(ts, "batch_stats", None)
 
         niters = get_sgd_nsteps(self.niters_init, len(warmup_data))
         if niters > 0:
@@ -257,6 +299,19 @@ class LaplaceAgent(Agent):
                 verbose=self.verbose,
             )
 
+            if self.is_pixel:
+                self.fixed_params = ResNetHelpers.get_frozen_params(
+                    {"params": warm_ts.params}
+                )
+                self.frozen_encoder = self.fixed_params["encoder"]
+                self.frozen_batch_stats = warm_ts.batch_stats
+                trainable_params = ResNetHelpers.get_trainable_params(
+                    {"params": warm_ts.params}
+                )
+                self.param_count = count_params(trainable_params)
+            else:
+                self.param_count = count_params(warm_ts.params)
+
             key, key_laplace = jr.split(key, 2)
             new_particles = laplace_belief_update(
                 key=key_laplace,
@@ -264,11 +319,25 @@ class LaplaceAgent(Agent):
                 params={"params": warm_ts.params},
                 data=warmup_data,
                 n_particles=self.n_models,
+                batch_stats=self.batch_stats,
+                fixed_params=self.fixed_params,
                 curv_type=self.curv_type,
                 prior_prec=self.prior_prec,
-            )  # particles["params"]["pw_mlp"]["Dense_0"]
+            )  # particles["params"]["pw_encoder"]["mlp"]["Dense_0"]
         else:
             warm_ts = ts
+            if self.is_pixel:
+                self.fixed_params = ResNetHelpers.get_frozen_params(
+                    {"params": warm_ts.params}
+                )
+                self.frozen_encoder = self.fixed_params["encoder"]
+                self.frozen_batch_stats = warm_ts.batch_stats
+                trainable_params = ResNetHelpers.get_trainable_params(
+                    {"params": warm_ts.params}
+                )
+                self.param_count = count_params(trainable_params)
+            else:
+                self.param_count = count_params(warm_ts.params)
             key, key_perturb = jr.split(key, 2)
             new_particles, _ = perturb_params(
                 key=key_perturb,
@@ -276,6 +345,8 @@ class LaplaceAgent(Agent):
                 perturb_std=0.1,
                 n_particles=self.n_models,
             )
+        self.batch_stats = getattr(warm_ts, "batch_stats", self.batch_stats)
+
         bel = LaplaceBeliefState(ts=warm_ts, particles=new_particles, t=0)
         return bel
 
@@ -289,9 +360,12 @@ class LaplaceAgent(Agent):
 
         niters = get_sgd_nsteps(self.niters_update, len(ds))
         bs = min(self.batch_size, len(ds))
+        ts = bel.ts
+        if self.is_pixel:
+            ts = ts.replace(batch_stats=self.frozen_batch_stats)
         new_ts, _ = run_sgd(
             key_sgd,
-            bel.ts,
+            ts,
             dataset=ds,
             loss_fn=bt_loss_fn,
             niters=niters,
@@ -301,7 +375,11 @@ class LaplaceAgent(Agent):
             n_models=1,
             use_dropout=False,
             use_vmap=self.use_vmap,
+            freeze_encoder=self.is_pixel,
+            frozen_encoder=self.frozen_encoder,
         )
+        if self.is_pixel:
+            new_ts = new_ts.replace(batch_stats=self.frozen_batch_stats)
 
         new_particles = laplace_belief_update(
             key=key_laplace,
@@ -309,9 +387,15 @@ class LaplaceAgent(Agent):
             params={"params": new_ts.params},
             data=ds,
             n_particles=self.n_models,
+            batch_stats=self.frozen_batch_stats if self.is_pixel else getattr(
+                new_ts, "batch_stats", self.batch_stats
+            ),
+            fixed_params=self.fixed_params,
             curv_type=self.curv_type,
             prior_prec=self.prior_prec,
-        )  # particles["params"]["pw_mlp"]["Dense_0"]
+        )  # particles["params"]["pw_encoder"]["mlp"]["Dense_0"]
+        if not self.is_pixel:
+            self.batch_stats = getattr(new_ts, "batch_stats", self.batch_stats)
         bel = bel.replace(ts=new_ts, particles=new_particles, t=bel.t + 1)
         return bel
 
@@ -425,11 +509,23 @@ class LaplaceAgent(Agent):
         bel = ckptr.restore(ckpt_fp, item=dummy_items, **restore_kw)
         ts = bel.ts
         params = bel.particles  # ParamsDict with leading axis M
+        batch_stats = getattr(ts, "batch_stats", None)
 
         def reward_fn(obs: Float[Array, "T D"]) -> Float[Array, "M T"]:
             # (T,D -> M,T)
-            apply_fn = partial(ts.apply_fn, method=model.predict_traj_rewards)
-            out_MT = jax.vmap(apply_fn, in_axes=(0, None))(params, obs)
+            def apply_particle(particle: ParamsDict, obs: Float[Array, "T D"]):
+                variables = params_apply_variables(
+                    params=particle,
+                    batch_stats=batch_stats,
+                )
+                return ts.apply_fn(
+                    variables,
+                    obs,
+                    method=model.predict_traj_rewards,
+                    train=False,
+                )
+
+            out_MT = jax.vmap(apply_particle, in_axes=(0, None))(params, obs)
             # return out_MT.mean(axis=0)
             return out_MT
 

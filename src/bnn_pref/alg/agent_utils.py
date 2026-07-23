@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Callable, Dict, Tuple
+from typing import Callable, Dict, Optional, Tuple, Union
 
 import jax
 import jax.numpy as jnp
@@ -11,6 +11,7 @@ from jaxtyping import Array, Float, Int, Scalar
 from tqdm import tqdm
 
 from bnn_pref.data.data_env import PreferenceEnv, retrieve
+from bnn_pref.utils.network import RewardNet
 from bnn_pref.utils.type import QueryData
 
 
@@ -47,10 +48,70 @@ class Agent(ABC):
 
 class DropoutTrainState(TrainState):
     dropout_key: jax.Array
+    batch_stats: Optional[jax.Array] = None
 
 
 class BatchNormTrainState(TrainState):
     batch_stats: jax.Array
+
+
+def is_pixel_traj(traj_shape: Tuple[int, ...]) -> bool:
+    return len(traj_shape) == 4
+
+
+def snapshot_frozen_encoder(params: Dict) -> Dict:
+    return params["pw_encoder"]["encoder"]
+
+
+def restore_frozen_encoder(params: Dict, frozen_encoder: Dict) -> Dict:
+    pw_encoder = {**params["pw_encoder"], "encoder": frozen_encoder}
+    return {**params, "pw_encoder": pw_encoder}
+
+
+def init_reward_train_state(
+    key: jax.Array,
+    model: RewardNet,
+    tx: optax.GradientTransformation,
+    traj_shape: Tuple[int, ...],
+) -> Union[TrainState, BatchNormTrainState]:
+    dummy_input = jnp.ones((1, 2, *traj_shape))
+    variables = model.init(key, dummy_input)
+    params = variables["params"]
+    if is_pixel_traj(traj_shape):
+        ts = BatchNormTrainState.create(
+            apply_fn=model.apply,
+            params=params,
+            tx=tx,
+            batch_stats=variables["batch_stats"],
+        )
+    else:
+        ts = TrainState.create(apply_fn=model.apply, params=params, tx=tx)
+    return ts
+
+
+def ts_apply_variables(ts: TrainState) -> Dict:
+    if isinstance(ts, BatchNormTrainState):
+        return {"params": ts.params, "batch_stats": ts.batch_stats}
+    batch_stats = getattr(ts, "batch_stats", None)
+    if batch_stats is not None:
+        return {"params": ts.params, "batch_stats": batch_stats}
+    return {"params": ts.params}
+
+
+def params_apply_variables(
+    params: Dict,
+    batch_stats: Optional[jax.Array] = None,
+) -> Dict:
+    variables = {"params": params["params"]}
+    if batch_stats is not None:
+        variables["batch_stats"] = batch_stats
+    return variables
+
+
+def _has_batch_stats(ts: TrainState) -> bool:
+    if isinstance(ts, BatchNormTrainState):
+        return True
+    return getattr(ts, "batch_stats", None) is not None
 
 
 def bt_loss_fn(params, logits_B2, labels_B2, l2_reg: float = 0.0):
@@ -139,6 +200,8 @@ def run_sgd(
     use_vmap: bool = True,
     use_dropout: bool = False,
     use_batch_norm: bool = False,
+    freeze_encoder: bool = False,
+    frozen_encoder: Optional[Dict] = None,
     verbose: bool = False,
 ) -> Tuple[TrainState, Dict]:
     """
@@ -152,7 +215,11 @@ def run_sgd(
     - same datastream for all models or different datastreams for each model
 
     """
-    # todo: currently, only none-dropout models support batch norm
+    use_batch_norm = use_batch_norm or _has_batch_stats(ts)
+    if freeze_encoder:
+        assert use_batch_norm, "freeze_encoder expects a ResNet/BN train state"
+        assert frozen_encoder is not None, "frozen_encoder required when freeze_encoder=True"
+
     if not use_dropout:
 
         def train_step(ts: TrainState, batch: QueryData) -> Tuple[TrainState, Dict]:
@@ -160,9 +227,19 @@ def run_sgd(
             contexts_B2TD, labels_B2 = batch.contexts, batch.labels
 
             def parameterized_loss(params):
-                if use_batch_norm:
+                if freeze_encoder:
+                    variables = {**ts_apply_variables(ts=ts), "params": params}
+                    logits_B2 = ts.apply_fn(
+                        variables,
+                        contexts_B2TD,
+                        train=True,
+                        method=RewardNet.preference_logits_frozen_encoder,
+                    )
+                    updates = None
+                elif use_batch_norm:
+                    variables = {**ts_apply_variables(ts=ts), "params": params}
                     logits_B2, updates = ts.apply_fn(
-                        {"params": params, "batch_stats": ts.batch_stats},
+                        variables,
                         contexts_B2TD,
                         train=True,
                         mutable=["batch_stats"],
@@ -176,7 +253,7 @@ def run_sgd(
             grad_fn = jax.value_and_grad(parameterized_loss, has_aux=True)
             (loss, updates), grads = grad_fn(ts.params)
             ts = ts.apply_gradients(grads=grads)
-            if use_batch_norm:
+            if use_batch_norm and not freeze_encoder:
                 ts = ts.replace(batch_stats=updates["batch_stats"])
             flat_params = ravel_pytree(ts.params)[0] if get_param_trace else None
             return ts, {"loss": loss, "params": flat_params}
@@ -191,20 +268,43 @@ def run_sgd(
             contexts_B2TD, labels_B2 = batch.contexts, batch.labels
 
             def parameterized_loss(params):
-                logits_B2 = ts.apply_fn(
-                    {"params": params},
-                    contexts_B2TD,
-                    train=True,
-                    rngs={"dropout": key_dropout},
-                )
+                if freeze_encoder:
+                    variables = {**ts_apply_variables(ts=ts), "params": params}
+                    logits_B2 = ts.apply_fn(
+                        variables,
+                        contexts_B2TD,
+                        train=True,
+                        rngs={"dropout": key_dropout},
+                        method=RewardNet.preference_logits_frozen_encoder,
+                    )
+                    updates = None
+                elif use_batch_norm:
+                    variables = {**ts_apply_variables(ts=ts), "params": params}
+                    logits_B2, updates = ts.apply_fn(
+                        variables,
+                        contexts_B2TD,
+                        train=True,
+                        rngs={"dropout": key_dropout},
+                        mutable=["batch_stats"],
+                    )
+                else:
+                    logits_B2 = ts.apply_fn(
+                        {"params": params},
+                        contexts_B2TD,
+                        train=True,
+                        rngs={"dropout": key_dropout},
+                    )
+                    updates = None
 
                 loss, _ = loss_fn(params, logits_B2, labels_B2, l2_reg)
-                return loss, None
+                return loss, updates
 
             grad_fn = jax.value_and_grad(parameterized_loss, has_aux=True)
-            (loss, _), grads = grad_fn(ts.params)
+            (loss, updates), grads = grad_fn(ts.params)
             ts = ts.apply_gradients(grads=grads)
             ts = ts.replace(dropout_key=key)
+            if use_batch_norm and not freeze_encoder:
+                ts = ts.replace(batch_stats=updates["batch_stats"])
             flat_params = ravel_pytree(ts.params)[0] if get_param_trace else None
             return ts, {"loss": loss, "params": flat_params}
 
@@ -272,6 +372,13 @@ def run_sgd(
         #     raise NotImplementedError("Not implemented")
     else:
         raise ValueError("Invalid use_vmap or n_models")
+
+    if freeze_encoder:
+        ts = ts.replace(
+            params=restore_frozen_encoder(
+                params=ts.params, frozen_encoder=frozen_encoder
+            )
+        )
 
     return ts, metrics
 

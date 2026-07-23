@@ -15,7 +15,12 @@ from bnn_pref.alg.agent_utils import (
     bt_loss_fn,
     compute_acq_value,
     get_sgd_nsteps,
+    init_reward_train_state,
+    is_pixel_traj,
+    params_apply_variables,
     run_sgd,
+    snapshot_frozen_encoder,
+    ts_apply_variables,
 )
 from bnn_pref.alg.data_buffer import QueryBuffer
 from bnn_pref.data.data_env import PreferenceEnv
@@ -36,10 +41,12 @@ def init_model(
     traj_shape: Tuple[int, ...],  # batch-less shape like (T, D)
 ) -> TrainState:
     """create trainstate for a single model"""
-    dummy_input = jnp.ones((1, 2, *traj_shape))
-    params = model.init(key, dummy_input)["params"]
-    ts = TrainState.create(apply_fn=model.apply, params=params, tx=tx)
-    return ts
+    return init_reward_train_state(
+        key=key,
+        model=model,
+        tx=tx,
+        traj_shape=traj_shape,
+    )
 
 
 class EnsembleAgent(Agent):
@@ -61,6 +68,9 @@ class EnsembleAgent(Agent):
         verbose: bool = False,
     ):
         self.traj_shape = traj_shape
+        self.is_pixel = is_pixel_traj(traj_shape)
+        self.frozen_encoder = None
+        self.frozen_batch_stats = None
         self.n_models = n_models
         self.model = model
         self.opt = optax.adam(learning_rate)
@@ -86,9 +96,9 @@ class EnsembleAgent(Agent):
             train: bool = False,
         ) -> Float[Array, " "]:
             x = jnp.expand_dims(x, axis=0)
-            params = {"params": ts.params}
+            variables = ts_apply_variables(ts)
             ret = self.model.apply(
-                params,
+                variables,
                 x,
                 method=self.model.predict_traj_return,
                 train=train,
@@ -157,6 +167,10 @@ class EnsembleAgent(Agent):
         else:
             warm_ts = ts
 
+        if self.is_pixel:
+            self.frozen_encoder = snapshot_frozen_encoder(warm_ts.params)
+            self.frozen_batch_stats = warm_ts.batch_stats
+
         bel = EnsembleBeliefState(ts=warm_ts, t=0)
         return bel
 
@@ -170,9 +184,12 @@ class EnsembleAgent(Agent):
         niters = get_sgd_nsteps(self.niters_update, len(ds))
         bs = min(self.batch_size, len(ds))
         key, key_sgd = jr.split(key, 2)
+        ts = bel.ts
+        if self.is_pixel:
+            ts = ts.replace(batch_stats=self.frozen_batch_stats)
         new_ts, _ = run_sgd(
             key_sgd,
-            bel.ts,
+            ts,
             dataset=ds,
             loss_fn=bt_loss_fn,
             niters=niters,
@@ -183,7 +200,11 @@ class EnsembleAgent(Agent):
             split_datastream=self.split_datastream,
             use_dropout=False,
             use_vmap=self.use_vmap,
+            freeze_encoder=self.is_pixel,
+            frozen_encoder=self.frozen_encoder,
         )
+        if self.is_pixel:
+            new_ts = new_ts.replace(batch_stats=self.frozen_batch_stats)
         bel = bel.replace(ts=new_ts, t=bel.t + 1)
         return bel
 
@@ -287,12 +308,23 @@ class EnsembleAgent(Agent):
             )
         }
         ts = ckptr.restore(ckpt_fp, item=dummy_items, **restore_kw)
-        params = {"params": ts.params}
+        batch_stats = getattr(ts, "batch_stats", None)
 
         def reward_fn(obs: Float[Array, "T D"]) -> Float[Array, "M T"]:
             # (T,D -> M,T)
-            apply_fn = partial(ts.apply_fn, method=model.predict_traj_rewards)
-            out_MT = jax.vmap(apply_fn, in_axes=(0, None))(params, obs)
+            def apply_model(model_params: Dict, obs: Float[Array, "T D"]):
+                variables = params_apply_variables(
+                    params={"params": model_params},
+                    batch_stats=batch_stats,
+                )
+                return ts.apply_fn(
+                    variables,
+                    obs,
+                    method=model.predict_traj_rewards,
+                    train=False,
+                )
+
+            out_MT = jax.vmap(apply_model, in_axes=(0, None))(ts.params, obs)
             # return out_MT.mean(axis=0)
             return out_MT
 

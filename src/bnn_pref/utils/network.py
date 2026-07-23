@@ -206,6 +206,24 @@ class RewardNet(nn.Module):
             logits = rearrange([r1, r2], "K B -> B K", K=2)  # B 2
         return logits
 
+    def preference_logits_frozen_encoder(self, x, train: bool = True):
+        """
+        Bradley-Terry logits with a frozen backbone: encoder in eval mode, MLP trained
+        per-timestep on stop-gradient embeddings. (B, 2, T, ...) -> (B, 2)
+        """
+
+        def side(traj):  # (B, T, ...)
+            embd = self.compute_embeddings(traj, train=False)
+            embd = jax.lax.stop_gradient(embd)
+            rewards = self.pw_encoder.compute_pw_mlp(embd, train=train)  # (B, T, 1)
+            rewards = jnp.squeeze(rewards, axis=-1)
+            T = traj.shape[1]
+            return rewards.sum(axis=1) / T
+
+        r1 = side(x[:, 0])
+        r2 = side(x[:, 1])
+        return rearrange([r1, r2], "K B -> B K", K=2)
+
     def predict_traj_return(self, x, train: bool = False):
         """(B, T, ...) -> (B,)"""
         B, T, *D = x.shape
@@ -213,6 +231,18 @@ class RewardNet(nn.Module):
         returns = rewards.sum(axis=1)  # (B,)
         returns /= T
         return returns
+
+    def predict_traj_rewards_stochastic_mlp(self, x, train_mlp: bool = True):
+        """MC dropout on MLP only; encoder/BN in eval mode. (B, T, ...) -> (B, T)"""
+        embd = self.pw_encoder.compute_embeddings(x, train=False)
+        rewards = self.pw_encoder.compute_pw_mlp(embd, train=train_mlp)
+        return jnp.squeeze(rewards, axis=-1)
+
+    def predict_traj_return_stochastic_mlp(self, x, train_mlp: bool = True):
+        """MC dropout on MLP only; encoder/BN in eval mode. (B, T, ...) -> (B,)"""
+        B, T, *D = x.shape
+        rewards = self.predict_traj_rewards_stochastic_mlp(x, train_mlp=train_mlp)
+        return rewards.sum(axis=1) / T
 
     def predict_traj_rewards(self, x, train: bool = False):
         """(B, T, ...) -> (B, T)"""

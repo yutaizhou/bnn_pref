@@ -15,7 +15,11 @@ from bnn_pref.alg.agent_utils import (
     bt_loss_fn,
     compute_acq_value,
     get_sgd_nsteps,
+    init_reward_train_state,
+    is_pixel_traj,
     run_sgd,
+    snapshot_frozen_encoder,
+    ts_apply_variables,
 )
 from bnn_pref.alg.data_buffer import QueryBuffer
 from bnn_pref.data.data_env import PreferenceEnv
@@ -36,11 +40,19 @@ def init_model(
     traj_shape: Tuple[int, ...],  # batch-less shape like (T, D)
 ) -> DropoutTrainState:
     """create trainstate for a single model"""
-    dummy_input = jnp.ones((1, 2, *traj_shape))
     key, param_key, dropout_key = jr.split(key, 3)
-    params = model.init(param_key, dummy_input, train=False)["params"]
+    ts = init_reward_train_state(
+        key=param_key,
+        model=model,
+        tx=tx,
+        traj_shape=traj_shape,
+    )
     ts = DropoutTrainState.create(
-        apply_fn=model.apply, params=params, tx=tx, dropout_key=dropout_key
+        apply_fn=ts.apply_fn,
+        params=ts.params,
+        tx=ts.tx,
+        dropout_key=dropout_key,
+        batch_stats=getattr(ts, "batch_stats", None),
     )
     return ts
 
@@ -63,6 +75,9 @@ class DropoutAgent(Agent):
         verbose: bool = False,
     ):
         self.traj_shape = traj_shape
+        self.is_pixel = is_pixel_traj(traj_shape)
+        self.frozen_encoder = None
+        self.frozen_batch_stats = None
         self.n_models = n_models
         self.model = model
         self.opt = optax.adam(learning_rate)
@@ -87,16 +102,26 @@ class DropoutAgent(Agent):
             x: Float[Array, "T D"],
             train: bool = False,
         ) -> Scalar:
-            x = rearrange(x, "T D -> 1 T D")
-            params = {"params": ts.params}
-            ret = self.model.apply(
-                params,
-                x,
-                method=self.model.predict_traj_return,
-                train=train,
-                rngs={"dropout": key},
-            ).squeeze(0)
-            return ret
+            x = jnp.expand_dims(x, axis=0)  # (T, ...) -> (1, T, ...)
+            variables = ts_apply_variables(ts)
+            if train and is_pixel_traj(self.traj_shape):
+                # BN eval mode + MLP dropout (train=True updates immutable batch_stats)
+                ret = self.model.apply(
+                    variables,
+                    x,
+                    method=self.model.predict_traj_return_stochastic_mlp,
+                    train_mlp=True,
+                    rngs={"dropout": key},
+                )
+            else:
+                ret = self.model.apply(
+                    variables,
+                    x,
+                    method=self.model.predict_traj_return,
+                    train=train,
+                    rngs={"dropout": key},
+                )
+            return ret.squeeze(0)
 
         self.pred_return = pred_return
 
@@ -152,6 +177,10 @@ class DropoutAgent(Agent):
         else:
             warm_ts = ts
 
+        if self.is_pixel:
+            self.frozen_encoder = snapshot_frozen_encoder(warm_ts.params)
+            self.frozen_batch_stats = warm_ts.batch_stats
+
         bel = DropoutBeliefState(ts=warm_ts, t=0)
         return bel
 
@@ -165,9 +194,12 @@ class DropoutAgent(Agent):
         niters = get_sgd_nsteps(self.niters_update, len(ds))
         bs = min(self.batch_size, len(ds))
         key, key_sgd = jr.split(key, 2)
+        ts = bel.ts
+        if self.is_pixel:
+            ts = ts.replace(batch_stats=self.frozen_batch_stats)
         new_ts, _ = run_sgd(
             key_sgd,
-            bel.ts,
+            ts,
             dataset=ds,
             loss_fn=bt_loss_fn,
             niters=niters,
@@ -177,7 +209,11 @@ class DropoutAgent(Agent):
             n_models=1,
             use_dropout=True,
             use_vmap=self.use_vmap,
+            freeze_encoder=self.is_pixel,
+            frozen_encoder=self.frozen_encoder,
         )
+        if self.is_pixel:
+            new_ts = new_ts.replace(batch_stats=self.frozen_batch_stats)
         bel = bel.replace(ts=new_ts, t=bel.t + 1)
         return bel
 
@@ -288,15 +324,29 @@ class DropoutAgent(Agent):
 
         def reward_fn(obs: Float[Array, "T D"]) -> Float[Array, "M T"]:
             # (T,D -> M,T)
-            obs = rearrange(obs, "T D -> 1 T D")
-            apply_fn = lambda key, obs: ts.apply_fn(
-                {"params": ts.params},
-                obs,
-                method=model.predict_traj_rewards,
-                train=True,
-                rngs={"dropout": key},
+            obs = jnp.expand_dims(obs, axis=0)  # (T, ...) -> (1, T, ...)
+            variables = ts_apply_variables(ts)
+
+            def apply_model(key, obs):
+                if is_pixel_traj(traj_shape):
+                    return ts.apply_fn(
+                        variables,
+                        obs,
+                        method=model.predict_traj_rewards_stochastic_mlp,
+                        train_mlp=True,
+                        rngs={"dropout": key},
+                    )
+                return ts.apply_fn(
+                    variables,
+                    obs,
+                    method=model.predict_traj_rewards,
+                    train=True,
+                    rngs={"dropout": key},
+                )
+
+            out_M1T = jax.vmap(apply_model, in_axes=(0, None))(
+                jnp.array(key_dropout), obs
             )
-            out_M1T = jax.vmap(apply_fn, in_axes=(0, None))(jnp.array(key_dropout), obs)
             return out_M1T.squeeze(1)
 
         return reward_fn
