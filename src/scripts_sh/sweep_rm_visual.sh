@@ -30,8 +30,8 @@ TASKS=(
     # 'vhumanoidRandom'
     # 'vhumanoidMediumReplay'
     'vhumanoidMediumExpert'
-    'vwalkerRandom'
-    'vwalkerMediumReplay'
+    # 'vwalkerRandom'
+    # 'vwalkerMediumReplay'
     'vwalkerMediumExpert'
 )
 
@@ -51,11 +51,11 @@ python src/scripts/run_rm.py \
     data.vd4rl_64=False \
     data.vd4rl_segment_size=10 \
     acq=infogain \
-    M=20 \
+    M=50 \
     sgd.M=5 \
     bs=16 \
     learning_rate=0.003 \
-    niters_init=420 \
+    niters_init=2000 \
     niters_update=10 \
     sgd.split_datastream=True \
     laplace.prior_prec=1000 \
@@ -66,11 +66,11 @@ python src/scripts/run_rm.py \
     ekf.rnd_proj=True \
     ekf.proj_type=dense \
     ekf.sub_dim=500 \
-    ekf.niters_init=3000 \
+    ekf.niters_init=2000 \
     ekf.learning_rate=0.0001 \
     ekf.bs=16 \
     ekf.iekf=5 \
-    ekf.M=20 \
+    ekf.M=50 \
     ekf.use_vmap=False \
     dir_extra="'${DIR_EXTRA}'" \
     hydra/launcher=slurm \
