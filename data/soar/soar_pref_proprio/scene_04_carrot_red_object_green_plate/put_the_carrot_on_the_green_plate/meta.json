@@ -1,0 +1,10 @@
+{
+  "scene_id": 4,
+  "scene_name": "carrot_red_object_green_plate",
+  "canonical_task": "put the carrot on the green plate",
+  "task_slug": "put_the_carrot_on_the_green_plate",
+  "counts": {
+    "success": 30,
+    "failure": 10
+  }
+}

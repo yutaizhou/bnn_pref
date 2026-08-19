@@ -1,0 +1,10 @@
+{
+  "scene_id": 5,
+  "scene_name": "drawer",
+  "canonical_task": "open the drawer",
+  "task_slug": "open_the_drawer",
+  "counts": {
+    "success": 95,
+    "failure": 727
+  }
+}

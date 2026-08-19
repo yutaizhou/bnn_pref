@@ -5,7 +5,7 @@ results*/
 *.npz
 _runs/
 _viz/
-data/soar/
+data/soar/soar-dataset-local
 
 
 

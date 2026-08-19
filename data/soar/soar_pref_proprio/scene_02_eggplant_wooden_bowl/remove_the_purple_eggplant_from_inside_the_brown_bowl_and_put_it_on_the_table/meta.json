@@ -1,0 +1,10 @@
+{
+  "scene_id": 2,
+  "scene_name": "eggplant_wooden_bowl",
+  "canonical_task": "remove the purple eggplant from inside the brown bowl and put it on the table",
+  "task_slug": "remove_the_purple_eggplant_from_inside_the_brown_bowl_and_put_it_on_the_table",
+  "counts": {
+    "success": 127,
+    "failure": 210
+  }
+}

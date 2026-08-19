@@ -1,0 +1,10 @@
+{
+  "scene_id": 8,
+  "scene_name": "carrot_eggplant_lemon_blue_plate",
+  "canonical_task": "remove the purple eggplant from the blue plate and put it on the table",
+  "task_slug": "remove_the_purple_eggplant_from_the_blue_plate_and_put_it_on_the_table",
+  "counts": {
+    "success": 126,
+    "failure": 18
+  }
+}

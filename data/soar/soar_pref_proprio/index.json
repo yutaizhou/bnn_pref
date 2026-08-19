@@ -1,0 +1,270 @@
+{
+  "scenes": {
+    "scene_01_green_block_wooden_bowl": {
+      "tasks": {
+        "remove_the_green_block_from_inside_the_wooden_bowl_and_put_it_on_the_table": {
+          "scene_id": 1,
+          "scene_name": "green_block_wooden_bowl",
+          "canonical_task": "remove the green block from inside the wooden bowl and put it on the table",
+          "task_slug": "remove_the_green_block_from_inside_the_wooden_bowl_and_put_it_on_the_table",
+          "counts": {
+            "success": 3,
+            "failure": 33
+          }
+        }
+      }
+    },
+    "scene_02_eggplant_wooden_bowl": {
+      "tasks": {
+        "put_the_purple_eggplant_in_the_brown_bowl": {
+          "scene_id": 2,
+          "scene_name": "eggplant_wooden_bowl",
+          "canonical_task": "put the purple eggplant in the brown bowl",
+          "task_slug": "put_the_purple_eggplant_in_the_brown_bowl",
+          "counts": {
+            "success": 159,
+            "failure": 161
+          }
+        },
+        "remove_the_purple_eggplant_from_inside_the_brown_bowl_and_put_it_on_the_table": {
+          "scene_id": 2,
+          "scene_name": "eggplant_wooden_bowl",
+          "canonical_task": "remove the purple eggplant from inside the brown bowl and put it on the table",
+          "task_slug": "remove_the_purple_eggplant_from_inside_the_brown_bowl_and_put_it_on_the_table",
+          "counts": {
+            "success": 127,
+            "failure": 210
+          }
+        }
+      }
+    },
+    "scene_03_green_marker_blue_block_wooden_bowl": {
+      "tasks": {
+        "put_the_blue_block_in_the_wooden_bowl": {
+          "scene_id": 3,
+          "scene_name": "green_marker_blue_block_wooden_bowl",
+          "canonical_task": "put the blue block in the wooden bowl",
+          "task_slug": "put_the_blue_block_in_the_wooden_bowl",
+          "counts": {
+            "success": 138,
+            "failure": 145
+          }
+        },
+        "remove_the_blue_block_from_inside_the_wooden_bowl_and_put_it_on_the_table": {
+          "scene_id": 3,
+          "scene_name": "green_marker_blue_block_wooden_bowl",
+          "canonical_task": "remove the blue block from inside the wooden bowl and put it on the table",
+          "task_slug": "remove_the_blue_block_from_inside_the_wooden_bowl_and_put_it_on_the_table",
+          "counts": {
+            "success": 103,
+            "failure": 127
+          }
+        }
+      }
+    },
+    "scene_04_carrot_red_object_green_plate": {
+      "tasks": {
+        "put_the_carrot_on_the_green_plate": {
+          "scene_id": 4,
+          "scene_name": "carrot_red_object_green_plate",
+          "canonical_task": "put the carrot on the green plate",
+          "task_slug": "put_the_carrot_on_the_green_plate",
+          "counts": {
+            "success": 30,
+            "failure": 10
+          }
+        },
+        "put_the_red_object_on_the_green_plate": {
+          "scene_id": 4,
+          "scene_name": "carrot_red_object_green_plate",
+          "canonical_task": "put the red object on the green plate",
+          "task_slug": "put_the_red_object_on_the_green_plate",
+          "counts": {
+            "success": 33,
+            "failure": 14
+          }
+        },
+        "take_the_carrot_out_of_the_green_plate_and_put_it_on_the_table": {
+          "scene_id": 4,
+          "scene_name": "carrot_red_object_green_plate",
+          "canonical_task": "take the carrot out of the green plate and put it on the table",
+          "task_slug": "take_the_carrot_out_of_the_green_plate_and_put_it_on_the_table",
+          "counts": {
+            "success": 22,
+            "failure": 25
+          }
+        },
+        "take_the_red_object_out_of_the_green_plate_and_put_it_on_the_table": {
+          "scene_id": 4,
+          "scene_name": "carrot_red_object_green_plate",
+          "canonical_task": "take the red object out of the green plate and put it on the table",
+          "task_slug": "take_the_red_object_out_of_the_green_plate_and_put_it_on_the_table",
+          "counts": {
+            "success": 17,
+            "failure": 36
+          }
+        }
+      }
+    },
+    "scene_05_drawer": {
+      "tasks": {
+        "close_the_drawer": {
+          "scene_id": 5,
+          "scene_name": "drawer",
+          "canonical_task": "close the drawer",
+          "task_slug": "close_the_drawer",
+          "counts": {
+            "success": 237,
+            "failure": 111
+          }
+        },
+        "open_the_drawer": {
+          "scene_id": 5,
+          "scene_name": "drawer",
+          "canonical_task": "open the drawer",
+          "task_slug": "open_the_drawer",
+          "counts": {
+            "success": 95,
+            "failure": 727
+          }
+        }
+      }
+    },
+    "scene_06_mushroom_blue_bowl": {
+      "tasks": {
+        "put_the_mushroom_in_the_blue_bowl": {
+          "scene_id": 6,
+          "scene_name": "mushroom_blue_bowl",
+          "canonical_task": "put the mushroom in the blue bowl",
+          "task_slug": "put_the_mushroom_in_the_blue_bowl",
+          "counts": {
+            "success": 237,
+            "failure": 508
+          }
+        },
+        "remove_the_mushroom_from_inside_the_blue_bowl_and_put_it_on_the_table": {
+          "scene_id": 6,
+          "scene_name": "mushroom_blue_bowl",
+          "canonical_task": "remove the mushroom from inside the blue bowl and put it on the table",
+          "task_slug": "remove_the_mushroom_from_inside_the_blue_bowl_and_put_it_on_the_table",
+          "counts": {
+            "success": 223,
+            "failure": 241
+          }
+        }
+      }
+    },
+    "scene_07_mushroom_green_spoon_metal_pot": {
+      "tasks": {
+        "move_the_green_spoon_to_the_left": {
+          "scene_id": 7,
+          "scene_name": "mushroom_green_spoon_metal_pot",
+          "canonical_task": "move the green spoon to the left",
+          "task_slug": "move_the_green_spoon_to_the_left",
+          "counts": {
+            "success": 204,
+            "failure": 170
+          }
+        },
+        "move_the_green_spoon_to_the_right": {
+          "scene_id": 7,
+          "scene_name": "mushroom_green_spoon_metal_pot",
+          "canonical_task": "move the green spoon to the right",
+          "task_slug": "move_the_green_spoon_to_the_right",
+          "counts": {
+            "success": 168,
+            "failure": 334
+          }
+        },
+        "put_the_mushroom_in_the_metal_pot": {
+          "scene_id": 7,
+          "scene_name": "mushroom_green_spoon_metal_pot",
+          "canonical_task": "put the mushroom in the metal pot",
+          "task_slug": "put_the_mushroom_in_the_metal_pot",
+          "counts": {
+            "success": 5,
+            "failure": 3
+          }
+        },
+        "remove_the_mushroom_from_the_metal_pot_and_put_it_on_the_table": {
+          "scene_id": 7,
+          "scene_name": "mushroom_green_spoon_metal_pot",
+          "canonical_task": "remove the mushroom from the metal pot and put it on the table",
+          "task_slug": "remove_the_mushroom_from_the_metal_pot_and_put_it_on_the_table",
+          "counts": {
+            "success": 2,
+            "failure": 8
+          }
+        }
+      }
+    },
+    "scene_08_carrot_eggplant_lemon_blue_plate": {
+      "tasks": {
+        "put_the_carrot_on_the_blue_plate": {
+          "scene_id": 8,
+          "scene_name": "carrot_eggplant_lemon_blue_plate",
+          "canonical_task": "put the carrot on the blue plate",
+          "task_slug": "put_the_carrot_on_the_blue_plate",
+          "counts": {
+            "success": 283,
+            "failure": 927
+          }
+        },
+        "put_the_lemon_on_the_blue_plate": {
+          "scene_id": 8,
+          "scene_name": "carrot_eggplant_lemon_blue_plate",
+          "canonical_task": "put the lemon on the blue plate",
+          "task_slug": "put_the_lemon_on_the_blue_plate",
+          "counts": {
+            "success": 98,
+            "failure": 389
+          }
+        },
+        "put_the_purple_eggplant_on_the_blue_plate": {
+          "scene_id": 8,
+          "scene_name": "carrot_eggplant_lemon_blue_plate",
+          "canonical_task": "put the purple eggplant on the blue plate",
+          "task_slug": "put_the_purple_eggplant_on_the_blue_plate",
+          "counts": {
+            "success": 35,
+            "failure": 130
+          }
+        },
+        "remove_the_carrot_from_the_blue_plate_and_put_it_on_the_table": {
+          "scene_id": 8,
+          "scene_name": "carrot_eggplant_lemon_blue_plate",
+          "canonical_task": "remove the carrot from the blue plate and put it on the table",
+          "task_slug": "remove_the_carrot_from_the_blue_plate_and_put_it_on_the_table",
+          "counts": {
+            "success": 79,
+            "failure": 74
+          }
+        },
+        "remove_the_lemon_from_the_blue_plate_and_put_it_on_the_table": {
+          "scene_id": 8,
+          "scene_name": "carrot_eggplant_lemon_blue_plate",
+          "canonical_task": "remove the lemon from the blue plate and put it on the table",
+          "task_slug": "remove_the_lemon_from_the_blue_plate_and_put_it_on_the_table",
+          "counts": {
+            "success": 78,
+            "failure": 167
+          }
+        },
+        "remove_the_purple_eggplant_from_the_blue_plate_and_put_it_on_the_table": {
+          "scene_id": 8,
+          "scene_name": "carrot_eggplant_lemon_blue_plate",
+          "canonical_task": "remove the purple eggplant from the blue plate and put it on the table",
+          "task_slug": "remove_the_purple_eggplant_from_the_blue_plate_and_put_it_on_the_table",
+          "counts": {
+            "success": 126,
+            "failure": 18
+          }
+        }
+      }
+    }
+  },
+  "totals": {
+    "success": 2502,
+    "failure": 4568
+  }
+}

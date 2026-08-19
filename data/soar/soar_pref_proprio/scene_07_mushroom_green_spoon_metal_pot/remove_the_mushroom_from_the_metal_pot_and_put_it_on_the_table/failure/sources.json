@@ -1,0 +1,22 @@
+{
+  "raw_language_tasks": [
+    "remove mushroom from inside the silver pot and place it on the table",
+    "remove mushroom from inside the silver pot and place it on the table",
+    "remove mushroom from inside the silver pot and place it on the table",
+    "remove mushroom from inside the silver pot and place it on the table",
+    "remove mushroom from inside the silver pot and place it on the table",
+    "remove mushroom from inside the silver pot and place it on the table",
+    "remove mushroom from inside the silver pot and place it on the table",
+    "remove mushroom from inside the silver pot and place it on the table"
+  ],
+  "source_paths": [
+    "data/soar/soar-dataset-local/berkeley_robot_2/mushroom-green-spoon-silver-pot/gcbc/0530/failure/traj29",
+    "data/soar/soar-dataset-local/berkeley_robot_2/mushroom-green-spoon-silver-pot/gcbc/0530/failure/traj32",
+    "data/soar/soar-dataset-local/berkeley_robot_2/mushroom-green-spoon-silver-pot/gcbc/0530/failure/traj33",
+    "data/soar/soar-dataset-local/berkeley_robot_2/mushroom-green-spoon-silver-pot/gcbc/0530/failure/traj4",
+    "data/soar/soar-dataset-local/berkeley_robot_2/mushroom-green-spoon-silver-pot/gcbc/0530/failure/traj42",
+    "data/soar/soar-dataset-local/berkeley_robot_2/mushroom-green-spoon-silver-pot/gcbc/0530/failure/traj6",
+    "data/soar/soar-dataset-local/berkeley_robot_2/mushroom-green-spoon-silver-pot/gcbc/0530/failure/traj77",
+    "data/soar/soar-dataset-local/berkeley_robot_2/mushroom-green-spoon-silver-pot/gcbc/0530/failure/traj80"
+  ]
+}

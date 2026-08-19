@@ -1,0 +1,10 @@
+{
+  "scene_id": 6,
+  "scene_name": "mushroom_blue_bowl",
+  "canonical_task": "remove the mushroom from inside the blue bowl and put it on the table",
+  "task_slug": "remove_the_mushroom_from_inside_the_blue_bowl_and_put_it_on_the_table",
+  "counts": {
+    "success": 223,
+    "failure": 241
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "raw_language_tasks": [
+    "remove the green block from inside the wooden bowl and put it on the table",
+    "remove the green block from inside the wooden bowl and put it on the table",
+    "remove the green block from inside the wooden bowl and put it on the table"
+  ],
+  "source_paths": [
+    "data/soar/soar-dataset-local/berkeley_robot_1/green-block-brown-bowl/gcbc_for_round_1_collected_by_round_0/0520/success/traj20",
+    "data/soar/soar-dataset-local/berkeley_robot_1/green-block-brown-bowl/gcbc_for_round_1_collected_by_round_0/0520/success/traj33",
+    "data/soar/soar-dataset-local/berkeley_robot_1/green-block-brown-bowl/gcbc_for_round_1_collected_by_round_0/0520/success/traj9"
+  ]
+}

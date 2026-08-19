@@ -1,0 +1,10 @@
+{
+  "scene_id": 3,
+  "scene_name": "green_marker_blue_block_wooden_bowl",
+  "canonical_task": "put the blue block in the wooden bowl",
+  "task_slug": "put_the_blue_block_in_the_wooden_bowl",
+  "counts": {
+    "success": 138,
+    "failure": 145
+  }
+}

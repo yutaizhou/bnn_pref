@@ -1,0 +1,10 @@
+{
+  "scene_id": 6,
+  "scene_name": "mushroom_blue_bowl",
+  "canonical_task": "put the mushroom in the blue bowl",
+  "task_slug": "put_the_mushroom_in_the_blue_bowl",
+  "counts": {
+    "success": 237,
+    "failure": 508
+  }
+}

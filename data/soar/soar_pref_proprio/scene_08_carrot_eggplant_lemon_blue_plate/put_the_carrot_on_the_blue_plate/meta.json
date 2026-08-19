@@ -1,0 +1,10 @@
+{
+  "scene_id": 8,
+  "scene_name": "carrot_eggplant_lemon_blue_plate",
+  "canonical_task": "put the carrot on the blue plate",
+  "task_slug": "put_the_carrot_on_the_blue_plate",
+  "counts": {
+    "success": 283,
+    "failure": 927
+  }
+}

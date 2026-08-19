@@ -1,0 +1,10 @@
+{
+  "scene_id": 2,
+  "scene_name": "eggplant_wooden_bowl",
+  "canonical_task": "put the purple eggplant in the brown bowl",
+  "task_slug": "put_the_purple_eggplant_in_the_brown_bowl",
+  "counts": {
+    "success": 159,
+    "failure": 161
+  }
+}

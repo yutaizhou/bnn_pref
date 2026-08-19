@@ -1,0 +1,12 @@
+{
+  "raw_language_tasks": [
+    "put mushroom into the silver pot",
+    "put mushroom into the silver pot",
+    "put mushroom into the silver pot"
+  ],
+  "source_paths": [
+    "data/soar/soar-dataset-local/berkeley_robot_2/mushroom-green-spoon-silver-pot/gcbc/0530/failure/traj39",
+    "data/soar/soar-dataset-local/berkeley_robot_2/mushroom-green-spoon-silver-pot/gcbc/0530/failure/traj69",
+    "data/soar/soar-dataset-local/berkeley_robot_2/mushroom-green-spoon-silver-pot/gcbc/0530/failure/traj84"
+  ]
+}

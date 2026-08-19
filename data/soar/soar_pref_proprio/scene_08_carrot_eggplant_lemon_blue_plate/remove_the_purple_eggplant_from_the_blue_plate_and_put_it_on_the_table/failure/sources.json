@@ -1,0 +1,42 @@
+{
+  "raw_language_tasks": [
+    "remove the purple eggplant from the blue tray and put it on the table",
+    "remove the purple eggplant from the blue tray and put it on the table",
+    "remove the purple eggplant from the blue tray and put it on the table",
+    "remove the purple eggplant from the blue tray and put it on the table",
+    "remove the purple eggplant from the blue tray and put it on the table",
+    "remove the purple eggplant from the blue tray and put it on the table",
+    "remove the purple eggplant from the blue tray and put it on the table",
+    "remove the purple eggplant from the blue tray and put it on the table",
+    "remove the purple eggplant from the blue tray and put it on the table",
+    "remove the purple eggplant from the blue tray and put it on the table",
+    "remove the purple eggplant from the blue tray and put it on the table",
+    "remove the purple eggplant from the blue tray and put it on the table",
+    "remove the purple eggplant from the blue tray and put it on the table",
+    "remove the purple eggplant from the blue tray and put it on the table",
+    "remove the purple eggplant from the blue tray and put it on the table",
+    "remove the purple eggplant from the blue tray and put it on the table",
+    "remove the purple eggplant from the blue tray and put it on the table",
+    "remove the purple eggplant from the blue tray and put it on the table"
+  ],
+  "source_paths": [
+    "data/soar/soar-dataset-local/berkeley_robot_3/blue-tray-eggplant-lemon-carrot/gcbc/undated/failure/traj212",
+    "data/soar/soar-dataset-local/berkeley_robot_3/blue-tray-eggplant-lemon-carrot/gcbc/undated/failure/traj216",
+    "data/soar/soar-dataset-local/berkeley_robot_3/blue-tray-eggplant-lemon-carrot/gcbc/undated/failure/traj220",
+    "data/soar/soar-dataset-local/berkeley_robot_3/blue-tray-eggplant-lemon-carrot/gcbc/undated/failure/traj228",
+    "data/soar/soar-dataset-local/berkeley_robot_3/blue-tray-eggplant-lemon-carrot/gcbc/undated/failure/traj232",
+    "data/soar/soar-dataset-local/berkeley_robot_3/blue-tray-eggplant-lemon-carrot/gcbc/undated/failure/traj237",
+    "data/soar/soar-dataset-local/berkeley_robot_3/blue-tray-eggplant-lemon-carrot/gcbc/undated/failure/traj240",
+    "data/soar/soar-dataset-local/berkeley_robot_3/blue-tray-eggplant-lemon-carrot/gcbc/undated/failure/traj2521",
+    "data/soar/soar-dataset-local/berkeley_robot_3/blue-tray-eggplant-lemon-carrot/gcbc/undated/failure/traj2525",
+    "data/soar/soar-dataset-local/berkeley_robot_3/blue-tray-eggplant-lemon-carrot/gcbc/undated/failure/traj475",
+    "data/soar/soar-dataset-local/berkeley_robot_3/blue-tray-eggplant-lemon-carrot/gcbc/undated/failure/traj593",
+    "data/soar/soar-dataset-local/berkeley_robot_3/blue-tray-eggplant-lemon-carrot/gcbc/undated/failure/traj598",
+    "data/soar/soar-dataset-local/berkeley_robot_3/blue-tray-eggplant-lemon-carrot/gcbc/undated/failure/traj715",
+    "data/soar/soar-dataset-local/berkeley_robot_3/blue-tray-eggplant-lemon-carrot/gcbc/undated/failure/traj718",
+    "data/soar/soar-dataset-local/berkeley_robot_3/blue-tray-eggplant-lemon-carrot/gcbc/undated/failure/traj721",
+    "data/soar/soar-dataset-local/berkeley_robot_3/blue-tray-eggplant-lemon-carrot/gcbc/undated/failure/traj943",
+    "data/soar/soar-dataset-local/berkeley_robot_3/blue-tray-eggplant-lemon-carrot/gcbc/undated/failure/traj945",
+    "data/soar/soar-dataset-local/berkeley_robot_3/blue-tray-eggplant-lemon-carrot/gcbc/undated/failure/traj947"
+  ]
+}

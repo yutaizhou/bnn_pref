@@ -1,0 +1,10 @@
+{
+  "scene_id": 5,
+  "scene_name": "drawer",
+  "canonical_task": "close the drawer",
+  "task_slug": "close_the_drawer",
+  "counts": {
+    "success": 237,
+    "failure": 111
+  }
+}

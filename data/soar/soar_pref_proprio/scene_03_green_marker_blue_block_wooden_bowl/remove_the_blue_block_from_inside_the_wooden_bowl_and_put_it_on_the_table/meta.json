@@ -1,0 +1,10 @@
+{
+  "scene_id": 3,
+  "scene_name": "green_marker_blue_block_wooden_bowl",
+  "canonical_task": "remove the blue block from inside the wooden bowl and put it on the table",
+  "task_slug": "remove_the_blue_block_from_inside_the_wooden_bowl_and_put_it_on_the_table",
+  "counts": {
+    "success": 103,
+    "failure": 127
+  }
+}

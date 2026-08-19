@@ -1,0 +1,10 @@
+{
+  "raw_language_tasks": [
+    "remove mushroom from inside the silver pot and place it on the table",
+    "remove mushroom from inside the silver pot and place it on the table"
+  ],
+  "source_paths": [
+    "data/soar/soar-dataset-local/berkeley_robot_2/mushroom-green-spoon-silver-pot/gcbc/0530/success/traj43",
+    "data/soar/soar-dataset-local/berkeley_robot_2/mushroom-green-spoon-silver-pot/gcbc/0530/success/traj9"
+  ]
+}

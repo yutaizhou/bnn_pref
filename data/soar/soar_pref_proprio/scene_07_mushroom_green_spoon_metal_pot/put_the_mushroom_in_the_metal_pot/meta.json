@@ -1,0 +1,10 @@
+{
+  "scene_id": 7,
+  "scene_name": "mushroom_green_spoon_metal_pot",
+  "canonical_task": "put the mushroom in the metal pot",
+  "task_slug": "put_the_mushroom_in_the_metal_pot",
+  "counts": {
+    "success": 5,
+    "failure": 3
+  }
+}

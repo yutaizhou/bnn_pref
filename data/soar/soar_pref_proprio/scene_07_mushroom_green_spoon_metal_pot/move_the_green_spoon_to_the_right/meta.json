@@ -1,0 +1,10 @@
+{
+  "scene_id": 7,
+  "scene_name": "mushroom_green_spoon_metal_pot",
+  "canonical_task": "move the green spoon to the right",
+  "task_slug": "move_the_green_spoon_to_the_right",
+  "counts": {
+    "success": 168,
+    "failure": 334
+  }
+}
