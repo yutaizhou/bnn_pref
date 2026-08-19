@@ -1,3 +1,0 @@
-[submodule "src/bnn_pref/utils/flaxmodels"]
-	path = src/bnn_pref/utils/flaxmodels
-	url = git@github.com:yutaizhou/flaxmodels.git

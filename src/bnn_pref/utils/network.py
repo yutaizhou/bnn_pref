@@ -8,7 +8,7 @@ import jax.random as jr
 from einops import rearrange
 from jax.flatten_util import ravel_pytree
 
-# from flaxmodels import ResNet18 as FMResNet18
+from bnn_pref.utils.resnet import ResNet18
 from jaxtyping import Array, Float
 
 B2D = Float[Array, "batch 2 dim"]
@@ -76,10 +76,6 @@ default_init = nn.initializers.xavier_uniform
 
 
 def setup_resnet_encoder():
-    from flaxmodels import ResNet18  # actual training run
-
-    # from flaxmodels.flaxmodels import ResNet18  # run network.py
-
     return ResNet18(
         output="embeddings",
         pretrained="imagenet",
