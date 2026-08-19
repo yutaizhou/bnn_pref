@@ -1,31 +1,10 @@
 alg_sets = dict(
     all=["ekf", "sgd", "do", "laplace", "llmcmc"],
     ekf=["ekf"],
-    visual3=["ekf", "sgd", "do"],
+    visual=["ekf", "sgd", "do"],
 )
 task_sets = dict(
-    neurips=[
-        # # * D4RL
-        # "cheetahRandom",
-        "cheetahMediumReplay",
-        "cheetahMediumExpert",
-        "hopperRandom",
-        "hopperMediumReplay",
-        "hopperMediumExpert",
-        "walkerRandom",
-        "walkerMediumReplay",
-        "walkerMediumExpert",
-        "penHuman",
-        "penExpert",
-        # "penCloned",
-        # "kitchenComplete",
-        # "kitchenPartial",
-        # "kitchenMixed",
-        "mazeUDense",
-        "mazeMediumDense",
-        # "mazeLargeDense",
-    ],
-    iclr=[
+    main=[
         # # * D4RL
         "cheetahRandom",
         "cheetahMediumReplay",
@@ -59,30 +38,12 @@ task_sets = dict(
         "uniPenHuman",
         "uniPenCloned",
     ],
-    test=[
-        "cheetahMediumReplay",
-        "hopperMediumReplay",
-        "walkerMediumReplay",
-        "penHuman",
-        "mazeMediumDense",
-    ],
     visual3=[
         "vcheetahMediumExpert",
         "vhumanoidMediumExpert",
         "vwalkerMediumExpert",
     ],
-    visual5=[
-        # "vcheetahRandom",
-        # "vcheetahMediumReplay",
-        "vcheetahMediumExpert",
-        # "vhumanoidRandom",
-        # "vhumanoidMediumReplay",
-        "vhumanoidMediumExpert",
-        "vwalkerRandom",
-        "vwalkerMediumReplay",
-        "vwalkerMediumExpert",
-    ],
-    visual9=[
+    visual=[
         "vcheetahRandom",
         "vcheetahMediumReplay",
         "vcheetahMediumExpert",
@@ -98,15 +59,6 @@ task_sets = dict(
         "soarCarrotRemove",
         "soarCloseDrawer",
         "soarEggplantPutIn",
-        "soarEggplantRemove",
-        "soarMushroomRemove",
-        "soarSpoonMoveLeft",
-    ],
-    soar5=[
-        "soarBlueBlockPutIn",
-        "soarCarrotRemove",
-        # "soarCloseDrawer",
-        # "soarEggplantPutIn",
         "soarEggplantRemove",
         "soarMushroomRemove",
         "soarSpoonMoveLeft",

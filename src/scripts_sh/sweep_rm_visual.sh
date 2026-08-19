@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# * iclr tasks
+# * main D4RL state tasks (commented; use the vd4rl block below for pixel tasks)
 # TASKS=(
 #     "cheetahRandom"
 #     "cheetahMediumReplay"

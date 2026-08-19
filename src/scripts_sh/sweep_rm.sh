@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# * iclr tasks
+# * main D4RL state tasks
 # TASKS=(
 #     "cheetahRandom"
 #     "cheetahMediumReplay"

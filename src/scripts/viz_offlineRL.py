@@ -35,7 +35,7 @@ ref_dirp = "/scr/yutaizho/code/p-prefEKF/bnn_pref/_runs/offline_rl/20250501_0020
 class Args:
     pref_dirp: Path = Path(pref_dirp)
     ref_dirp: Path = Path(ref_dirp)
-    task_set: str = "iclr"
+    task_set: str = "main"
     alg_set: str = "all"
     use_stderr: bool = True
     use_smooth: bool = True

@@ -48,7 +48,7 @@ paths:
   soar:
     raw_dir: ${paths.root_dir}/data/soar/soar-dataset-local
     pref_proprio_dir: ${paths.root_dir}/data/soar/soar_pref_proprio
-  vd4rl_dir: /scr/shared/datasets/vd4rl
+  vd4rl_dir: ${paths.root_dir}/data/vd4rl
   unirlhf_dir: ${paths.root_dir}/data/unirlhf_crowdsource_human_labels
 
 

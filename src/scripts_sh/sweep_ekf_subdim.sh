@@ -5,7 +5,7 @@ subdim_list=$(IFS=,; echo "${subdims[*]}")
 
 
 # this runs through product (alg, is_al) in sequence, for each task
-python scripts/run_ekf_subdim.py \
+python src/scripts/run_ekf_subdim.py \
     -m seed=-1 seeds=3 \
     task=walkerMediumExpert \
     active=True \
