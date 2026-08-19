@@ -27,14 +27,11 @@ from bnn_pref.utils.plotting import (
 )
 from bnn_pref.utils.task_sets import alg_sets, task_sets
 
-pref_dirp = "/scr/yutaizho/code/p-prefEKF/bnn_pref/_runs/offline_rl/20251126_iql_pref_12tasks_nitersUpdate=10_acq=infogain"
-ref_dirp = "/scr/yutaizho/code/p-prefEKF/bnn_pref/_runs/offline_rl/20250501_002013_iql_ref_18tasks"
-
 
 @dataclass
 class Args:
-    pref_dirp: Path = Path(pref_dirp)
-    ref_dirp: Path = Path(ref_dirp)
+    pref_dirp: Path
+    ref_dirp: Path
     task_set: str = "main"
     alg_set: str = "all"
     use_stderr: bool = True

@@ -1,12 +1,13 @@
 """
-For aggregated logpdf plots over all tasks and seeds, per each algorithm variant.
+Scaling experiment plots: ensemble size M vs network width.
 """
 
 import itertools as it
 import logging
 import os
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Tuple
+from pathlib import Path
 
 os.environ["JAX_PLATFORM_NAME"] = "cpu"
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
@@ -14,9 +15,9 @@ os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
 os.environ["DISABLE_CODESIGN_WARNING"] = "1"
 logging.getLogger("absl").setLevel(logging.WARNING)
 
-import ipdb
 import matplotlib.pyplot as plt
 import numpy as np
+import tyro
 
 from bnn_pref.utils.plotting import (
     get_font_kw,
@@ -28,7 +29,6 @@ from bnn_pref.utils.plotting import (
 
 fixed_net = "64x2"
 fixed_M = 5
-timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 nets = [
     "64x2",
     "64x3",
@@ -39,55 +39,34 @@ nets = [
     "1024x2",
     "1024x3",
 ]
-# Ms = [5, 15, 30, 50, 75, 100, 150]
 Ms = [5, 15, 30, 50, 75, 100]
-# task = "acrobot-swingup-v0"
-task = "walker2d-medium-expert-v2"
-algs = ["ekf", "sgd", "do", "laplace", "llmcmc"]
 algs = ["ekf", "sgd", "do"]
 
 
-# * == change this block ==
-save_dir = "/scr/yutaizho/code/p-prefEKF/bnn_pref/_viz/scale"
-# M_dirp = "/scr/yutaizho/projects/bnn_pref/_runs/scaling/20250924_050101_M_infogain_cpu_nitersUpdate=-3_iekf=5"
-# net_dirp = "/scr/yutaizho/projects/bnn_pref/_runs/scaling/20250924_050125_param_infogain_cpu_nitersUpdate=-3_iekf=5"
-
-M_dirp = "/scr/yutaizho/code/p-prefEKF/bnn_pref/results_sweep/scaling/20251126_001147_M_infogain_cpu_nitersUpdate=10_iekf=5"
-net_dirp = "/scr/yutaizho/code/p-prefEKF/bnn_pref/_runs/scaling/20250924_050125_param_infogain_cpu_nitersUpdate=-3_iekf=5"
-# * == change this block ==
-os.makedirs(f"{save_dir}/{timestamp}", exist_ok=True)
+@dataclass
+class Args:
+    M_dirp: Path
+    """Hydra sweep dir for the M scaling run."""
+    net_dirp: Path
+    """Hydra sweep dir for the network-size scaling run."""
+    save_dir: Path = Path("results/viz/scaling")
+    task: str = "walker2d-medium-expert-v2"
 
 
 def get_stats(
-    dirp: str,
+    dirp: Path,
     sweep_type: str,
     fixed_net: str = "64x3",
     fixed_M: int = 5,
+    task: str = "walker2d-medium-expert-v2",
 ):
-    """
-    dirp: directory path to hydra sweep folder
-        0_M=5_net=64x2/
-        1_M=15_net=64x2/
-        ...
-
-        each contains stats.npz
-
-    returns:
-        dict[alg] = {
-            "M": (n_M, ),
-            "net": (n_net, ),
-            "duration": (n_M, ) if sweep_name="M" else (n_net, ),
-            "logpdf": (n_M, ) if sweep_name="M" else (n_net, ),
-        }
-    """
     assert sweep_type in ["M", "net"]
 
     def create_alg_dicts():
-        alg_dicts = {
+        return {
             f"{alg}_{metric}": list()
             for alg, metric in it.product(algs, ["duration", "logpdf"])
         }
-        return alg_dicts
 
     if sweep_type == "M":
         out = {
@@ -96,70 +75,54 @@ def get_stats(
             **create_alg_dicts(),
         }
         for i, M in enumerate(Ms):
-            # Get all seed directories for this M value
             seed_dirs = [d for d in os.listdir(dirp) if f"M={M}_net={fixed_net}" in d]
-
-            # Initialize lists to store per-algorithm metrics over seeds
             alg_durations = {alg: [] for alg in algs}
             alg_logpdfs = {alg: [] for alg in algs}
 
             for seed_dir in seed_dirs:
-                fp = os.path.join(dirp, seed_dir, "stats.npz")
+                fp = dirp / seed_dir / "stats.npz"
                 stats = np.load(fp, allow_pickle=True)
                 for alg in algs:
                     res = stats[task].item()[alg]
                     alg_durations[alg].append(res["train_duration"])
                     alg_logpdfs[alg].append(res["test_logpdf_final"])
 
-            # Compute mean and std for each metric per algorithm
             for alg in algs:
-                # Store mean duration and logpdf
                 out[f"{alg}_duration"].append(np.array(alg_durations[alg]))
                 out[f"{alg}_logpdf"].append(np.array(alg_logpdfs[alg]))
 
-        # convert to np array (n_M, n_seeds)
         for alg in algs:
             out[f"{alg}_duration"] = np.array(out[f"{alg}_duration"])
             out[f"{alg}_logpdf"] = np.array(out[f"{alg}_logpdf"])
         return out
 
-    elif sweep_type == "net":
-        out = {
-            "M": fixed_M,
-            "net": nets,
-            **create_alg_dicts(),
-        }
+    out = {
+        "M": fixed_M,
+        "net": nets,
+        **create_alg_dicts(),
+    }
 
-        for i, net in enumerate(nets):
-            # Get all seed directories for this network size
-            seed_dirs = [d for d in os.listdir(dirp) if f"M={fixed_M}_net={net}" in d]
+    for i, net in enumerate(nets):
+        seed_dirs = [d for d in os.listdir(dirp) if f"M={fixed_M}_net={net}" in d]
+        alg_durations = {alg: [] for alg in algs}
+        alg_logpdfs = {alg: [] for alg in algs}
 
-            # Initialize lists to store per-algorithm metrics over seeds
-            alg_durations = {alg: [] for alg in algs}
-            alg_logpdfs = {alg: [] for alg in algs}
-
-            for seed_dir in seed_dirs:
-                fp = os.path.join(dirp, seed_dir, "stats.npz")
-                stats = np.load(fp, allow_pickle=True)
-                for alg in algs:
-                    res = stats[task].item()[alg]
-                    alg_durations[alg].append(res["duration"])  # todo: train_duration
-                    alg_logpdfs[alg].append(res["test_logpdf_final"])
-
-            # Store results for each algorithm
+        for seed_dir in seed_dirs:
+            fp = dirp / seed_dir / "stats.npz"
+            stats = np.load(fp, allow_pickle=True)
             for alg in algs:
-                out[f"{alg}_duration"].append(np.array(alg_durations[alg]))
-                out[f"{alg}_logpdf"].append(np.array(alg_logpdfs[alg]))
+                res = stats[task].item()[alg]
+                alg_durations[alg].append(res["duration"])
+                alg_logpdfs[alg].append(res["test_logpdf_final"])
 
-        # convert to np array (n_net, n_seeds)
         for alg in algs:
-            out[f"{alg}_duration"] = np.array(out[f"{alg}_duration"])
-            out[f"{alg}_logpdf"] = np.array(out[f"{alg}_logpdf"])
-        return out
+            out[f"{alg}_duration"].append(np.array(alg_durations[alg]))
+            out[f"{alg}_logpdf"].append(np.array(alg_logpdfs[alg]))
 
-
-M_res = get_stats(M_dirp, sweep_type="M", fixed_net=fixed_net)
-net_res = get_stats(net_dirp, sweep_type="net", fixed_M=fixed_M)
+    for alg in algs:
+        out[f"{alg}_duration"] = np.array(out[f"{alg}_duration"])
+        out[f"{alg}_logpdf"] = np.array(out[f"{alg}_logpdf"])
+    return out
 
 
 def get_label(alg: str) -> str:
@@ -170,8 +133,7 @@ def get_label(alg: str) -> str:
         "laplace": "Laplace",
         "llmcmc": "LLMCMC",
     }
-    alg_label = alg2label[alg]
-    return alg_label
+    return alg2label[alg]
 
 
 def get_style(alg: str) -> dict:
@@ -185,142 +147,143 @@ def get_style(alg: str) -> dict:
     return {"color": alg2color[alg], "linestyle": "-", "linewidth": 2}
 
 
-axisLabel_kw = get_font_kw(24)
-axisTick_kw = get_font_kw(20)
-legend_kw = get_legend_kw(20)
+def main(args: Args) -> None:
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    out_dir = args.save_dir / timestamp
+    out_dir.mkdir(parents=True, exist_ok=True)
 
-
-# * 1. plot ensemble size vs. duration
-fig1, ax1 = plt.subplots(figsize=(6, 4))
-invisible_topright_spines(ax1)
-for alg in algs:
-    durations = M_res[f"{alg}_duration"]
-    mean_durations = np.mean(durations, axis=1)
-    std_durations = np.std(durations, axis=1)
-    style = get_style(alg)
-    label = get_label(alg)
-    ax1.plot(mean_durations, label=label, **style)
-    ax1.fill_between(
-        range(len(Ms)),
-        mean_durations - std_durations,
-        mean_durations + std_durations,
-        alpha=0.2,
-        **style,
-    )
-ax1.set_xlabel("M", **axisLabel_kw)
-ax1.set_xticks(range(len(Ms)))
-ax1.set_xticklabels([f"{int(x):d}" for x in Ms], **axisTick_kw)
-
-ax1.set_ylabel("Duration (s)", **axisLabel_kw)
-yticks = ax1.get_yticks()[::2]
-ax1.set_yticks(yticks)
-ax1.set_yticklabels([f"{y:.0f}" for y in yticks], **axisTick_kw)
-
-ax1.legend(**legend_kw)
-set_xlim_offset(ax1)
-ax1.set_xlim(0, len(Ms) - 1)
-
-plt.tight_layout()
-plt.savefig(f"{save_dir}/{timestamp}/a_MDuration.png", bbox_inches="tight", dpi=300)
-plt.close(fig1)
-
-# * 2. plot network size vs. duration
-fig2, ax2 = plt.subplots(figsize=(6, 4))
-invisible_topright_spines(ax2)
-for alg in algs:
-    # for alg in ["ekf", "sgd", "do"]:
-    durations = net_res[f"{alg}_duration"]
-    mean_durations = np.mean(durations, axis=1)
-    std_durations = np.std(durations, axis=1)
-    style = get_style(alg)
-    label = get_label(alg)
-    ax2.plot(mean_durations, label=label, **style)
-    ax2.fill_between(
-        range(len(nets)),
-        mean_durations - std_durations,
-        mean_durations + std_durations,
-        alpha=0.2,
-        **style,
-    )
-ax2.set_xlabel("Network Size", **axisLabel_kw)
-ax2.set_xticks(range(len(nets)))
-ax2.set_xticklabels(nets, rotation=45, ha="right", **axisTick_kw)
-set_xlim_offset(ax2)
-ax2.set_xlim(0, len(nets) - 1)
-
-ax2.set_ylabel("Duration (s)", **axisLabel_kw)
-yticks = ax2.get_yticks()[::2]
-ax2.set_yticks(yticks)
-ax2.set_yticklabels([f"{y:.0f}" for y in yticks], **axisTick_kw)
-
-plt.tight_layout()
-plt.savefig(f"{save_dir}/{timestamp}/b_ParamDuration.png", bbox_inches="tight", dpi=300)
-plt.close(fig2)
-
-# * 3. plot ensemble size vs. logpdf
-fig3, ax3 = plt.subplots(figsize=(6, 4))
-invisible_topright_spines(ax3)
-for alg in algs:
-    logpdfs = M_res[f"{alg}_logpdf"]  # (len(Ms), n_seeds)
-    mean_logpdfs = np.mean(logpdfs, axis=1, where=np.isfinite(logpdfs))
-    std_logpdfs = np.std(logpdfs, axis=1, where=np.isfinite(logpdfs))
-    style = get_style(alg)
-    label = get_label(alg)
-    ax3.plot(mean_logpdfs, label=label, **style)
-    ax3.fill_between(
-        range(len(Ms)),
-        mean_logpdfs - std_logpdfs,
-        mean_logpdfs + std_logpdfs,
-        alpha=0.2,
-        **style,
-    )
-ax3.set_xlabel("M", **axisLabel_kw)
-ax3.set_xticks(range(len(Ms)))
-ax3.set_xticklabels([f"{int(x):d}" for x in Ms], **axisTick_kw)
-set_xlim_offset(ax3)
-ax3.set_xlim(0, len(Ms) - 1)
-
-ax3.set_ylabel("Log-Likelihood", **axisLabel_kw)
-yticks = ax3.get_yticks()[::2]
-ax3.set_yticks(yticks)
-ax3.set_yticklabels([f"{y:.2f}" for y in yticks], **axisTick_kw)
-
-plt.tight_layout()
-plt.savefig(f"{save_dir}/{timestamp}/c_MLogpdf.png", bbox_inches="tight", dpi=300)
-plt.close(fig3)
-
-# * 4. plot network size vs. logpdf
-fig4, ax4 = plt.subplots(figsize=(6, 4))
-invisible_topright_spines(ax4)
-for alg in algs:
-    # for alg in ["ekf", "sgd", "do"]:
-    logpdfs = net_res[f"{alg}_logpdf"]
-    mean_logpdfs = np.mean(logpdfs, axis=1, where=np.isfinite(logpdfs))
-    std_logpdfs = np.std(logpdfs, axis=1, where=np.isfinite(logpdfs))
-    label = get_label(alg)
-    style = get_style(alg)
-    ax4.plot(mean_logpdfs, label=label, **style)
-    ax4.fill_between(
-        range(len(nets)),
-        mean_logpdfs - std_logpdfs,
-        mean_logpdfs + std_logpdfs,
-        alpha=0.2,
-        **style,
+    M_res = get_stats(args.M_dirp, sweep_type="M", fixed_net=fixed_net, task=args.task)
+    net_res = get_stats(
+        args.net_dirp, sweep_type="net", fixed_M=fixed_M, task=args.task
     )
 
-ax4.set_xlabel("Network Size", **axisLabel_kw)
-ax4.set_xticks(range(len(nets)))
-ax4.set_xticklabels(nets, rotation=45, ha="right", **axisTick_kw)
-ax4.set_xlim(0, len(nets) - 1)
-set_xlim_offset(ax4)
+    axisLabel_kw = get_font_kw(24)
+    axisTick_kw = get_font_kw(20)
+    legend_kw = get_legend_kw(20)
 
-ax4.set_ylabel("Log-Likelihood", **axisLabel_kw)
-yticks = ax4.get_yticks()[::2]
-ax4.set_yticks(yticks)
-ax4.set_yticklabels([f"{y:.2f}" for y in yticks], **axisTick_kw)
+    # * 1. plot ensemble size vs. duration
+    fig1, ax1 = plt.subplots(figsize=(6, 4))
+    invisible_topright_spines(ax1)
+    for alg in algs:
+        durations = M_res[f"{alg}_duration"]
+        mean_durations = np.mean(durations, axis=1)
+        std_durations = np.std(durations, axis=1)
+        style = get_style(alg)
+        label = get_label(alg)
+        ax1.plot(mean_durations, label=label, **style)
+        ax1.fill_between(
+            range(len(Ms)),
+            mean_durations - std_durations,
+            mean_durations + std_durations,
+            alpha=0.2,
+            **style,
+        )
+    ax1.set_xlabel("M", **axisLabel_kw)
+    ax1.set_xticks(range(len(Ms)))
+    ax1.set_xticklabels([f"{int(x):d}" for x in Ms], **axisTick_kw)
+    ax1.set_ylabel("Duration (s)", **axisLabel_kw)
+    yticks = ax1.get_yticks()[::2]
+    ax1.set_yticks(yticks)
+    ax1.set_yticklabels([f"{y:.0f}" for y in yticks], **axisTick_kw)
+    ax1.legend(**legend_kw)
+    set_xlim_offset(ax1)
+    ax1.set_xlim(0, len(Ms) - 1)
+    plt.tight_layout()
+    plt.savefig(out_dir / "a_MDuration.png", bbox_inches="tight", dpi=300)
+    plt.close(fig1)
 
-plt.tight_layout()
-plt.savefig(f"{save_dir}/{timestamp}/d_ParamLogpdf.png", bbox_inches="tight", dpi=300)
-plt.close(fig4)
+    # * 2. plot network size vs. duration
+    fig2, ax2 = plt.subplots(figsize=(6, 4))
+    invisible_topright_spines(ax2)
+    for alg in algs:
+        durations = net_res[f"{alg}_duration"]
+        mean_durations = np.mean(durations, axis=1)
+        std_durations = np.std(durations, axis=1)
+        style = get_style(alg)
+        label = get_label(alg)
+        ax2.plot(mean_durations, label=label, **style)
+        ax2.fill_between(
+            range(len(nets)),
+            mean_durations - std_durations,
+            mean_durations + std_durations,
+            alpha=0.2,
+            **style,
+        )
+    ax2.set_xlabel("Network Size", **axisLabel_kw)
+    ax2.set_xticks(range(len(nets)))
+    ax2.set_xticklabels(nets, rotation=45, ha="right", **axisTick_kw)
+    set_xlim_offset(ax2)
+    ax2.set_xlim(0, len(nets) - 1)
+    ax2.set_ylabel("Duration (s)", **axisLabel_kw)
+    yticks = ax2.get_yticks()[::2]
+    ax2.set_yticks(yticks)
+    ax2.set_yticklabels([f"{y:.0f}" for y in yticks], **axisTick_kw)
+    plt.tight_layout()
+    plt.savefig(out_dir / "b_ParamDuration.png", bbox_inches="tight", dpi=300)
+    plt.close(fig2)
 
-print(f"Saved individual plots to {save_dir}/{timestamp}")
+    # * 3. plot ensemble size vs. logpdf
+    fig3, ax3 = plt.subplots(figsize=(6, 4))
+    invisible_topright_spines(ax3)
+    for alg in algs:
+        logpdfs = M_res[f"{alg}_logpdf"]
+        mean_logpdfs = np.mean(logpdfs, axis=1, where=np.isfinite(logpdfs))
+        std_logpdfs = np.std(logpdfs, axis=1, where=np.isfinite(logpdfs))
+        style = get_style(alg)
+        label = get_label(alg)
+        ax3.plot(mean_logpdfs, label=label, **style)
+        ax3.fill_between(
+            range(len(Ms)),
+            mean_logpdfs - std_logpdfs,
+            mean_logpdfs + std_logpdfs,
+            alpha=0.2,
+            **style,
+        )
+    ax3.set_xlabel("M", **axisLabel_kw)
+    ax3.set_xticks(range(len(Ms)))
+    ax3.set_xticklabels([f"{int(x):d}" for x in Ms], **axisTick_kw)
+    set_xlim_offset(ax3)
+    ax3.set_xlim(0, len(Ms) - 1)
+    ax3.set_ylabel("Log-Likelihood", **axisLabel_kw)
+    yticks = ax3.get_yticks()[::2]
+    ax3.set_yticks(yticks)
+    ax3.set_yticklabels([f"{y:.2f}" for y in yticks], **axisTick_kw)
+    plt.tight_layout()
+    plt.savefig(out_dir / "c_MLogpdf.png", bbox_inches="tight", dpi=300)
+    plt.close(fig3)
+
+    # * 4. plot network size vs. logpdf
+    fig4, ax4 = plt.subplots(figsize=(6, 4))
+    invisible_topright_spines(ax4)
+    for alg in algs:
+        logpdfs = net_res[f"{alg}_logpdf"]
+        mean_logpdfs = np.mean(logpdfs, axis=1, where=np.isfinite(logpdfs))
+        std_logpdfs = np.std(logpdfs, axis=1, where=np.isfinite(logpdfs))
+        label = get_label(alg)
+        style = get_style(alg)
+        ax4.plot(mean_logpdfs, label=label, **style)
+        ax4.fill_between(
+            range(len(nets)),
+            mean_logpdfs - std_logpdfs,
+            mean_logpdfs + std_logpdfs,
+            alpha=0.2,
+            **style,
+        )
+    ax4.set_xlabel("Network Size", **axisLabel_kw)
+    ax4.set_xticks(range(len(nets)))
+    ax4.set_xticklabels(nets, rotation=45, ha="right", **axisTick_kw)
+    ax4.set_xlim(0, len(nets) - 1)
+    set_xlim_offset(ax4)
+    ax4.set_ylabel("Log-Likelihood", **axisLabel_kw)
+    yticks = ax4.get_yticks()[::2]
+    ax4.set_yticks(yticks)
+    ax4.set_yticklabels([f"{y:.2f}" for y in yticks], **axisTick_kw)
+    plt.tight_layout()
+    plt.savefig(out_dir / "d_ParamLogpdf.png", bbox_inches="tight", dpi=300)
+    plt.close(fig4)
+
+    print(f"Saved individual plots to {out_dir}")
+
+
+if __name__ == "__main__":
+    main(tyro.cli(Args))

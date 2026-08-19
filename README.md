@@ -259,7 +259,8 @@ python src/bnn_pref/rl/iql.py \
 Slurm sweep over all main tasks:
 
 ```bash
-bash src/scripts_sh/sweep_iql_pref.sh   # edit rl.run_dir first
+export PREF_RUN_DIR=results_sweep/pref/<your_pref_run_dir>
+bash src/scripts_sh/sweep_iql_pref.sh
 ```
 
 Ground-truth and zero-reward baselines:
@@ -296,10 +297,10 @@ Both use active querying on `walkerMediumExpert` with `use_vmap=False`. Results:
 Plot:
 
 ```bash
-python src/scripts/viz_scaling.py
+python src/scripts/viz_scaling.py \
+    --M-dirp results_sweep/scaling/<M_sweep_dir> \
+    --net-dirp results_sweep/scaling/<net_sweep_dir>
 ```
-
-(set `M_dirp` / `net_dirp` inside the script or via its CLI)
 
 ### Subdimension ablation
 
@@ -312,8 +313,25 @@ Sweeps `ekf.sub_dim` and random projection on/off for `walkerMediumExpert` (3 se
 Plot:
 
 ```bash
-python src/scripts/viz_subdim_ablation.py
+python src/scripts/viz_subdim_ablation.py \
+    --dirp results_sweep/subdim/<run_dir>
 ```
+
+---
+
+## Visualization scripts
+
+Most plotting scripts take paths via CLI (tyro). No hard-coded machine paths.
+
+| Script | Required args |
+|---|---|
+| `viz_logpdf_sweep.py` | `--dirp`, `--task_set`, `--alg_set` |
+| `viz_offlineRL.py` | `--pref-dirp`, `--ref-dirp` |
+| `viz_scaling.py` | `--M-dirp`, `--net-dirp` |
+| `viz_subdim_ablation.py` | `--dirp` |
+| `viz_rho_projection.py` | set `BNN_PREF_PREF_RUN_DIR` env var |
+
+Optional: set `BNN_PREF_FONT_DIR` to a directory containing `palatinolinotype_roman.ttf` for paper-style plots (defaults to matplotlib fonts otherwise).
 
 ---
 

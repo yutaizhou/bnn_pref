@@ -228,6 +228,11 @@ def run_iql(rng, cfg):
         rhat = jnp.zeros_like(dataset.reward)
         dataset = dataset._replace(reward=rhat)
     elif rl_cfg["reward"] == "pref":
+        if not rl_cfg["run_dir"]:
+            raise ValueError(
+                "rl.run_dir must be set when rl.reward=pref "
+                "(e.g. rl.run_dir=results_sweep/pref/<your_run_dir>)."
+            )
         # relabel dataset rewards using reward model
         rng, rng_reward = jr.split(rng)
         reward_fn, ckpt_fp = load_reward_model(

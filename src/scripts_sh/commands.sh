@@ -57,7 +57,7 @@ python bnn_pref/rl/iql.py \
     rl.pref_is_al=True \
     rl.normalize_reward=True \
     rl.clip_reward=True \
-    rl.run_dir='/scr/yutaizho/code/p-prefEKF/bnn_pref/results_sweep/pref/20251125_070829_nitersUpdate=10_lr=0.003_acq=infogain_M=100' \
+    rl.run_dir='results_sweep/pref/<your_pref_run_dir>' \
     wandb.tags=lr=0.003_nitersUpdate=10_infogain \
     rl.use_wandb=False \
     wandb.group=rl_pref_reward_norm_clip 

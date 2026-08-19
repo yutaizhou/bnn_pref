@@ -6,7 +6,6 @@ import jax.random as jr
 
 os.environ["MUJOCO_GL"] = "egl"
 
-
 import numpy as np
 from dm_env import specs
 
@@ -17,8 +16,10 @@ from bnn_pref.data.vd4rl_utils import (
     make,
 )
 
+REPO_ROOT = Path(__file__).resolve().parent
+
 if __name__ == "__main__":
-    vd4rl_path = Path("/scr/shared/datasets/vd4rl")
+    vd4rl_path = REPO_ROOT / "data" / "vd4rl"
     task_name = "cheetah_run"
     dataset_name = "medium_expert"
     fdir = vd4rl_path / "main" / task_name / dataset_name / "84px"
@@ -61,23 +62,11 @@ if __name__ == "__main__":
         sarsa=cfg["sarsa"],
     )
 
-    # trajs = make_vd4rl_data(
-    #     offline_dir=fdir,
-    # )
-    # print(f"Loaded {fdir} into replay buffer")
-    # print(f"Replay buffer size: {len(replay_buffer)}")
-
-    # batch = next(replay_buffer)
-    # for k, v in batch.items():
-    #     print(k, v.shape)
-
     from hydra import compose, initialize
 
     from bnn_pref.utils.utils import get_random_seed
 
-    with initialize(
-        version_base=None, config_path="/scr/yutaizho/code/p-prefEKF/bnn_pref/src/cfg"
-    ):
+    with initialize(version_base=None, config_path=str(REPO_ROOT / "src" / "cfg")):
         cfg = compose(config_name="config", overrides=["task=vcheetahMediumReplay"])
 
     key = jr.key(get_random_seed())

@@ -1,6 +1,7 @@
 import os
 import re
-from typing import Callable, Tuple
+from pathlib import Path
+from typing import Callable, Optional, Tuple
 
 import jax.numpy as jnp
 import jax.numpy.linalg as jnpl
@@ -9,21 +10,54 @@ import numpy as np
 from einops import rearrange
 from matplotlib.font_manager import FontProperties
 
-# * Lira plotting settings :)
-fontdir_path = "/scr/yutaizho/.fonts"
-font_path = os.path.join(fontdir_path, "palatinolinotype_roman.ttf")
-palatino = FontProperties(fname=font_path)
+# * Optional Palatino font for paper-style plots.
+# Set BNN_PREF_FONT_DIR to a directory containing palatinolinotype_roman.ttf.
+_FONT_NAME = "palatinolinotype_roman.ttf"
+_palatino: Optional[FontProperties] = None
+_font_path: Optional[str] = None
+_font_checked: bool = False
+
+
+def _resolve_font_path() -> Optional[str]:
+    font_dirs = []
+    if env_dir := os.environ.get("BNN_PREF_FONT_DIR"):
+        font_dirs.append(Path(env_dir))
+    repo_assets = Path(__file__).resolve().parents[2] / "assets" / "fonts"
+    font_dirs.append(repo_assets)
+
+    for font_dir in font_dirs:
+        candidate = font_dir / _FONT_NAME
+        if candidate.exists():
+            return str(candidate)
+    return None
+
+
+def _get_palatino() -> Optional[FontProperties]:
+    global _palatino, _font_path, _font_checked
+    if _font_checked:
+        return _palatino
+    _font_checked = True
+    _font_path = _resolve_font_path()
+    if _font_path is not None:
+        _palatino = FontProperties(fname=_font_path)
+    return _palatino
 
 
 def get_font_kw(size: int = 12):
-    return {"font": palatino, "fontsize": size}
+    palatino = _get_palatino()
+    if palatino is not None:
+        return {"fontproperties": palatino, "fontsize": size}
+    return {"fontsize": size}
 
 
 def get_legend_kw(size: int = 12):
-    return {
-        "prop": FontProperties(fname=font_path, size=size),
-        "frameon": False,
-    }
+    palatino = _get_palatino()
+    if palatino is not None:
+        return {
+            "prop": FontProperties(fname=_font_path, size=size),
+            "frameon": False,
+        }
+    return {"fontsize": size, "frameon": False}
 
 
 rgb_values = {

@@ -38,8 +38,11 @@ def clean_empty_dirs(dirp):
 
 
 if __name__ == "__main__":
-    # Get the directory path from user input
-    root_dir = "/scr/yutaizho/projects/bnn_pref"
+    import sys
+
+    if len(sys.argv) < 2:
+        raise SystemExit("Usage: python archive/scripts/clean.py <root_dir>")
+    root_dir = sys.argv[1]
     directories = [
         f"{root_dir}/{d}"
         for d in [

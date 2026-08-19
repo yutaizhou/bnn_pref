@@ -120,9 +120,15 @@ def relabel_rewards(
 
 
 if __name__ == "__main__":
-    run_dir = "/Users/yutai/dev/projects/bnn_pref/results/20250428_171621"
-    task_name = "halfcheetah-random-v2"
-    alg = "sgd"
+    import sys
+
+    if len(sys.argv) < 2:
+        raise SystemExit(
+            "Usage: python -m bnn_pref.rl.rm_util <pref_run_dir> "
+            "[task_name=halfcheetah-random-v2]"
+        )
+    run_dir = sys.argv[1]
+    task_name = sys.argv[2] if len(sys.argv) > 2 else "halfcheetah-random-v2"
     is_al = False
 
     key = jr.key(0)

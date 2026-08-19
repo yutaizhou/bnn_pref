@@ -1,4 +1,6 @@
 #!/bin/bash
+# Reward-model sweep dir produced by src/scripts_sh/sweep_rm.sh (or similar).
+: "${PREF_RUN_DIR:?Set PREF_RUN_DIR to your reward-learning sweep directory}"
 
 TASKS=(
     "cheetahRandom"
@@ -33,7 +35,7 @@ python src/bnn_pref/rl/iql.py \
     rl.normalize_reward=True \
     rl.clip_reward=True \
     rl.agg_type=mean \
-    rl.run_dir='"/scr/yutaizho/code/p-prefEKF/bnn_pref/_runs/pref/20251125_070829_nitersUpdate=10_lr=0.003_acq=infogain_M=100"' \
+    rl.run_dir="'${PREF_RUN_DIR}'" \
     wandb.tags=lr0.003_nitersUpdate10_infogain \
     rl.use_wandb=True \
     wandb.group=rl_pref_reward_norm_clip \
@@ -50,4 +52,5 @@ python src/bnn_pref/rl/iql.py \
 #     rl.n_updates=1000000 \
 #     rl.eval_interval=25000 \
 #     rl.use_wandb=False \
+#     rl.run_dir="'${PREF_RUN_DIR}'" \
 #     wandb.group=rl_pref \
